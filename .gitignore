@@ -1,0 +1,36 @@
+# --- Node & package managers
+node_modules/
+**/node_modules/
+.pnp.cjs
+.pnp.loader.mjs
+.pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# --- Builds & coverage
+dist/
+**/dist/
+build/
+**/build/
+coverage/
+**/coverage/
+
+# --- Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# --- Docker / data volumes (keep folder, ignore contents)
+data/
+docker-data/
+uploads/
+!data/.gitkeep
+
+# --- OS / editor
+.DS_Store
+.vscode/
+.idea/
+.eslintcache
