@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "./auth/AuthContext";
 import RequireRole from "./auth/RequireRole";
+import { UlTodayRoute } from "./UlTodayRoute";
 
 export default function App() {
   // ---- Auth/RBAC via context ----
@@ -109,6 +110,13 @@ export default function App() {
           <button onClick={callAdmin}>Call /api/admin/secret</button>
         </RequireRole>
         <pre>{adminResp}</pre>
+      </section>
+
+      {/* UL Today's Route */}
+      <section style={{ marginTop: 16 }}>
+        <RequireRole anyOf={["UL", "Admin"]}>
+          <UlTodayRoute />
+        </RequireRole>
       </section>
     </div>
   );
