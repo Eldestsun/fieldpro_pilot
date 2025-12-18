@@ -28,15 +28,54 @@ services:
     volumes:
       - ./data/minio:/data
 
+  osrm_prepare:
+    image: osrm/osrm-backend:latest
+    platform: linux/amd64
+    container_name: fieldpro_osrm_prepare
+    working_dir: /data
+    volumes:
+      - ./data/osrm:/data
+    # Builds MLD artifacts if they don't exist yet.
+    # Expects these files in ./data/osrm:
+    #   - seattle.osm.pbf
+    #   - profiles/car.lua (or adjust PROFILE below)
+    command: >-
+      /bin/sh -lc '
+      set -e;
+      DATASET=/data/seattle;
+      PBF=${DATASET}.osm.pbf;
+      PROFILE=/data/profiles/car.lua;
+      if [ ! -f "$PBF" ]; then
+        echo "ERROR: Missing $PBF. Put seattle.osm.pbf into ./data/osrm.";
+        exit 1;
+      fi;
+      if [ ! -f "$PROFILE" ]; then
+        echo "ERROR: Missing $PROFILE. Put car.lua into ./data/osrm/profiles/ or update PROFILE.";
+        exit 1;
+      fi;
+      # If MLD artifacts exist, skip rebuild
+      if [ -f "${DATASET}.osrm.partition" ] && [ -f "${DATASET}.osrm.cells" ]; then
+        echo "OSRM MLD artifacts already present; skipping build.";
+        exit 0;
+      fi;
+      echo "Building OSRM dataset with MLD pipeline...";
+      osrm-extract -p "$PROFILE" "$PBF";
+      osrm-partition "${DATASET}.osrm";
+      osrm-customize "${DATASET}.osrm";
+      echo "Done.";
+      '
+
   osrm:
     image: osrm/osrm-backend:latest
     platform: linux/amd64
     container_name: fieldpro_osrm
+    depends_on:
+      - osrm_prepare
     command: osrm-routed --algorithm mld /data/seattle.osrm
     volumes:
       - ./data/osrm:/data
     ports:
-      - "5005:5000"  # host:container (changed host port to 5005)
+      - "5005:5000"  # host:container
 
 
 

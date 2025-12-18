@@ -13,12 +13,12 @@ if (!tenantId || !apiAudienceClientId) {
 }
 
 const APP_ROLE_ADMIN = process.env.APP_ROLE_ADMIN ?? "Admin";
-const APP_ROLE_LEAD  = process.env.APP_ROLE_LEAD  ?? "Lead";
-const APP_ROLE_UL    = process.env.APP_ROLE_UL    ?? "UL";
+const APP_ROLE_LEAD = process.env.APP_ROLE_LEAD ?? "Lead";
+const APP_ROLE_UL = process.env.APP_ROLE_UL ?? "UL";
 
 const ADMIN_GROUP_ID = process.env.ADMIN_GROUP_ID;
-const LEAD_GROUP_ID  = process.env.LEAD_GROUP_ID;
-const UL_GROUP_ID    = process.env.UL_GROUP_ID;
+const LEAD_GROUP_ID = process.env.LEAD_GROUP_ID;
+const UL_GROUP_ID = process.env.UL_GROUP_ID;
 
 /** ===== JWKS CLIENT ===== */
 const client = jwksClient({
@@ -51,8 +51,8 @@ function extractRolesFromClaims(payload: JwtPayload): string[] {
   const groups = (payload as any).groups as string[] | undefined;
   if (groups?.length) {
     if (ADMIN_GROUP_ID && groups.includes(ADMIN_GROUP_ID)) out.add(APP_ROLE_ADMIN);
-    if (LEAD_GROUP_ID  && groups.includes(LEAD_GROUP_ID))  out.add(APP_ROLE_LEAD);
-    if (UL_GROUP_ID    && groups.includes(UL_GROUP_ID))    out.add(APP_ROLE_UL);
+    if (LEAD_GROUP_ID && groups.includes(LEAD_GROUP_ID)) out.add(APP_ROLE_LEAD);
+    if (UL_GROUP_ID && groups.includes(UL_GROUP_ID)) out.add(APP_ROLE_UL);
   }
 
   return Array.from(out);
@@ -71,17 +71,20 @@ export function requireAuth(req: AuthedRequest, res: Response, next: NextFunctio
     return res.status(401).json({ error: "missing bearer token" });
   }
 
-const acceptedAudiences: [string, ...string[]] = [
-  apiAudienceClientId,
-  `api://${apiAudienceClientId}`,
-];
+  const acceptedAudiences: [string, ...string[]] = [
+    apiAudienceClientId,
+    `api://${apiAudienceClientId}`,
+  ];
 
   jwt.verify(
     token,
     getKey,
     {
       algorithms: ["RS256"],
-      issuer: `https://login.microsoftonline.com/${tenantId}/v2.0`,
+      issuer: [
+        `https://login.microsoftonline.com/${tenantId}/v2.0`,
+        `https://sts.windows.net/${tenantId}/`,
+      ],
       audience: acceptedAudiences,
       clockTolerance: 60,
       complete: false,

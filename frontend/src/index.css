@@ -3,9 +3,12 @@
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  color-scheme: light;
+  /* Enforce light mode for now as per design request */
+  color: #374151;
+  /* Dark Gray body text */
+  background-color: #F3F4F6;
+  /* Light Gray background */
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -13,56 +16,92 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
+  display: block;
+  /* Removed flex/place-items: center to allow normal flow */
   min-width: 320px;
   min-height: 100vh;
+  background: #F3F4F6;
+  color: #374151;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 600;
+  /* Heavier headings */
+  color: #111827;
+  /* Near black for headings */
 }
 
 h1 {
-  font-size: 3.2em;
+  font-size: 2.5em;
   line-height: 1.1;
 }
 
+/* Base Button Reset */
 button {
   border-radius: 8px;
   border: 1px solid transparent;
   padding: 0.6em 1.2em;
   font-size: 1em;
-  font-weight: 500;
+  font-weight: 600;
   font-family: inherit;
-  background-color: #1a1a1a;
   cursor: pointer;
-  transition: border-color 0.25s;
+  transition: all 0.2s;
 }
-button:hover {
-  border-color: #646cff;
-}
+
 button:focus,
 button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
+/* Primary Button Class */
+.btn-primary {
+  background-color: #1D6FBD;
+  /* Deep Cerulean */
+  color: white;
+  width: 100%;
+  /* Full width on mobile */
+}
+
+.btn-primary:hover {
+  background-color: #175a9b;
+}
+
+.btn-primary:disabled {
+  background-color: #cbd5e0;
+  cursor: not-allowed;
+}
+
+@media (min-width: 640px) {
+  .btn-primary {
+    width: auto;
+    /* Auto width on larger screens */
   }
-  a:hover {
-    color: #747bff;
+}
+
+/* Card Class */
+.card {
+  background-color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+@media (min-width: 640px) {
+  .card {
+    padding: 32px;
   }
-  button {
-    background-color: #f9f9f9;
-  }
+}
+
+.app-brand {
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: #374151;
 }

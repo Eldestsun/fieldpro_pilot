@@ -12,6 +12,7 @@
   "dependencies": {
     "@azure/msal-browser": "^4.21.0",
     "@azure/msal-react": "^3.0.19",
+    "maplibre-gl": "^5.14.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

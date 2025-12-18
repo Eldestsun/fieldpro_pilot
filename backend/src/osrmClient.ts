@@ -6,6 +6,8 @@ export type OsrmStop = {
   lon: number;
   lat: number;
   stop_id?: string;
+  on_street_name?: string;
+  bearing_code?: string;
 };
 
 export type PlannedRouteLeg = {
@@ -22,7 +24,10 @@ export type PlannedRoute = {
   legs: PlannedRouteLeg[];   // segment-by-segment breakdown
 };
 
-export async function planRouteWithOsrm(stops: OsrmStop[]): Promise<PlannedRoute> {
+export async function planRouteWithOsrm(
+  stops: OsrmStop[],
+  opts?: { source?: "first" | "any" }
+): Promise<PlannedRoute> {
   if (stops.length < 2) {
     throw new Error("At least two stops are required to plan a route.");
   }
@@ -34,6 +39,14 @@ export async function planRouteWithOsrm(stops: OsrmStop[]): Promise<PlannedRoute
   const url = new URL(`${OSRM_BASE_URL}/trip/v1/driving/${coords}`);
   url.searchParams.set("overview", "full");
   url.searchParams.set("geometries", "geojson");
+
+  if (opts?.source === "first") {
+    url.searchParams.set("source", "first");
+  }
+
+  // Debug logs
+  console.log("[OSRM] base=", OSRM_BASE_URL, "env=", process.env.OSRM_BASE_URL);
+  console.log("[OSRM] url=", url.toString());
 
   const res = await fetch(url.toString());
   if (!res.ok) {
@@ -74,6 +87,8 @@ export async function planRouteWithOsrm(stops: OsrmStop[]): Promise<PlannedRoute
       lon,
       lat,
       stop_id: original?.stop_id,
+      on_street_name: original?.on_street_name,
+      bearing_code: original?.bearing_code,
     };
   });
 
@@ -90,5 +105,43 @@ export async function planRouteWithOsrm(stops: OsrmStop[]): Promise<PlannedRoute
     duration_s: trip.duration,
     ordered_stops,
     legs,
+  };
+}
+
+/**
+ * Calculates the route between two points using OSRM /route service.
+ * Supports "approaches" parameter to prefer curbside arrival.
+ */
+export async function routeLegWithOsrm(
+  a: OsrmStop,
+  b: OsrmStop,
+  opts?: { approaches?: "curb" | "unrestricted" }
+): Promise<{ distance_m: number; duration_s: number }> {
+  // /route/v1/driving/{lon},{lat};{lon},{lat}
+  const coords = `${a.lon},${a.lat};${b.lon},${b.lat}`;
+  const url = new URL(`${OSRM_BASE_URL}/route/v1/driving/${coords}`);
+
+  url.searchParams.set("overview", "false"); // We only need metrics, not geometry
+
+  if (opts?.approaches === "curb") {
+    // Must provide one value per coordinate
+    url.searchParams.set("approaches", "curb;curb");
+  }
+
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`OSRM /route error: ${res.status} ${res.statusText} - ${text}`);
+  }
+
+  const data = (await res.json()) as any;
+  if (!data.routes || data.routes.length === 0) {
+    throw new Error("OSRM returned no route for leg.");
+  }
+
+  const route = data.routes[0];
+  return {
+    distance_m: route.distance,
+    duration_s: route.duration,
   };
 }
