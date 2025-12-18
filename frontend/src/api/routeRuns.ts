@@ -849,6 +849,8 @@ export function isValidationError(error: unknown): boolean {
     return status === 400 || status === 422;
 }
 
+
+
 export async function parseApiErrorCode(
     response: Response | { status: number; json?: () => Promise<any> }
 ): Promise<string | undefined> {
@@ -869,4 +871,77 @@ export async function parseApiErrorCode(
         }
     }
     return undefined;
+}
+
+/** ── Ops Read-Only API ────────────────────────────────────────────────── */
+
+export interface OpsRouteRun {
+    id: number;
+    user_id: number;
+    route_pool_id: string;
+    base_id: string;
+    status: string;
+    run_date: string;
+    created_at: string;
+    pool_label?: string;
+    stop_count: number;
+}
+
+export interface OpsCleanLog {
+    id: number;
+    stop_id: string;
+    route_run_stop_id: number;
+    cleaned_at: string;
+
+    // Additional fields from join
+    on_street_name?: string;
+    pool_id?: string;
+    run_date?: string;
+    route_pool_id?: string;
+
+    // Other clean_log fields (partial)
+    picked_up_litter?: boolean;
+    emptied_trash?: boolean;
+    washed_shelter?: boolean;
+    washed_pad?: boolean;
+    washed_can?: boolean;
+    trash_volume?: number;
+    [key: string]: any;
+}
+
+export interface OpsCleanLogsResponse {
+    clean_logs: OpsCleanLog[];
+    total: number;
+}
+
+export async function getOpsRouteRuns(
+    token: string,
+    params: { page: number; pageSize: number; run_date?: string; pool_id?: string; status?: string }
+): Promise<OpsRouteRun[]> {
+    const qs = new URLSearchParams();
+    qs.set("page", String(params.page));
+    qs.set("pageSize", String(params.pageSize));
+    if (params.run_date) qs.set("run_date", params.run_date);
+    if (params.pool_id) qs.set("pool_id", params.pool_id);
+    if (params.status) qs.set("status", params.status);
+
+    const res = await apiFetch<{ route_runs: OpsRouteRun[] }>(`/api/ops/route-runs?${qs.toString()}`, token);
+    return res.route_runs.map(r => ({
+        ...r,
+        status: r.status.toLowerCase() === "finished" ? "completed" : r.status
+    }));
+}
+
+export async function getOpsCleanLogs(
+    token: string,
+    params: { page: number; pageSize: number; stop_id?: string; pool_id?: string; run_date?: string }
+): Promise<OpsCleanLogsResponse> {
+    const qs = new URLSearchParams();
+    qs.set("page", String(params.page));
+    qs.set("pageSize", String(params.pageSize));
+    if (params.stop_id) qs.set("stop_id", params.stop_id);
+    if (params.pool_id) qs.set("pool_id", params.pool_id);
+    if (params.run_date) qs.set("run_date", params.run_date);
+
+    return await apiFetch<OpsCleanLogsResponse>(`/api/ops/clean-logs?${qs.toString()}`, token);
 }

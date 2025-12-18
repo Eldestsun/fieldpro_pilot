@@ -11,6 +11,10 @@ export interface Stop {
     trf_district_code: string;
     last_level3_at: Date | null;
     notes: string | null;
+    bearing_code: string | null;
+    hastus_cross_street_name: string | null;
+    lon: number | null;
+    lat: number | null;
 }
 
 export async function listStops(params: {
@@ -56,6 +60,10 @@ export async function listStops(params: {
             "ON_STREET_NAME" as on_street_name,
             "INTERSECTION_LOC" as intersection_loc,
             "TRF_DISTRICT_CODE" as trf_district_code,
+            "BEARING_CODE" as bearing_code,
+            "HASTUS_CROSS_STREET_NAME" as hastus_cross_street_name,
+            lon,
+            lat,
             last_level3_at,
             notes
         FROM stops
@@ -118,6 +126,10 @@ export async function updateStop(
                 "ON_STREET_NAME" as on_street_name,
                 "INTERSECTION_LOC" as intersection_loc,
                 "TRF_DISTRICT_CODE" as trf_district_code,
+                "BEARING_CODE" as bearing_code,
+                "HASTUS_CROSS_STREET_NAME" as hastus_cross_street_name,
+                lon,
+                lat,
                 last_level3_at,
                 notes
         `;

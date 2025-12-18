@@ -31,9 +31,35 @@ export function RouteSummary({
     const [localFinishing, setLocalFinishing] = useState(false);
     const isBusy = Boolean(isFinishing) || localFinishing;
 
-    const isAllDone = summary.totalStops > 0 && summary.completedStops === summary.totalStops;
-    const hasUnfinished = summary.pendingStops > 0 || summary.inProgressStops > 0;
+    const stops = Array.isArray(routeRun.stops) ? routeRun.stops : [];
+    const totalStops = stops.length || summary.totalStops;
+
+    // A stop is “finished enough” if done OR skipped
+    const finishedStopCount = stops.filter(s => s.status === "done" || s.status === "skipped").length;
+
+    // If we have stops array, trust it; otherwise fall back to summary
+    // If we have stops array, trust it; otherwise fall back to summary
+    const isAllDone = stops.length > 0
+        ? stops.every(s => s.status === "done" || s.status === "skipped")
+        : (summary.totalStops > 0 && summary.pendingStops === 0 && summary.inProgressStops === 0);
+
+    const hasUnfinished = totalStops > 0
+        ? (stops.length > 0 ? finishedStopCount < totalStops : (summary.pendingStops > 0 || summary.inProgressStops > 0))
+        : false;
+
     const isAlreadyFinished = String(routeRun.status || "").toLowerCase() === "completed" || String(routeRun.status || "").toLowerCase() === "finished";
+
+    // Debug — remove after demo if you want
+    console.log("RouteSummary gates", {
+        routeStatus: routeRun.status,
+        totalStops,
+        finishedStopCount,
+        isAllDone,
+        hasUnfinished,
+        isAlreadyFinished,
+        isBusy,
+        summary
+    });
 
     const handleFinish = async () => {
         if (!isAllDone || isBusy || isAlreadyFinished) return;
@@ -116,7 +142,7 @@ export function RouteSummary({
                 )}
 
                 {/* Warnings */}
-                {hasUnfinished && (
+                {hasUnfinished && !isAlreadyFinished && (
                     <div
                         style={{
                             background: "#fffaf0",

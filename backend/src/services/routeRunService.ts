@@ -516,7 +516,6 @@ export async function finishRouteRun(id: number | string) {
   }
 
   // Return updated run
-  // Return updated run
   return await loadRouteRunById(id);
 }
 

@@ -35,7 +35,7 @@ opsRoutes.get("/ops/dashboard", async (_req: Request, res: Response) => {
             const completedRunsRes = await client.query(`
                 SELECT COUNT(*) FROM route_runs 
                 WHERE run_date = CURRENT_DATE 
-                AND status = 'completed'
+                AND status IN ('completed', 'finished')
             `);
 
             res.json({
@@ -80,6 +80,132 @@ opsRoutes.get("/ops/stops", async (req: Request, res: Response) => {
         res.json(result); // { items, total }
     } catch (err: any) {
         console.error("Error in /ops/stops:", err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/** ── Route Runs ───────────────────────────────────────────────────────── */
+// Explicit path: /api/ops/route-runs
+// Read-only mirror of Admin Route Runs list
+opsRoutes.get("/ops/route-runs", async (req: Request, res: Response) => {
+    try {
+        const run_date = (req.query.run_date as string);
+        const pool_id = req.query.pool_id as string;
+        const status = req.query.status as string;
+        const page = parseInt(req.query.page as string) || 1;
+        const pageSize = Math.min(parseInt(req.query.pageSize as string) || 50, 200);
+        const offset = (page - 1) * pageSize;
+
+        const conditions: string[] = [];
+        const values: any[] = [];
+        let idx = 1;
+
+        if (run_date) {
+            conditions.push(`rr.run_date = $${idx++}`);
+            values.push(run_date);
+        }
+        if (pool_id) {
+            conditions.push(`rr.route_pool_id = $${idx++}`);
+            values.push(pool_id);
+        }
+        if (status) {
+            conditions.push(`rr.status = $${idx++}`);
+            values.push(status);
+        }
+
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+        const query = `
+            SELECT 
+                rr.id, rr.user_id, rr.route_pool_id, rr.base_id, rr.status, rr.run_date, rr.created_at,
+                rp.label as pool_label,
+                (SELECT COUNT(*) FROM route_run_stops rrs WHERE rrs.route_run_id = rr.id) as stop_count
+            FROM route_runs rr
+            LEFT JOIN route_pools rp ON rr.route_pool_id = rp.id
+            ${whereClause}
+            ORDER BY rr.created_at DESC
+            LIMIT $${idx++} OFFSET $${idx++}
+        `;
+        values.push(pageSize, offset);
+
+        const result = await pool.query(query, values);
+        res.json({ route_runs: result.rows });
+    } catch (err: any) {
+        console.error("Error in /ops/route-runs:", err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/** ── Clean Logs ───────────────────────────────────────────────────────── */
+// Explicit path: /api/ops/clean-logs
+// Read-only mirror of Admin Clean Logs list
+opsRoutes.get("/ops/clean-logs", async (req: Request, res: Response) => {
+    try {
+        const stop_id = req.query.stop_id as string;
+        const pool_id = req.query.pool_id as string;
+        const run_date = req.query.run_date as string;
+        const page = parseInt(req.query.page as string) || 1;
+        const pageSize = Math.min(parseInt(req.query.pageSize as string) || 50, 200);
+        const offset = (page - 1) * pageSize;
+
+        const conditions: string[] = [];
+        const values: any[] = [];
+        let idx = 1;
+
+        if (stop_id) {
+            conditions.push(`cl.stop_id = $${idx++}`);
+            values.push(stop_id);
+        }
+        if (run_date) {
+            conditions.push(`rr.run_date = $${idx++}`);
+            values.push(run_date);
+        }
+        if (pool_id) {
+            conditions.push(`s.pool_id = $${idx++}`);
+            values.push(pool_id);
+        }
+
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+        // Main Query
+        const query = `
+            SELECT 
+                cl.*,
+                s."ON_STREET_NAME", s.pool_id,
+                rr.run_date, rr.route_pool_id
+            FROM clean_logs cl
+            LEFT JOIN route_run_stops rrs ON cl.route_run_stop_id = rrs.id
+            LEFT JOIN route_runs rr ON rrs.route_run_id = rr.id
+            LEFT JOIN stops s ON cl.stop_id = s."STOP_ID"
+            ${whereClause}
+            ORDER BY cl.cleaned_at DESC, cl.id DESC
+            LIMIT $${idx++} OFFSET $${idx++}
+        `;
+
+        // Count Query
+        const countQuery = `
+            SELECT COUNT(*) as total
+            FROM clean_logs cl
+            LEFT JOIN route_run_stops rrs ON cl.route_run_stop_id = rrs.id
+            LEFT JOIN route_runs rr ON rrs.route_run_id = rr.id
+            LEFT JOIN stops s ON cl.stop_id = s."STOP_ID"
+            ${whereClause}
+        `;
+
+        const queryValues = [...values, pageSize, offset];
+        const countValues = [...values];
+
+        const [result, countResult] = await Promise.all([
+            pool.query(query, queryValues),
+            pool.query(countQuery, countValues)
+        ]);
+
+        res.json({
+            clean_logs: result.rows,
+            total: parseInt(countResult.rows[0].total, 10)
+        });
+    } catch (err: any) {
+        console.error("Error in /ops/clean-logs:", err);
         res.status(500).json({ error: err.message });
     }
 });

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
-import { fetchLeadTodaysRuns, type LeadRouteRunSummary } from "../api/routeRuns";
+import { getOpsRouteRuns, type OpsRouteRun } from "../api/routeRuns";
 import { useCreateRoute } from "../hooks/useCreateRoute";
 import { OpsLayout } from "./ui/OpsLayout";
 import { OpsCard } from "./ui/OpsCard";
@@ -8,14 +8,16 @@ import { OpsTable, OpsTableRow, OpsTableCell } from "./ui/OpsTable";
 import { OpsBadge } from "./ui/OpsBadge";
 import { OpsButton } from "./ui/OpsButton";
 import { LeadRouteDetail } from "./LeadRouteDetail";
+import { LeadCompletedRouteDetail } from "./LeadCompletedRouteDetail";
 import { RouteCreatePanel } from "./RouteCreatePanel";
 
 export function LeadRoutesPanel() {
   const { getAccessToken } = useAuth();
-  const [runs, setRuns] = useState<LeadRouteRunSummary[]>([]);
+  const [runs, setRuns] = useState<OpsRouteRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
+  const [selectedActiveRunId, setSelectedActiveRunId] = useState<number | null>(null);
+  const [selectedCompletedRunId, setSelectedCompletedRunId] = useState<number | null>(null);
 
   const createRouteHook = useCreateRoute({
     onCreated: () => fetchRuns()
@@ -24,8 +26,8 @@ export function LeadRoutesPanel() {
   const fetchRuns = async () => {
     try {
       const token = await getAccessToken();
-      const data = await fetchLeadTodaysRuns(token);
-      setRuns(data);
+      const allRuns = await getOpsRouteRuns(token, { page: 1, pageSize: 50 });
+      setRuns(allRuns);
     } catch (err: any) {
       setError(err.message || "Failed to load routes");
     } finally {
@@ -37,9 +39,21 @@ export function LeadRoutesPanel() {
     fetchRuns();
   }, [getAccessToken]);
 
-  if (selectedRunId) {
-    return <LeadRouteDetail id={selectedRunId} onBack={() => setSelectedRunId(null)} />;
+  if (selectedActiveRunId) {
+    return <LeadRouteDetail id={selectedActiveRunId} onBack={() => setSelectedActiveRunId(null)} />;
   }
+
+  if (selectedCompletedRunId) {
+    return <LeadCompletedRouteDetail id={selectedCompletedRunId} onBack={() => setSelectedCompletedRunId(null)} />;
+  }
+
+  const isCompletedStatus = (s?: string) => {
+    const v = (s || "").toLowerCase();
+    return v === "finished" || v === "completed";
+  };
+
+  const completedRuns = runs.filter(r => isCompletedStatus(r.status));
+  const activeRuns = runs.filter(r => !isCompletedStatus(r.status));
 
   const rightActions = (
     <OpsButton onClick={createRouteHook.open} variant="primary">
@@ -49,8 +63,8 @@ export function LeadRoutesPanel() {
 
   return (
     <OpsLayout
-      title="Active Routes"
-      subtitle="Lead view — today's route runs."
+      title="Routes"
+      subtitle="Today's route runs."
       rightActions={rightActions}
     >
       {error && (
@@ -58,27 +72,55 @@ export function LeadRoutesPanel() {
           <p style={{ margin: 0, color: "#c53030", fontSize: "0.875rem" }}>{error}</p>
         </OpsCard>
       )}
-      <OpsCard padding={0}>
-        <OpsTable headers={["ID", "UL Worker", "Pool", "Status", "Stops", "Date"]}>
-          {runs.map((run) => (
-            <OpsTableRow key={run.id} onClick={() => setSelectedRunId(run.id)}>
+
+      <OpsCard style={{ marginBottom: "1.5rem" }}>
+        <h3 style={{ marginTop: 0, marginBottom: "0.75rem" }}>Active Routes</h3>
+        <OpsTable headers={["ID", "Pool", "Status", "Stops", "Date"]}>
+          {activeRuns.map((run) => (
+            <OpsTableRow key={run.id} onClick={() => setSelectedActiveRunId(run.id)}>
               <OpsTableCell style={{ fontFamily: "monospace", color: "#718096" }}>#{run.id}</OpsTableCell>
-              <OpsTableCell style={{ fontWeight: 600 }}>UID:{run.user_id}</OpsTableCell>
-              <OpsTableCell>{run.route_pool_id}</OpsTableCell>
+              <OpsTableCell>{run.pool_label || run.route_pool_id}</OpsTableCell>
               <OpsTableCell>
                 <OpsBadge
-                  variant={run.status === "completed" ? "success" : "status"}
-                  value={run.status.replace("_", " ")}
+                  variant={run.status === "in_progress" ? "status" : "neutral"}
+                  value={(run.status || "unknown").replaceAll("_", " ")}
                 />
               </OpsTableCell>
-              <OpsTableCell>{run.stopCount}</OpsTableCell>
+              <OpsTableCell>{run.stop_count}</OpsTableCell>
               <OpsTableCell>{new Date(run.run_date).toLocaleDateString()}</OpsTableCell>
             </OpsTableRow>
           ))}
-          {runs.length === 0 && !loading && (
+          {activeRuns.length === 0 && !loading && (
             <OpsTableRow>
-              <OpsTableCell colSpan={6} style={{ textAlign: "center", padding: "3rem", color: "#718096" }}>
-                No routes found for today.
+              <OpsTableCell colSpan={5} style={{ textAlign: "center", padding: "1.5rem", color: "#718096" }}>
+                No active routes.
+              </OpsTableCell>
+            </OpsTableRow>
+          )}
+        </OpsTable>
+      </OpsCard>
+
+      <OpsCard>
+        <h3 style={{ marginTop: 0, marginBottom: "0.75rem" }}>Completed Routes</h3>
+        <OpsTable headers={["ID", "Pool", "Status", "Stops", "Date"]}>
+          {completedRuns.map((run) => (
+            <OpsTableRow key={run.id} onClick={() => setSelectedCompletedRunId(run.id)}>
+              <OpsTableCell style={{ fontFamily: "monospace", color: "#718096" }}>#{run.id}</OpsTableCell>
+              <OpsTableCell>{run.pool_label || run.route_pool_id}</OpsTableCell>
+              <OpsTableCell>
+                <OpsBadge
+                  variant="success"
+                  value={(run.status || "completed").replaceAll("_", " ")}
+                />
+              </OpsTableCell>
+              <OpsTableCell>{run.stop_count}</OpsTableCell>
+              <OpsTableCell>{new Date(run.run_date).toLocaleDateString()}</OpsTableCell>
+            </OpsTableRow>
+          ))}
+          {completedRuns.length === 0 && !loading && (
+            <OpsTableRow>
+              <OpsTableCell colSpan={5} style={{ textAlign: "center", padding: "1.5rem", color: "#718096" }}>
+                No completed routes.
               </OpsTableCell>
             </OpsTableRow>
           )}

@@ -1,6 +1,6 @@
 
 
-type OpsBadgeVariant = "status" | "info" | "danger" | "success" | "warning";
+type OpsBadgeVariant = "status" | "info" | "danger" | "success" | "warning" | "neutral";
 
 interface OpsBadgeProps {
     variant?: OpsBadgeVariant;
@@ -19,6 +19,7 @@ export function OpsBadge({ variant = "info", value }: OpsBadgeProps) {
                 return { bg: "#f0fff4", text: "#2f855a" };
             case "warning":
                 return { bg: "#fffaf0", text: "#c05621" };
+            case "neutral":
             default:
                 return { bg: "#edf2f7", text: "#4a5568" };
         }

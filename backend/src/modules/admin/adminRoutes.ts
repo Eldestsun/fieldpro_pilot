@@ -33,7 +33,7 @@ adminRoutes.get("/admin/dashboard", async (_req: Request, res: Response) => {
             const completedRunsRes = await client.query(`
                 SELECT COUNT(*) FROM route_runs 
                 WHERE run_date = CURRENT_DATE 
-                AND status = 'completed'
+                AND status IN ('completed', 'finished')
             `);
 
             res.json({

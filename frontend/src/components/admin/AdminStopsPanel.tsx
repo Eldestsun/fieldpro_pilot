@@ -23,28 +23,10 @@ function getStopField(stop: any, key: string) {
 function buildLocation(stop: any): string {
   const onStreet = normalizeText(getStopField(stop, "on_street_name"));
   const intersection = normalizeText(getStopField(stop, "intersection_loc"));
-  const hastusCross = normalizeText(getStopField(stop, "hastus_cross_street_name"));
+  const hastus = normalizeText(getStopField(stop, "hastus_cross_street_name"));
 
-  // Desired output examples:
-  // "1st Ave & Far side / Pine St"
-  // "1st Ave & Far side"
-  // "1st Ave / Pine St" (if intersection missing but cross exists)
-  // "—" (if nothing)
-  if (!onStreet && !intersection && !hastusCross) return "—";
-
-  const parts: string[] = [];
-  if (onStreet) parts.push(onStreet);
-
-  const secondParts: string[] = [];
-  if (intersection) secondParts.push(intersection);
-  if (hastusCross) secondParts.push(hastusCross);
-
-  if (secondParts.length > 0) {
-    // join intersection + hastus cross into a single suffix
-    parts.push(`& ${secondParts.join(" / ")}`);
-  }
-
-  return parts.join(" ").trim();
+  const parts = [onStreet, intersection, hastus].filter(Boolean);
+  return parts.length ? parts.join(" | ") : "—";
 }
 
 export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
