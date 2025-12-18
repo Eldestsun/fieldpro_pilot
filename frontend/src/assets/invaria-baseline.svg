@@ -1,0 +1,8 @@
+<svg width="1200" height="340" viewBox="0 0 1200 340" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .top { font: 700 120px 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; fill: #6b7280; letter-spacing: 0.06em; }
+    .bot { font: 800 210px 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; fill: #000000; letter-spacing: 0.02em; }
+  </style>
+  <text x="40" y="130" class="top">INVARIA</text>
+  <text x="40" y="310" class="bot">BASELINE</text>
+</svg>
