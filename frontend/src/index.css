@@ -18,12 +18,17 @@
 
 body {
   margin: 0;
-  display: block;
-  /* Removed flex/place-items: center to allow normal flow */
   min-width: 320px;
   min-height: 100vh;
-  background: #F3F4F6;
+  background-color: #f8fafc;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   color: #374151;
+}
+
+#root {
+  width: 100%;
+  min-height: 100%;
 }
 
 h1,

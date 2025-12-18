@@ -37,14 +37,6 @@ export interface InfraState {
     notes?: string;
 }
 
-export interface HazardDetail {
-    hazard_type: string;
-    severity?: number;
-    notes?: string;
-    // local only ID for UI
-    id: string;
-}
-
 export type WizardStep = "safety" | "tasks" | "infra" | "photo";
 
 export function useTodayRoute() {
@@ -73,7 +65,6 @@ export function useTodayRoute() {
     // Safety & Infra State
     const [safetyState, setSafetyState] = useState<Record<number, SafetyState>>({});
     const [infraState, setInfraState] = useState<Record<number, InfraState>>({});
-    const [cleaningHazardsState, setCleaningHazardsState] = useState<Record<number, HazardDetail[]>>({});
 
     // Wizard Step State: { [stopId]: WizardStep }
     const [stepState, setStepState] = useState<Record<number, WizardStep>>({});
@@ -188,10 +179,6 @@ export function useTodayRoute() {
             const { [stopId]: _, ...rest } = prev;
             return rest;
         });
-        // NOTE: We do not clear cleaningHazardsState either if we want persistence (though cleaning hazards are per-completion).
-        // Since they are part of completion payload, they are "done" once sent.
-        // But if we want to show them in read-only view, we should keep them.
-        // Let's keep them.
     };
 
     const handleCompleteStop = async (stopId: number) => {
@@ -245,11 +232,6 @@ export function useTodayRoute() {
                     notes: safetyState[stopId]?.notes || "",
                     safety_photo_key: safetyState[stopId]?.safetyPhotoKey,
                 } : undefined,
-                hazards: cleaningHazardsState[stopId]?.map(h => ({
-                    hazard_type: h.hazard_type,
-                    severity: h.severity,
-                    notes: h.notes
-                })) || [],
             };
 
             const updatedRun = await completeStop(token, stopId, payload);
@@ -363,9 +345,6 @@ export function useTodayRoute() {
         setInfraState((prev) => ({ ...prev, [stopId]: data }));
     };
 
-    const setCleaningHazardsForStop = (stopId: number, hazards: HazardDetail[]) => {
-        setCleaningHazardsState((prev) => ({ ...prev, [stopId]: hazards }));
-    };
 
     const handleNextStep = (stopId: number) => {
         setStepState((prev) => {
@@ -514,8 +493,6 @@ export function useTodayRoute() {
         setChecklistForStop,
         setSafetyForStop,
         setInfraForStop,
-        cleaningHazardsState,
-        setCleaningHazardsForStop,
         stepState,
         handleNextStep,
         resetStopView,

@@ -1,5 +1,7 @@
-
 import type { RouteRun } from "../api/routeRuns";
+import { useState } from "react";
+import { useAuth } from "../auth/AuthContext";
+import { finishRoute } from "../api/routeRuns";
 import { UlLayout } from "./today-route/UlLayout";
 
 interface RouteSummaryProps {
@@ -13,9 +15,9 @@ interface RouteSummaryProps {
         compactorCount: number;
         photoList: string[]; // List of object keys or URLs
     };
-    onFinishRoute: () => void;
+    onFinishRoute?: () => void;
     onBack: () => void;
-    isFinishing: boolean;
+    isFinishing?: boolean;
 }
 
 export function RouteSummary({
@@ -25,8 +27,28 @@ export function RouteSummary({
     onBack,
     isFinishing,
 }: RouteSummaryProps) {
-    const isAllDone = summary.completedStops === summary.totalStops;
+    const { getAccessToken } = useAuth();
+    const [localFinishing, setLocalFinishing] = useState(false);
+    const isBusy = Boolean(isFinishing) || localFinishing;
+
+    const isAllDone = summary.totalStops > 0 && summary.completedStops === summary.totalStops;
     const hasUnfinished = summary.pendingStops > 0 || summary.inProgressStops > 0;
+    const isAlreadyFinished = String(routeRun.status || "").toLowerCase() === "completed" || String(routeRun.status || "").toLowerCase() === "finished";
+
+    const handleFinish = async () => {
+        if (!isAllDone || isBusy || isAlreadyFinished) return;
+        try {
+            setLocalFinishing(true);
+            const token = await getAccessToken();
+            await finishRoute(token, routeRun.id);
+            onFinishRoute?.();
+        } catch (err: any) {
+            console.error("Failed to finish route run", err);
+            alert(err?.message || "Failed to complete route");
+        } finally {
+            setLocalFinishing(false);
+        }
+    };
 
     return (
         <UlLayout>
@@ -115,21 +137,21 @@ export function RouteSummary({
                 {/* Action */}
                 <div style={{ textAlign: "center" }}>
                     <button
-                        onClick={onFinishRoute}
-                        disabled={!isAllDone || isFinishing}
+                        onClick={handleFinish}
+                        disabled={!isAllDone || isBusy || isAlreadyFinished}
                         style={{
                             padding: "1.2rem 2.5rem",
                             fontSize: "1.2rem",
-                            background: !isAllDone || isFinishing ? "#cbd5e0" : "#2b6cb0",
+                            background: !isAllDone || isBusy || isAlreadyFinished ? "#cbd5e0" : "#2b6cb0",
                             color: "white",
                             border: "none",
                             borderRadius: "8px",
-                            cursor: !isAllDone || isFinishing ? "not-allowed" : "pointer",
+                            cursor: !isAllDone || isBusy || isAlreadyFinished ? "not-allowed" : "pointer",
                             width: "100%",
-                            boxShadow: isAllDone && !isFinishing ? "0 4px 6px rgba(0,0,0,0.1)" : "none",
+                            boxShadow: !isAllDone || isBusy || isAlreadyFinished ? "none" : "0 4px 6px rgba(0,0,0,0.1)",
                         }}
                     >
-                        {isFinishing ? "Finishing..." : "Complete Route"}
+                        {isAlreadyFinished ? "Route Completed" : isBusy ? "Finishing..." : "Complete Route"}
                     </button>
                 </div>
             </div>

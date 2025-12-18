@@ -1,4 +1,8 @@
 import { useCreateRoute } from "../hooks/useCreateRoute";
+import { OpsCard } from "./ui/OpsCard";
+import { OpsButton } from "./ui/OpsButton";
+import { OpsTable, OpsTableRow, OpsTableCell } from "./ui/OpsTable";
+
 
 interface RouteCreatePanelProps {
     isOpen: boolean;
@@ -17,10 +21,11 @@ export function RouteCreatePanel({ isOpen, onClose, hook }: RouteCreatePanelProp
                 left: 0,
                 right: 0,
                 bottom: 0,
-                background: "rgba(0,0,0,0.5)",
+                background: "rgba(0,0,0,0.4)",
                 display: "flex",
                 justifyContent: "flex-end",
                 zIndex: 1000,
+                backdropFilter: "blur(2px)"
             }}
             onClick={onClose}
             role="dialog"
@@ -28,211 +33,143 @@ export function RouteCreatePanel({ isOpen, onClose, hook }: RouteCreatePanelProp
         >
             <div
                 style={{
-                    width: "400px",
+                    width: "480px",
                     maxWidth: "100%",
                     background: "white",
                     height: "100%",
-                    padding: "1.5rem",
+                    padding: "2rem",
                     display: "flex",
                     flexDirection: "column",
-                    boxShadow: "-2px 0 10px rgba(0,0,0,0.1)",
+                    boxShadow: "-4px 0 15px rgba(0,0,0,0.1)",
                     overflowY: "auto",
                 }}
                 onClick={(e) => e.stopPropagation()}
             >
-                <div style={{ marginBottom: "1.5rem" }}>
-                    <h2 style={{ margin: 0, fontSize: "1.5rem" }}>Create Route</h2>
-                    <p style={{ margin: "0.5rem 0 0", color: "#666", fontSize: "0.9rem" }}>
-                        Generate a planned route for today using OSRM optimiser.
+                <header style={{ marginBottom: "2rem" }}>
+                    <h2 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700 }}>Create Route</h2>
+                    <p style={{ margin: "0.5rem 0 0", color: "#718096", fontSize: "0.9375rem" }}>
+                        Configure and preview a new route run.
                     </p>
-                </div>
+                </header>
 
                 {hook.error && (
-                    <div
-                        style={{
-                            background: "#fff5f5",
-                            color: "#c53030",
-                            padding: "0.75rem",
-                            borderRadius: "4px",
-                            marginBottom: "1rem",
-                            fontSize: "0.9rem",
-                        }}
-                    >
-                        {hook.error}
-                    </div>
+                    <OpsCard style={{ backgroundColor: "#fff5f5", borderColor: "#feb2b2", marginBottom: "1.5rem" }} padding="0.75rem">
+                        <p style={{ margin: 0, color: "#c53030", fontSize: "0.875rem" }}>{hook.error}</p>
+                    </OpsCard>
                 )}
 
-                <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
                     <div>
-                        <label
-                            htmlFor="pool-select"
-                            style={{ display: "block", marginBottom: "0.25rem", fontWeight: 500 }}
-                        >
-                            Route Pool <span style={{ color: "red" }}>*</span>
+                        <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, fontSize: "0.875rem" }}>
+                            Route Pool <span style={{ color: "#e53e3e" }}>*</span>
                         </label>
                         <select
-                            id="pool-select"
                             value={hook.selectedPoolId}
                             onChange={(e) => hook.setPool(e.target.value)}
                             disabled={hook.loadingOptions || hook.loadingPreview || hook.savingRoute}
-                            style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid #ccc" }}
+                            style={{ width: "100%", padding: "0.625rem", borderRadius: "6px", border: "1px solid #cbd5e0", fontSize: "0.875rem" }}
                         >
                             <option value="">-- Select Pool --</option>
                             {hook.pools.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                    {p.name}
-                                </option>
+                                <option key={p.id} value={p.id}>{p.name}</option>
                             ))}
                         </select>
                     </div>
 
                     <div>
-                        <label
-                            htmlFor="ul-select"
-                            style={{ display: "block", marginBottom: "0.25rem", fontWeight: 500 }}
-                        >
-                            Assigned Field Crew <span style={{ color: "red" }}>*</span>
+                        <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, fontSize: "0.875rem" }}>
+                            Assigned Field Crew <span style={{ color: "#e53e3e" }}>*</span>
                         </label>
                         <select
-                            id="ul-select"
                             value={hook.selectedUlId}
                             onChange={(e) => hook.setUl(e.target.value)}
                             disabled={hook.loadingOptions || hook.loadingPreview || hook.savingRoute}
-                            style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid #ccc" }}
+                            style={{ width: "100%", padding: "0.625rem", borderRadius: "6px", border: "1px solid #cbd5e0", fontSize: "0.875rem" }}
                         >
-                            <option value="">-- Select Field Crew --</option>
+                            <option value="">-- Select Crew member --</option>
                             {hook.uls.map((u) => (
-                                <option key={u.id} value={u.id}>
-                                    {u.displayName}
-                                </option>
+                                <option key={u.id} value={u.id}>{u.displayName}</option>
                             ))}
                         </select>
                     </div>
 
                     <div>
-                        <label
-                            htmlFor="run-date"
-                            style={{ display: "block", marginBottom: "0.25rem", fontWeight: 500 }}
-                        >
-                            Date (Test: today only)
-                        </label>
+                        <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600, fontSize: "0.875rem" }}>Date</label>
                         <input
-                            id="run-date"
                             type="text"
                             value={hook.runDate}
                             readOnly
                             style={{
                                 width: "100%",
-                                padding: "0.5rem",
-                                borderRadius: "4px",
-                                border: "1px solid #eee",
-                                background: "#f7fafc",
+                                padding: "0.625rem",
+                                borderRadius: "6px",
+                                border: "1px solid #e2e8f0",
+                                background: "#f8fafc",
                                 color: "#718096",
+                                fontSize: "0.875rem"
                             }}
                         />
                     </div>
 
-                    <button
+                    <OpsButton
                         onClick={hook.generatePreview}
                         disabled={!hook.canPreview || hook.loadingPreview}
-                        style={{
-                            padding: "0.75rem",
-                            background: hook.canPreview ? "#3182ce" : "#cbd5e0",
-                            color: "white",
-                            border: "none",
-                            borderRadius: "4px",
-                            fontWeight: "bold",
-                            cursor: hook.canPreview ? "pointer" : "not-allowed",
-                            marginTop: "0.5rem",
-                        }}
+                        variant="primary"
+                        style={{ marginTop: "0.5rem" }}
                     >
                         {hook.loadingPreview ? "Generating..." : "Generate Preview"}
-                    </button>
+                    </OpsButton>
                 </div>
 
                 {hook.preview && (
-                    <div style={{ marginTop: "2rem", borderTop: "1px solid #eee", paddingTop: "1rem" }}>
-                        <h3 style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>Preview</h3>
-                        <div
-                            style={{
-                                background: "#f0fff4",
-                                padding: "0.75rem",
-                                borderRadius: "4px",
-                                marginBottom: "1rem",
-                                fontSize: "0.9rem",
-                            }}
-                        >
-                            <div>
-                                <strong>Stops:</strong> {hook.preview.ordered_stops.length}
-                            </div>
-                            <div>
-                                <strong>Est. Duration:</strong> {(hook.preview.duration_s / 60).toFixed(0)} min
-                            </div>
-                            <div>
-                                <strong>Est. Distance:</strong> {(hook.preview.distance_m / 1609.34).toFixed(1)} miles
-                            </div>
-                            {hook.preview.truncated && (
-                                <div style={{ marginTop: "0.5rem", color: "#c05621", fontWeight: "bold" }}>
-                                    Warning: Capped at {hook.preview.used_stops} stops (Pool has {hook.preview.total_stops}).
-                                </div>
-                            )}
+                    <div style={{ marginTop: "2rem", borderTop: "1px solid #e2e8f0", paddingTop: "1.5rem" }}>
+                        <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "1rem" }}>Route Analytics</h3>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
+                            <OpsCard padding="1rem">
+                                <div style={{ fontSize: "0.75rem", color: "#718096", textTransform: "uppercase", fontWeight: 600 }}>Stops</div>
+                                <div style={{ fontSize: "1.25rem", fontWeight: 700 }}>{hook.preview.ordered_stops.length}</div>
+                            </OpsCard>
+                            <OpsCard padding="1rem">
+                                <div style={{ fontSize: "0.75rem", color: "#718096", textTransform: "uppercase", fontWeight: 600 }}>Miles</div>
+                                <div style={{ fontSize: "1.25rem", fontWeight: 700 }}>{(hook.preview.distance_m / 1609.34).toFixed(1)}</div>
+                            </OpsCard>
                         </div>
 
-                        <div style={{ maxHeight: "200px", overflowY: "auto", border: "1px solid #eee", marginBottom: "1rem" }}>
-                            <table style={{ width: "100%", fontSize: "0.85rem", borderCollapse: "collapse" }}>
-                                <thead>
-                                    <tr style={{ background: "#f7fafc", textAlign: "left" }}>
-                                        <th style={{ padding: "4px 8px" }}>#</th>
-                                        <th style={{ padding: "4px 8px" }}>ID</th>
-                                        <th style={{ padding: "4px 8px" }}>Loc</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {hook.preview.ordered_stops.map((s) => (
-                                        <tr key={s.stop_id} style={{ borderBottom: "1px solid #eee" }}>
-                                            <td style={{ padding: "4px 8px" }}>{s.sequence + 1}</td>
-                                            <td style={{ padding: "4px 8px" }}>{s.stop_id}</td>
-                                            <td style={{ padding: "4px 8px" }}>{s.location || "-"}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+                        {hook.preview.truncated && (
+                            <OpsCard style={{ backgroundColor: "#fffaf0", borderColor: "#feebc8", marginBottom: "1.5rem" }} padding="0.75rem">
+                                <p style={{ margin: 0, color: "#c05621", fontSize: "0.875rem", fontWeight: 600 }}>
+                                    ⚠️ Capped at {hook.preview.used_stops} stops.
+                                </p>
+                            </OpsCard>
+                        )}
 
-                        <button
+                        <OpsCard padding={0} style={{ maxHeight: "300px", overflowY: "auto", marginBottom: "1.5rem" }}>
+                            <OpsTable headers={["#", "Location"]}>
+                                {hook.preview.ordered_stops.map((s) => (
+                                    <OpsTableRow key={s.stop_id}>
+                                        <OpsTableCell style={{ color: "#718096" }}>{s.sequence + 1}</OpsTableCell>
+                                        <OpsTableCell>{s.location || s.stop_id.slice(0, 8)}</OpsTableCell>
+                                    </OpsTableRow>
+                                ))}
+                            </OpsTable>
+                        </OpsCard>
+
+                        <OpsButton
                             onClick={hook.saveRoute}
                             disabled={!hook.canSave || hook.savingRoute}
-                            style={{
-                                width: "100%",
-                                padding: "0.75rem",
-                                background: hook.canSave ? "#38a169" : "#cbd5e0",
-                                color: "white",
-                                border: "none",
-                                borderRadius: "4px",
-                                fontWeight: "bold",
-                                cursor: hook.canSave ? "pointer" : "not-allowed",
-                            }}
+                            variant="primary"
+                            style={{ width: "100%" }}
                         >
                             {hook.savingRoute ? "Saving..." : "Save Route"}
-                        </button>
+                        </OpsButton>
                     </div>
                 )}
 
-                <div style={{ marginTop: "auto", paddingTop: "1rem" }}>
-                    <button
-                        onClick={onClose}
-                        style={{
-                            width: "100%",
-                            padding: "0.75rem",
-                            background: "white",
-                            border: "1px solid #ccc",
-                            borderRadius: "4px",
-                            cursor: "pointer",
-                            color: "#4a5568",
-                        }}
-                    >
+                <div style={{ marginTop: "auto", paddingTop: "2rem" }}>
+                    <OpsButton variant="secondary" onClick={onClose} style={{ width: "100%" }}>
                         Cancel
-                    </button>
+                    </OpsButton>
                 </div>
             </div>
         </div>

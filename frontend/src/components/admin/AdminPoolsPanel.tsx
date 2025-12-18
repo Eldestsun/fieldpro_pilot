@@ -1,111 +1,130 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
-import { getOpsPools } from "../../api/routeRuns";
+import { getPoolsScoped, createAdminPool, disableAdminPool, type Pool } from "../../api/routeRuns";
+import { OpsLayout } from "../ui/OpsLayout";
+import { OpsCard } from "../ui/OpsCard";
+import { OpsTable, OpsTableRow, OpsTableCell } from "../ui/OpsTable";
+import { OpsBadge } from "../ui/OpsBadge";
+import { OpsButton } from "../ui/OpsButton";
 
-export function AdminPoolsPanel({ mode }: { mode: "admin" | "ops" }) {
-  const { getAccessToken } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-  const [rows, setRows] = useState<any[]>([]);
-
-  async function load() {
-    setLoading(true);
-    setErr(null);
-    try {
-      const token = await getAccessToken();
-      const d = await getOpsPools(token);
-      setRows(d);
-    } catch (e: any) {
-      setErr(e?.message || "Failed to load pools.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  return (
-    <div style={page}>
-      <div style={topRow}>
-        <div>
-          <div style={h1}>Pools</div>
-          <div style={subtle}>{mode === "admin" ? "Manage route pools" : "View route pools"}</div>
-        </div>
-        <button onClick={load} style={btn}>Refresh</button>
-      </div>
-
-      {err && <div style={errBox}>{err}</div>}
-      {loading && <div style={subtle}>Loading…</div>}
-
-      {!loading && (
-        <div style={card}>
-          <div style={{ overflowX: "auto" }}>
-            <table style={table}>
-              <thead>
-                <tr>
-                  <th style={th}>ID</th>
-                  <th style={th}>Name</th>
-                  <th style={th}>Base</th>
-                  <th style={th}>Notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r, i) => (
-                  <tr key={String(r?.id ?? i)} style={tr}>
-                    <td style={td}>{r?.id ?? "—"}</td>
-                    <td style={td}>{r?.name ?? r?.display_name ?? "—"}</td>
-                    <td style={td}>{r?.base_id ?? r?.base ?? "—"}</td>
-                    <td style={td}>{r?.notes ?? ""}</td>
-                  </tr>
-                ))}
-                {rows.length === 0 && (
-                  <tr>
-                    <td style={td} colSpan={4}>No pools found.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+interface AdminPoolsPanelProps {
+  scope?: "admin" | "ops";
 }
 
-const page: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 12 };
-const topRow: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between" };
-const h1: React.CSSProperties = { fontSize: 18, fontWeight: 1000, color: "#111827" };
-const subtle: React.CSSProperties = { fontSize: 12, color: "#6b7280" };
+export function AdminPoolsPanel({ scope = "admin" }: AdminPoolsPanelProps) {
+  const { getAccessToken } = useAuth();
+  const [pools, setPools] = useState<Pool[]>([]);
+  const [isCreating, setIsCreating] = useState(false);
+  const [newPoolName, setNewPoolName] = useState("");
 
-const card: React.CSSProperties = {
-  background: "#fff",
-  border: "1px solid #e5e7eb",
-  borderRadius: 16,
-  padding: 14,
-  boxShadow: "0 10px 30px rgba(0,0,0,0.06)",
-};
+  const isReadOnly = scope === "ops";
 
-const btn: React.CSSProperties = {
-  padding: "8px 10px",
-  borderRadius: 10,
-  border: "1px solid #e5e7eb",
-  background: "#fff",
-  cursor: "pointer",
-  fontWeight: 800,
-};
+  const fetchPools = async () => {
+    try {
+      const token = await getAccessToken();
+      const data = await getPoolsScoped(token, scope);
+      // Ensure we handle both { pools: [...] } and direct array if helper changes,
+      // but current getPoolsScoped returns Promise<Pool[]>.
+      // Wait, let's double check routeRuns.ts helper return type.
+      // getOpsPools returns data.pools (array). getAdminPools returns data.pools (array).
+      // So data is Pool[].
+      setPools(data);
+    } catch (err: any) {
+      console.error(err.message || "Failed to load pools");
+    }
+  };
 
-const errBox: React.CSSProperties = {
-  padding: "10px 12px",
-  borderRadius: 12,
-  background: "#fef2f2",
-  border: "1px solid #fecaca",
-  color: "#b91c1c",
-  fontSize: 13,
-};
+  useEffect(() => {
+    fetchPools();
+  }, [getAccessToken, scope]);
 
-const table: React.CSSProperties = { width: "100%", borderCollapse: "collapse" };
-const th: React.CSSProperties = { textAlign: "left", fontSize: 12, color: "#6b7280", padding: "8px 10px", borderBottom: "1px solid #e5e7eb" };
-const td: React.CSSProperties = { padding: "10px", borderBottom: "1px solid #f1f5f9", fontSize: 13, color: "#111827" };
-const tr: React.CSSProperties = {};
+  const handleCreate = async () => {
+    if (!newPoolName.trim()) return;
+    try {
+      const token = await getAccessToken();
+      await createAdminPool(token, { name: newPoolName });
+      setNewPoolName("");
+      setIsCreating(false);
+      fetchPools();
+    } catch (err: any) {
+      alert(err.message || "Failed to create pool");
+    }
+  };
+
+  const handleDisable = async (id: string) => {
+    if (!confirm("Are you sure you want to disable this pool?")) return;
+    try {
+      const token = await getAccessToken();
+      await disableAdminPool(token, id);
+      fetchPools();
+    } catch (err: any) {
+      alert(err.message || "Failed to disable pool");
+    }
+  };
+
+  // Define headers based on readonly status
+  const headers = ["ID", "Name", "Status"];
+  if (!isReadOnly) headers.push("Actions");
+
+  return (
+    <OpsLayout
+      title="Route Pools"
+      subtitle="View pools and defaults."
+      rightActions={
+        !isReadOnly ? (
+          <OpsButton onClick={() => setIsCreating(true)} variant="primary">
+            + Create Pool
+          </OpsButton>
+        ) : undefined
+      }
+    >
+      {isCreating && (
+        <OpsCard style={{ marginBottom: "1.5rem" }}>
+          <h3 style={{ marginTop: 0 }}>Create New Pool</h3>
+          <div style={{ display: "flex", gap: "1rem", alignItems: "flex-end" }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: "block", fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.25rem" }}>Pool Name</label>
+              <input
+                type="text"
+                value={newPoolName}
+                onChange={(e) => setNewPoolName(e.target.value)}
+                placeholder="e.g. Downtown Core"
+                style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid #cbd5e0" }}
+              />
+            </div>
+            <OpsButton variant="primary" onClick={handleCreate}>Save</OpsButton>
+            <OpsButton variant="secondary" onClick={() => setIsCreating(false)}>Cancel</OpsButton>
+          </div>
+        </OpsCard>
+      )}
+
+      <OpsCard padding={0}>
+        <OpsTable headers={headers}>
+          {pools.map((pool) => (
+            <OpsTableRow key={pool.id}>
+              <OpsTableCell style={{ fontFamily: "monospace", color: "#718096" }}>{pool.id}</OpsTableCell>
+              <OpsTableCell style={{ fontWeight: 600 }}>{pool.name}</OpsTableCell>
+              <OpsTableCell>
+                <OpsBadge variant="success" value="Active" />
+              </OpsTableCell>
+              {!isReadOnly && (
+                <OpsTableCell>
+                  <OpsButton variant="outline" size="sm" onClick={() => handleDisable(pool.id)}>
+                    Disable
+                  </OpsButton>
+                </OpsTableCell>
+              )}
+            </OpsTableRow>
+          ))}
+          {pools.length === 0 && (
+            <OpsTableRow>
+              <OpsTableCell colSpan={headers.length} style={{ textAlign: "center", padding: "2rem", color: "#718096" }}>
+                No pools found.
+              </OpsTableCell>
+            </OpsTableRow>
+          )}
+        </OpsTable>
+      </OpsCard>
+    </OpsLayout>
+  );
+}

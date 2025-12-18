@@ -159,7 +159,6 @@ export interface CompleteStopPayload {
     infraIssues?: InfraIssuePayload[];
     safety?: SafetyPayload;
     trashVolume?: number;
-    hazards?: Array<{ hazard_type: string; severity?: number; notes?: string }>;
 }
 
 export async function completeStop(
@@ -342,7 +341,11 @@ export async function updateStopCompactor(
 
 export interface Pool {
     id: string;
-    name: string;
+    name: string;          // normalized display label for UI
+    label?: string;        // raw backend label if present
+    active?: boolean;
+    trfDistrict?: string;
+    defaultMaxMinutes?: number;
     region_id?: string;
 }
 
@@ -380,7 +383,28 @@ export async function fetchPools(token: string): Promise<Pool[]> {
         throw new Error(data.error || "Failed to fetch pools");
     }
     const data = await res.json();
-    return data.pools;
+    return normalizePoolsArray(data?.pools);
+}
+// --- Pool adapters ---
+function normalizePool(raw: any): Pool {
+    // Backends may return { id, label } (admin/ops) or { id, name, label } (/api/pools)
+    const id = String(raw?.id ?? raw?.pool_id ?? raw?.POOL_ID ?? "");
+    const label = raw?.label ?? raw?.Label ?? raw?.name ?? raw?.NAME ?? "";
+
+    return {
+        id,
+        name: String(label || id),
+        label: raw?.label ?? raw?.Label ?? raw?.name ?? raw?.NAME,
+        active: raw?.active ?? raw?.ACTIVE,
+        trfDistrict: raw?.trfDistrict ?? raw?.trf_district ?? raw?.trf_district_code ?? raw?.TRF_DISTRICT_CODE,
+        defaultMaxMinutes: raw?.defaultMaxMinutes ?? raw?.default_max_minutes,
+        region_id: raw?.region_id,
+    };
+}
+
+function normalizePoolsArray(rawPools: any): Pool[] {
+    if (!Array.isArray(rawPools)) return [];
+    return rawPools.map(normalizePool);
 }
 
 export async function fetchUlUsers(token: string): Promise<UlUser[]> {
@@ -478,6 +502,32 @@ export async function fetchLeadTodaysRuns(token: string): Promise<LeadRouteRunSu
 
 /** ── Admin API ────────────────────────────────────────────────────────── */
 
+async function apiFetch<T>(path: string, token: string, init?: RequestInit): Promise<T> {
+    const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+        ...(init?.headers as any),
+    };
+
+    const hasJsonBody = typeof init?.body === "string";
+    if (hasJsonBody && !headers["Content-Type"]) {
+        headers["Content-Type"] = "application/json";
+    }
+
+    const res = await fetch(path, { ...init, headers });
+
+    if (!res.ok) {
+        try {
+            const data: any = await res.json();
+            throw new Error(data?.error || `Request failed (${res.status})`);
+        } catch {
+            const text = await res.text().catch(() => "");
+            throw new Error(text || `Request failed (${res.status})`);
+        }
+    }
+
+    return (await res.json()) as T;
+}
+
 export interface AdminDashboardStats {
     total_stops: number;
     total_pools: number;
@@ -485,142 +535,206 @@ export interface AdminDashboardStats {
     completed_runs_today: number;
 }
 
-// --- Admin Dashboard (Read-Only Ops Variants) ---
+export type RawAdminStop = Record<string, any>;
 
-export async function getOpsDashboard(token: string): Promise<AdminDashboardStats> {
-    const res = await fetch("/api/ops/dashboard", {
-        headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) throw new Error("Failed to fetch ops dashboard stats");
-    return await res.json();
+export interface NormalizedAdminStop {
+    stop_id: string;
+
+    trf_district_code?: string | null;
+    bay_code?: string | null;
+    bearing_code?: string | null;
+
+    on_street_name?: string | null;
+    intersection_loc?: string | null;
+    hastus_cross_street_name?: string | null;
+
+    lon?: number | null;
+    lat?: number | null;
+
+    is_hotspot?: boolean;
+    compactor?: boolean;
+    has_trash?: boolean;
+
+    notes?: string | null;
+
+    pool_id?: string | null;
+    last_level3_at?: string | null;
+    priority_class?: string | null;
 }
 
-export async function getOpsPools(token: string): Promise<Pool[]> { // Assuming RoutePool is Pool
-    const res = await fetch("/api/ops/pools", {
-        headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) throw new Error("Failed to fetch ops pools");
-    const data = await res.json();
+export type AdminStop = NormalizedAdminStop; // Backward compatibility alias
+
+export type NormalizedStopsListResponse = { items: NormalizedAdminStop[]; total: number };
+export type AdminStopsListResponse = NormalizedStopsListResponse; // Backward compatibility alias
+
+export type PoolsResponse = { pools: Pool[] };
+export type PatchAdminStopResponse = { stop: NormalizedAdminStop };
+export type OpsScope = "admin" | "ops";
+
+// --- Adapters ---
+
+function normalizeAdminStop(raw: RawAdminStop): NormalizedAdminStop {
+    return {
+        stop_id: String(raw.stop_id ?? raw.STOP_ID ?? raw.id ?? raw.STOP_NUMBER ?? ""),
+
+        trf_district_code: raw.trf_district_code ?? raw.TRF_DISTRICT_CODE ?? null,
+        bay_code: raw.bay_code ?? raw.BAY_CODE ?? null,
+        bearing_code: raw.bearing_code ?? raw.BEARING_CODE ?? null,
+
+        on_street_name: raw.on_street_name ?? raw.ON_STREET_NAME ?? null,
+        intersection_loc: raw.intersection_loc ?? raw.INTERSECTION_LOC ?? null,
+        hastus_cross_street_name: raw.hastus_cross_street_name ?? raw.HASTUS_CROSS_STREET_NAME ?? null,
+
+        lon: raw.lon ?? null,
+        lat: raw.lat ?? null,
+
+        is_hotspot: !!(raw.is_hotspot ?? raw.IS_HOTSPOT),
+        compactor: !!(raw.compactor ?? raw.COMPACTOR),
+        has_trash: !!(raw.has_trash ?? raw.HAS_TRASH),
+
+        notes: raw.notes ?? null,
+
+        pool_id: raw.pool_id ?? raw.POOL_ID ?? raw.route_pool_id ?? null,
+        last_level3_at: raw.last_level3_at ?? null,
+        priority_class: raw.priority_class ?? null,
+    };
+}
+
+function normalizeStopsListResponse(data: { items: RawAdminStop[]; total: number }): NormalizedStopsListResponse {
+    return {
+        items: (data.items || []).map(normalizeAdminStop),
+        total: data.total || 0,
+    };
+}
+
+// --- Dashboard ---
+
+export async function getAdminDashboard(token: string): Promise<AdminDashboardStats> {
+    return await apiFetch<AdminDashboardStats>("/api/admin/dashboard", token);
+}
+
+export async function getOpsDashboard(token: string): Promise<AdminDashboardStats> {
+    return await apiFetch<AdminDashboardStats>("/api/ops/dashboard", token);
+}
+
+export async function getDashboard(token: string, scope: OpsScope): Promise<AdminDashboardStats> {
+    return scope === "admin" ? getAdminDashboard(token) : getOpsDashboard(token);
+}
+
+// --- Pools ---
+
+export async function getAdminPools(token: string): Promise<PoolsResponse> {
+    const raw = await apiFetch<{ pools: any[] }>("/api/admin/pools", token);
+    return { pools: normalizePoolsArray(raw?.pools) };
+}
+
+export async function getOpsPools(token: string): Promise<PoolsResponse> {
+    const raw = await apiFetch<{ pools: any[] }>("/api/ops/pools", token);
+    return { pools: normalizePoolsArray(raw?.pools) };
+}
+
+// Back-compat: older callers expected Pool[] directly.
+export async function getOpsPoolsList(token: string): Promise<Pool[]> {
+    const data = await getOpsPools(token);
     return data.pools;
 }
 
-export interface AdminStop { // Assuming AdminStop is a type that needs to be defined
-    id: string;
-    // Add other properties of AdminStop if known
+export async function getAdminPoolsList(token: string): Promise<Pool[]> {
+    const data = await getAdminPools(token);
+    return data.pools;
 }
 
-export async function getOpsStops(
+export async function getPoolsScoped(token: string, scope: OpsScope): Promise<Pool[]> {
+    // Note: Returning Pool[] to avoid breaking AdminPoolsPanel which expects array.
+    // The underlying calls return PoolsResponse, so we unwrap here.
+    const res = scope === "admin" ? await getAdminPools(token) : await getOpsPools(token);
+    return res.pools;
+}
+
+export async function createAdminPool(token: string, body: any): Promise<any> {
+    const res = await apiFetch<{ pool: any }>("/api/admin/pools", token, {
+        method: "POST",
+        body: JSON.stringify(body),
+    });
+    return normalizePool(res.pool);
+}
+
+export async function updateAdminPool(token: string, id: string, body: any): Promise<any> {
+    const res = await apiFetch<{ pool: any }>(`/api/admin/pools/${id}`, token, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+    });
+    return normalizePool(res.pool);
+}
+
+export async function disableAdminPool(token: string, id: string): Promise<any> {
+    const res = await apiFetch<{ pool: any }>(`/api/admin/pools/${id}`, token, {
+        method: "DELETE",
+    });
+    return normalizePool(res.pool);
+}
+
+// --- Stops ---
+
+export async function getAdminStops(
     token: string,
     params: { page: number; pageSize: number; q?: string; pool_id?: string }
-): Promise<{ items: AdminStop[]; total: number }> {
+): Promise<NormalizedStopsListResponse> {
     const qs = new URLSearchParams();
     qs.set("page", String(params.page));
     qs.set("pageSize", String(params.pageSize));
     if (params.q) qs.set("q", params.q);
     if (params.pool_id) qs.set("pool_id", params.pool_id);
 
-    const res = await fetch(`/api/ops/stops?${qs.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) throw new Error("Failed to fetch ops stops");
-    return await res.json();
+    const raw = await apiFetch<{ items: RawAdminStop[]; total: number }>(`/api/admin/stops?${qs.toString()}`, token);
+    return normalizeStopsListResponse(raw);
 }
 
-export async function getAdminDashboard(token: string): Promise<AdminDashboardStats> {
-    const res = await fetch("/api/admin/dashboard", {
-        headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) throw new Error("Failed to fetch dashboard stats");
-    return await res.json();
+export async function getOpsStops(
+    token: string,
+    params: { page: number; pageSize: number; q?: string; pool_id?: string }
+): Promise<NormalizedStopsListResponse> {
+    const qs = new URLSearchParams();
+    qs.set("page", String(params.page));
+    qs.set("pageSize", String(params.pageSize));
+    if (params.q) qs.set("q", params.q);
+    if (params.pool_id) qs.set("pool_id", params.pool_id);
+
+    const raw = await apiFetch<{ items: RawAdminStop[]; total: number }>(`/api/ops/stops?${qs.toString()}`, token);
+    return normalizeStopsListResponse(raw);
 }
 
-export async function getAdminPools(token: string): Promise<any[]> {
-    const res = await fetch("/api/admin/pools", {
-        headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) throw new Error("Failed to fetch pools");
-    const data = await res.json();
-    return data.pools;
+export async function getStopsScoped(
+    token: string,
+    params: { page: number; pageSize: number; q?: string; pool_id?: string },
+    scope: OpsScope
+): Promise<NormalizedStopsListResponse> {
+    return scope === "admin" ? getAdminStops(token, params) : getOpsStops(token, params);
 }
 
-export async function createAdminPool(token: string, body: any): Promise<any> {
-    const res = await fetch("/api/admin/pools", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error("Failed to create pool");
-    const data = await res.json();
-    return data.pool;
-}
-
-export async function updateAdminPool(token: string, id: string, body: any): Promise<any> {
-    const res = await fetch(`/api/admin/pools/${id}`, {
+export async function patchAdminStop(
+    token: string,
+    stopId: string,
+    patch: Record<string, any>
+): Promise<PatchAdminStopResponse> {
+    const raw = await apiFetch<{ stop: RawAdminStop }>(`/api/admin/stops/${stopId}`, token, {
         method: "PATCH",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
+        body: JSON.stringify(patch),
     });
-    if (!res.ok) throw new Error("Failed to update pool");
-    const data = await res.json();
-    return data.pool;
+    return { stop: normalizeAdminStop(raw.stop) };
 }
 
-export async function disableAdminPool(token: string, id: string): Promise<any> {
-    const res = await fetch(`/api/admin/pools/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) throw new Error("Failed to disable pool");
-    const data = await res.json();
-    return data.pool;
-}
-
-export async function getAdminStops(token: string, params: any): Promise<{ items: any[]; total: number }> {
-    const qs = new URLSearchParams(params).toString();
-    const res = await fetch(`/api/admin/stops?${qs}`, {
-        headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) throw new Error("Failed to fetch stops");
-    return await res.json();
-}
-
-export async function updateAdminStop(token: string, stopId: string, body: any): Promise<any> {
-    const res = await fetch(`/api/admin/stops/${stopId}`, {
-        method: "PATCH",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to update stop");
-    }
-    const data = await res.json();
+// Back-compat: older callers used updateAdminStop and expected the unwrapped stop.
+export async function updateAdminStop(token: string, stopId: string, body: any): Promise<NormalizedAdminStop> {
+    const data = await patchAdminStop(token, stopId, body);
     return data.stop;
 }
 
 export async function bulkUpdateAdminStops(token: string, body: any): Promise<{ updated_count: number }> {
-    const res = await fetch("/api/admin/stops/bulk", {
+    return await apiFetch<{ updated_count: number }>("/api/admin/stops/bulk", token, {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify(body),
     });
-    if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to bulk update stops");
-    }
-    return await res.json();
 }
 
 /** ── Photo Upload API ─────────────────────────────────────────────────── */

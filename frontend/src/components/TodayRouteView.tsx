@@ -38,10 +38,8 @@ export function TodayRouteView() {
         handleSkipStop,
         safetyState,
         infraState,
-        cleaningHazardsState,
         setSafetyForStop,
         setInfraForStop,
-        setCleaningHazardsForStop,
         stepState,
         handleNextStep,
         uploadPhotos,
@@ -182,8 +180,6 @@ export function TodayRouteView() {
 
                 uploadPhotos={uploadPhotos}
                 fetchPhotos={fetchPhotos}
-                cleaningHazards={cleaningHazardsState[stop.route_run_stop_id] || []}
-                onSetCleaningHazards={(hazards) => setCleaningHazardsForStop(stop.route_run_stop_id, hazards)}
             />
 
 

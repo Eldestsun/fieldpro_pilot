@@ -63,14 +63,11 @@ interface StopDetailProps {
     onNextStep?: () => void;
     uploadPhotos: (stopId: number, files: File[], kind?: string) => Promise<PhotoDto[]>;
     fetchPhotos: (stopId: number) => Promise<PhotoDto[]>;
-    cleaningHazards?: HazardDetail[];
-    onSetCleaningHazards?: (hazards: HazardDetail[]) => void;
 }
 
 
 import { UlLayout } from "./UlLayout";
 import { ULRouteMap } from "../work/ULRouteMap";
-import type { HazardDetail } from "../../hooks/useTodayRoute";
 
 export function StopDetail({
     stop,
@@ -95,8 +92,6 @@ export function StopDetail({
     onNextStep,
     uploadPhotos,
     fetchPhotos,
-    cleaningHazards,
-    onSetCleaningHazards,
 }: StopDetailProps) {
     const locationString = formatStopLocation(stop);
     // Multi-photo State
@@ -104,10 +99,6 @@ export function StopDetail({
     const [existingPhotos, setExistingPhotos] = useState<PhotoDto[]>([]);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
-    // Hazard Modal State
-    const [showHazardModal, setShowHazardModal] = useState(false);
-    const [tempHazardType, setTempHazardType] = useState<string>("");
-    const [tempHazardNotes, setTempHazardNotes] = useState<string>("");
 
 
 
@@ -735,7 +726,7 @@ export function StopDetail({
                                     ))}
                                 </div>
 
-                                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "bold" }}>Safety Photo (Optional):</label>
+                                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "bold" }}>Safety Photo (Must Add Photo to Skip Stop):</label>
                                 <div style={{ marginBottom: "1.5rem" }}>
                                     {safety.safetyPhotoKey ? (
                                         <div style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "0.5rem", background: "#f7fafc", borderRadius: "6px" }}>
@@ -918,82 +909,6 @@ export function StopDetail({
                             </div>
                         </div>
 
-                        {/* CLEANING HAZARDS SECTION */}
-                        <div style={{ marginTop: "1.5rem", padding: "1rem", background: "#fff5f5", borderRadius: "8px", border: "1px solid #feb2b2" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-                                <label style={{ fontWeight: "bold", color: "#c53030" }}>
-                                    ⚠️ Hazards Found
-                                </label>
-                                <button
-                                    onClick={() => {
-                                        setTempHazardType("");
-                                        setTempHazardNotes("");
-                                        setShowHazardModal(true);
-                                    }}
-                                    style={{
-                                        background: "white",
-                                        border: "1px solid #c53030",
-                                        color: "#c53030",
-                                        borderRadius: "4px",
-                                        padding: "0.25rem 0.5rem",
-                                        fontSize: "0.8rem",
-                                        cursor: "pointer",
-                                        fontWeight: "bold"
-                                    }}
-                                >
-                                    + Report Hazard
-                                </button>
-                            </div>
-
-                            {(!cleaningHazards || cleaningHazards.length === 0) && (
-                                <p style={{ fontSize: "0.85rem", color: "#718096", fontStyle: "italic", margin: 0 }}>
-                                    No hazards reported.
-                                </p>
-                            )}
-
-                            {cleaningHazards && cleaningHazards.length > 0 && (
-                                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                                    {cleaningHazards.map((h) => (
-                                        <li key={h.id} style={{
-                                            background: "white",
-                                            padding: "0.5rem",
-                                            borderRadius: "4px",
-                                            marginBottom: "0.5rem",
-                                            border: "1px solid #fed7d7",
-                                            display: "flex",
-                                            justifyContent: "space-between",
-                                            alignItems: "start"
-                                        }}>
-                                            <div>
-                                                <div style={{ fontWeight: "bold", color: "#742a2a", fontSize: "0.9rem" }}>
-                                                    {h.hazard_type.charAt(0).toUpperCase() + h.hazard_type.slice(1)}
-                                                </div>
-                                                {h.notes && (
-                                                    <div style={{ fontSize: "0.8rem", color: "#718096" }}>{h.notes}</div>
-                                                )}
-                                            </div>
-                                            <button
-                                                onClick={() => {
-                                                    const next = cleaningHazards.filter(x => x.id !== h.id);
-                                                    onSetCleaningHazards?.(next);
-                                                }}
-                                                style={{
-                                                    background: "none",
-                                                    border: "none",
-                                                    color: "#c53030",
-                                                    fontSize: "1.2rem",
-                                                    lineHeight: 1,
-                                                    cursor: "pointer",
-                                                    padding: "0 0.25rem"
-                                                }}
-                                            >
-                                                ×
-                                            </button>
-                                        </li>
-                                    ))}
-                                </ul>
-                            )}
-                        </div>
                         {(() => {
                             const anyCleaningTask =
                                 checklist.picked_up_litter ||
@@ -1410,83 +1325,6 @@ export function StopDetail({
                     </div>
                 )
             }
-            {/* HAZARD REPORT MODAL */}
-            {
-                showHazardModal && (
-                    <div style={{
-                        position: "fixed",
-                        top: 0, left: 0, right: 0, bottom: 0,
-                        background: "rgba(0,0,0,0.5)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        zIndex: 1100,
-                        padding: "1rem"
-                    }}>
-                        <div style={{ background: "white", padding: "1.5rem", borderRadius: "12px", width: "100%", maxWidth: "350px" }}>
-                            <h3 style={{ marginTop: 0, color: "#c53030" }}>Report Hazard</h3>
-                            <p style={{ fontSize: "0.9rem", color: "#718096", marginBottom: "1rem" }}>
-                                Log safety hazards encountered during cleaning.
-                            </p>
-
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "1rem" }}>
-                                {['needle', 'blood', 'feces', 'urine', 'biohazard', 'other'].map(type => (
-                                    <button
-                                        key={type}
-                                        onClick={() => setTempHazardType(type)}
-                                        style={{
-                                            padding: "0.75rem",
-                                            background: tempHazardType === type ? "#c53030" : "white",
-                                            color: tempHazardType === type ? "white" : "#4a5568",
-                                            border: `1px solid ${tempHazardType === type ? "#c53030" : "#cbd5e0"}`,
-                                            borderRadius: "6px",
-                                            fontWeight: "bold",
-                                            textTransform: "capitalize",
-                                            cursor: "pointer"
-                                        }}
-                                    >
-                                        {type}
-                                    </button>
-                                ))}
-                            </div>
-
-                            <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "bold", fontSize: "0.9rem" }}>Notes (Optional):</label>
-                            <textarea
-                                value={tempHazardNotes}
-                                onChange={(e) => setTempHazardNotes(e.target.value)}
-                                style={{ width: "100%", padding: "0.5rem", minHeight: "60px", borderRadius: "6px", border: "1px solid #cbd5e0", marginBottom: "1.5rem" }}
-                                placeholder="Details..."
-                            />
-
-                            <div style={{ display: "flex", gap: "1rem" }}>
-                                <button
-                                    onClick={() => setShowHazardModal(false)}
-                                    style={{ flex: 1, padding: "0.75rem", background: "white", border: "1px solid #cbd5e0", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        if (!tempHazardType) {
-                                            alert("Please select a hazard type");
-                                            return;
-                                        }
-                                        const newHazard: HazardDetail = {
-                                            id: Date.now().toString(),
-                                            hazard_type: tempHazardType,
-                                            notes: tempHazardNotes,
-                                            severity: 1 // Default
-                                        };
-                                        onSetCleaningHazards?.([...(cleaningHazards || []), newHazard]);
-                                        setShowHazardModal(false);
-                                    }}
-                                    style={{ flex: 1, padding: "0.75rem", background: "#c53030", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}
-                                >
-                                    Add Hazard
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
-        </UlLayout >
+        </UlLayout>
     );
 }
