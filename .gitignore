@@ -34,3 +34,20 @@ uploads/
 .vscode/
 .idea/
 .eslintcache
+
+# Local dumps / scratch / exports
+pg_state.sql
+*.sql
+*.csv
+*.jpg
+*.jpeg
+*.png
+*.txt
+
+# Node
+node_modules/
+dist/
+build/
+
+# OS/editor
+.DS_Store
