@@ -13,12 +13,26 @@ export async function createInfrastructureIssuesForRouteRunStop(
     params: {
         routeRunStopId: number | string;
         stopId: number;
+        assetId?: string | null;
         reportedBy: number;
         issues: InfraIssueInput[];
     }
 ) {
     if (!params.issues || params.issues.length === 0) {
         return [];
+    }
+
+    let assetId = params.assetId;
+
+    // Derive assetId if missing
+    if (!assetId) {
+        const lookupRes = await client.query(
+            `SELECT asset_id FROM route_run_stops WHERE id = $1`,
+            [params.routeRunStopId]
+        );
+        if (lookupRes.rows.length > 0) {
+            assetId = lookupRes.rows[0].asset_id;
+        }
     }
 
     const insertedRows = [];
@@ -29,6 +43,7 @@ export async function createInfrastructureIssuesForRouteRunStop(
             INSERT INTO public.infrastructure_issues (
                 route_run_stop_id,
                 stop_id,
+                asset_id,
                 reported_by,
                 issue_type,
                 photo_key,
@@ -39,12 +54,13 @@ export async function createInfrastructureIssuesForRouteRunStop(
                 needs_facilities,
                 reported_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
             RETURNING *
             `,
             [
                 params.routeRunStopId,
                 params.stopId,
+                assetId || null,
                 params.reportedBy,
                 issue.issue_type,
                 issue.photo_key || null,

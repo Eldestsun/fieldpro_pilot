@@ -37,7 +37,7 @@ export async function completeStop(
 
         // 1. Look up route_run_stop
         const findQuery = `
-      SELECT route_run_id, stop_id, status
+      SELECT route_run_id, stop_id, asset_id, status
       FROM route_run_stops
       WHERE id = $1
     `;
@@ -47,7 +47,7 @@ export async function completeStop(
             return null;
         }
 
-        const { route_run_id, stop_id, status } = findRes.rows[0];
+        const { route_run_id, stop_id, asset_id, status } = findRes.rows[0];
 
         if (status === 'done') {
             const err: any = new Error("Stop is already complete");
@@ -62,6 +62,7 @@ export async function completeStop(
       INSERT INTO clean_logs (
         route_run_stop_id,
         stop_id,
+        asset_id,
         user_id,
         duration_minutes,
         picked_up_litter,
@@ -71,7 +72,7 @@ export async function completeStop(
         washed_can,
         photo_keys,
         cleaned_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
       RETURNING id
     `;
 
@@ -81,6 +82,7 @@ export async function completeStop(
         const logRes = await client.query(insertLogQuery, [
             routeRunStopId,
             stop_id,
+            asset_id,
             user_id,
             duration_minutes,
             picked_up_litter,
@@ -97,6 +99,7 @@ export async function completeStop(
             await createInfrastructureIssuesForRouteRunStop(client, {
                 routeRunStopId,
                 stopId: stop_id,
+                assetId: asset_id, // Pass asset_id
                 reportedBy: user_id,
                 issues: infraIssues,
             });
@@ -115,10 +118,11 @@ export async function completeStop(
                 INSERT INTO trash_volume_logs (
                     route_run_stop_id,
                     stop_id,
+                    asset_id,
                     volume
-                ) VALUES ($1, $2, $3)
+                ) VALUES ($1, $2, $3, $4)
              `;
-            await client.query(logVolumeQuery, [routeRunStopId, stop_id, trashVolume]);
+            await client.query(logVolumeQuery, [routeRunStopId, stop_id, asset_id, trashVolume]);
         }
 
         const updateStopQuery = `
@@ -143,6 +147,12 @@ export async function completeStop(
         };
     } catch (err) {
         await client.query("ROLLBACK");
+        if (routeRunStopId) {
+            console.error("[completeStop] Error completing stop:", {
+                routeRunStopId,
+                error: err
+            });
+        }
         throw err;
     } finally {
         client.release();

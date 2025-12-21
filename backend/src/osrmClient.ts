@@ -44,9 +44,20 @@ export async function planRouteWithOsrm(
     url.searchParams.set("source", "first");
   }
 
-  // Debug logs
-  console.log("[OSRM] base=", OSRM_BASE_URL, "env=", process.env.OSRM_BASE_URL);
-  console.log("[OSRM] url=", url.toString());
+  // Debug logs (safe)
+  const firstCoords = stops
+    .slice(0, 2)
+    .map((s) => `${s.lon},${s.lat}`)
+    .join(" | ");
+  const urlStr = url.toString();
+  const safeUrl = urlStr.length > 300 ? `${urlStr.slice(0, 300)}...` : urlStr;
+  console.log(
+    "[OSRM][trip]",
+    "base=", OSRM_BASE_URL,
+    "env=", process.env.OSRM_BASE_URL ?? "<unset>",
+    "url=", safeUrl,
+    "coords[0:2]=", firstCoords
+  );
 
   const res = await fetch(url.toString());
   if (!res.ok) {

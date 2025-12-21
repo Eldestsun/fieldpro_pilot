@@ -17,7 +17,7 @@ export async function createHazardForRouteRunStop(
 
     // 1. Look up stop_id from route_run_stops
     const lookupQuery = `
-        SELECT stop_id 
+        SELECT stop_id, asset_id
         FROM route_run_stops 
         WHERE id = $1
     `;
@@ -27,7 +27,7 @@ export async function createHazardForRouteRunStop(
         throw new Error(`Route run stop ${routeRunStopId} not found`);
     }
 
-    const stopId = lookupRes.rows[0].stop_id;
+    const { stop_id: stopId, asset_id: assetId } = lookupRes.rows[0];
 
     // Determine primary hazard type (old string column)
     let hazardType = "other";
@@ -41,6 +41,7 @@ export async function createHazardForRouteRunStop(
     const insertQuery = `
         INSERT INTO hazards (
             stop_id,
+            asset_id,
             route_run_stop_id,
             reported_by,
             hazard_type,
@@ -49,7 +50,7 @@ export async function createHazardForRouteRunStop(
             notes,
             details,
             reported_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
         RETURNING *
     `;
 
@@ -61,6 +62,7 @@ export async function createHazardForRouteRunStop(
 
     const insertRes = await client.query(insertQuery, [
         stopId,
+        assetId,
         routeRunStopId,
         userId,
         hazardType,

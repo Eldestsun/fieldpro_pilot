@@ -34,6 +34,7 @@ export async function loadRouteRunById(id: number | string) {
       rrs.created_at         AS route_run_stop_created_at,
       rrs.updated_at         AS route_run_stop_updated_at,
       rrs.trash_volume,
+      COALESCE(rrs.asset_id, s.asset_id) AS asset_id,
       s."STOP_ID",
       s."STOP_ID"            AS stop_number,
       s."TRF_DISTRICT_CODE",
@@ -81,6 +82,7 @@ export async function loadRouteRunById(id: number | string) {
     stops: result.rows.map((r: any) => ({
       route_run_stop_id: r.route_run_stop_id,
       stop_id: r.STOP_ID,
+      asset_id: r.asset_id,
       stopNumber: r.stop_number,
       sequence: r.sequence,
       status: r.stop_status,
@@ -438,21 +440,51 @@ export async function createRouteRun(
     ]);
     const routeRunId = runRes.rows[0].id;
 
+    // -- NEW: Resolve asset_id for all stops --
+    // Bulk lookup to avoid N+1
+    const stopIds = sanityCheckedStops.map((s) => s.stop_id).filter((id): id is string => !!id);
+    const assetIdMap = new Map<string, string>();
+
+    if (stopIds.length > 0) {
+      const distinctStopIds = Array.from(new Set(stopIds));
+      const assetRes = await client.query(
+        `SELECT "STOP_ID", asset_id FROM public.stops WHERE "STOP_ID" = ANY($1::text[])`,
+        [distinctStopIds]
+      );
+
+      for (const r of assetRes.rows) {
+        if (r.asset_id) {
+          assetIdMap.set(r.STOP_ID, r.asset_id);
+        }
+      }
+
+      // Logging for resilience check
+      const missingCount = distinctStopIds.length - assetRes.rows.filter((r: any) => !!r.asset_id).length;
+      if (missingCount > 0) {
+        console.warn(`[createRouteRun] WARNING: ${missingCount}/${distinctStopIds.length} stops missing asset_id mapping.`);
+        // Optional: Log first few missing for debugging
+        const missingIds = distinctStopIds.filter(id => !assetIdMap.has(id)).slice(0, 5);
+        console.warn(`[createRouteRun] Missing asset_ids sample: ${missingIds.join(", ")}`);
+      }
+    }
+
     const insertStopText = `
       INSERT INTO route_run_stops (
-        route_run_id, stop_id, sequence, planned_distance_m, planned_duration_s
+        route_run_id, stop_id, asset_id, sequence, planned_distance_m, planned_duration_s
       )
-      VALUES ($1, $2, $3, $4, $5)
+      VALUES ($1, $2, $3, $4, $5, $6)
     `;
 
     // 6) Insert stops with recomputed legs
     for (let i = 0; i < sanityCheckedStops.length; i++) {
       const stop = sanityCheckedStops[i];
       const leg = finalLegs[i];
+      const assetId = stop.stop_id ? assetIdMap.get(stop.stop_id) : null;
 
       await client.query(insertStopText, [
         routeRunId,
         stop.stop_id,
+        assetId || null, // Ensure explicit null if undefined
         i, // 0-based sequence for the worker
         leg.dist,
         leg.dur,
