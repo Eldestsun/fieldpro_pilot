@@ -68,6 +68,7 @@ interface StopDetailProps {
 
 import { UlLayout } from "./UlLayout";
 import { ULRouteMap } from "../work/ULRouteMap";
+import { getDurableAssetKey } from "../../utils/identity";
 
 export function StopDetail({
     stop,
@@ -274,7 +275,7 @@ export function StopDetail({
                                 {hasCoords ? (
                                     <ULRouteMap
                                         stops={[mapStop as any]}
-                                        activeStopId={mapStop.stop_id}
+                                        activeStopKey={getDurableAssetKey(mapStop as any)}
                                         compact={true}
                                         hidePopups={true}
                                         fitPadding={40}

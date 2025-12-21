@@ -19,6 +19,7 @@ import {
     getStopPhotos as apiGetStopPhotos,
     type PhotoDto,
 } from "../api/routeRuns";
+import { enqueueAction, type OfflineAction } from "../offline/offlineQueue";
 
 
 
@@ -40,7 +41,11 @@ export interface InfraState {
 export type WizardStep = "safety" | "tasks" | "infra" | "photo";
 
 export function useTodayRoute() {
-    const { getAccessToken } = useAuth();
+    const { getAccessToken, account } = useAuth();
+    const tenantId = account?.tenantId;
+    const claims = account?.idTokenClaims as any;
+    const oid = claims?.oid || account?.localAccountId;
+
     const [routeRun, setRouteRun] = useState<RouteRun | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -68,6 +73,15 @@ export function useTodayRoute() {
 
     // Wizard Step State: { [stopId]: WizardStep }
     const [stepState, setStepState] = useState<Record<number, WizardStep>>({});
+
+    const isNetworkFailure = (err: unknown): boolean => {
+        if (typeof navigator !== "undefined" && !navigator.onLine) return true;
+        if (err instanceof TypeError) {
+            const msg = String((err as any).message || "");
+            return msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("Network request failed");
+        }
+        return false;
+    };
 
     const fetchRoute = useCallback(async () => {
         setLoading(true);
@@ -216,6 +230,7 @@ export function useTodayRoute() {
                 },
             }));
 
+            // Moved payload definition up to be accessible in catch block
             const payload: CompleteStopPayload = {
                 duration_minutes: 10,
                 picked_up_litter: checklist.picked_up_litter,
@@ -239,6 +254,62 @@ export function useTodayRoute() {
             setRouteRun(updatedRun);
             cleanupStopState(stopId);
         } catch (err: any) {
+            if (isNetworkFailure(err)) {
+                if (!routeRun) return;
+
+                // Reconstruct payload for offline action since 'payload' from try block is not accessible
+                const id = Number(stopId);
+                const checklist = checklistState[id] ?? EMPTY_CHECKLIST;
+                const infra = infraState[stopId];
+                const infraIssues = infra?.hasIssues && infra.issues.length > 0 ? infra.issues : [];
+
+                const offlinePayload: CompleteStopPayload = {
+                    duration_minutes: 10,
+                    picked_up_litter: checklist.picked_up_litter,
+                    emptied_trash: checklist.emptied_trash,
+                    washed_shelter: checklist.washed_shelter,
+                    washed_pad: checklist.washed_pad,
+                    washed_can: checklist.washed_can,
+                    photo_keys: photoKeysMap[stopId] || [],
+                    infraIssues: infraIssues,
+                    trashVolume: checklist.trashVolume,
+                    safety: safetyState[stopId]?.hasConcern ? {
+                        hazard_types: safetyState[stopId]?.hazardTypes || [],
+                        severity: 1,
+                        notes: safetyState[stopId]?.notes || "",
+                        safety_photo_key: safetyState[stopId]?.safetyPhotoKey,
+                    } : undefined,
+                };
+
+                const action: OfflineAction = {
+                    id: crypto.randomUUID(),
+                    type: "COMPLETE_STOP",
+                    routeRunId: String(routeRun.id),
+                    routeRunStopId: String(stopId),
+                    createdAt: new Date().toISOString(),
+                    status: "pending",
+                    payload: offlinePayload
+                } as any;
+
+                enqueueAction(tenantId, oid, action);
+
+                // Optimistic Update
+                setRouteRun(prev => {
+                    if (!prev) return null;
+                    return {
+                        ...prev,
+                        stops: prev.stops.map(s => {
+                            if (s.route_run_stop_id === stopId) {
+                                return { ...s, status: "done" };
+                            }
+                            return s;
+                        })
+                    };
+                });
+
+                cleanupStopState(stopId);
+                return;
+            }
             alert("Error completing stop: " + err.message);
         } finally {
             setIsCompletingStop(false);

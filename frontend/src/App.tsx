@@ -8,6 +8,7 @@ import * as AdminDashboardMod from "./components/admin/AdminDashboard";
 import * as AdminPoolsPanelMod from "./components/admin/AdminPoolsPanel";
 import * as AdminStopsPanelMod from "./components/admin/AdminStopsPanel";
 import * as LoginPageMod from "./auth/LoginPage";
+import { OfflineSyncManager } from "./offline/OfflineSyncManager";
 
 function resolveComponent(mod: any, named: string): ComponentType<any> {
   return (mod?.[named] ?? mod?.default) as ComponentType<any>;
@@ -216,10 +217,13 @@ export default function App() {
         )}
 
         {/* Debug Footer 
-        <div style={{ marginTop: "3rem", borderTop: "1px solid #e2e8f0", paddingTop: "1rem", color: "#a0aec0", fontSize: "0.75rem", textAlign: "center" }}>
-          Backend Health: {health}
-        </div>*/}
+            <div style={{ marginTop: "3rem", borderTop: "1px solid #e2e8f0", paddingTop: "1rem", color: "#a0aec0", fontSize: "0.75rem", textAlign: "center" }}>
+              Backend Health: {health}
+            </div>*/}
       </div>
+
+      {/* Offline Sync Manager */}
+      {isSignedIn && <OfflineSyncManager />}
     </div>
   );
 }

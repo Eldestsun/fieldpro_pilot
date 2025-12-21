@@ -91,7 +91,7 @@ function persistState(key: string, state: OfflineQueueState) {
     try {
         localStorage.setItem(key, JSON.stringify(state));
     } catch (err) {
-        console.warn("Failed to persist offline queue to localStorage", err);
+        console.error("Failed to persist offline queue to localStorage", { key, error: err, actionCount: state.actions.length });
     }
 }
 

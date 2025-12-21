@@ -1,23 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { getDurableAssetKey } from "../../utils/identity";
 
 // Use MapTiler cloud key from env
 const API_KEY = import.meta.env.VITE_MAPTILER_KEY;
+// ... (imports)
 
-type MapStop = {
-    stop_id: string;
-    sequence: number;
-    status: "pending" | "in_progress" | "done" | "skipped" | string;
-    location?: { lat: number; lon: number } | null;
-    on_street_name?: string;
-    intersection_loc?: string;
-};
+// ...
 
 interface ULRouteMapProps {
-    stops: MapStop[];
-    activeStopId?: string | null;
-    onSelectStop?: (stopId: string) => void;
+    stops: any[]; // Or Stop[], relying on any for now to avoid extensive prop typing changes if not needed
+    activeStopKey?: string | null;
+    onSelectStop?: (stopKey: string) => void;
     compact?: boolean;
     hidePopups?: boolean;
     fitPadding?: number;
@@ -26,7 +21,7 @@ interface ULRouteMapProps {
 
 export function ULRouteMap({
     stops,
-    activeStopId,
+    activeStopKey,
     onSelectStop,
     compact = false,
     hidePopups = false,
@@ -40,6 +35,7 @@ export function ULRouteMap({
 
     // Initial load
     useEffect(() => {
+        // ... same initial load ...
         if (map.current) return; // initialize map only once
         if (!mapContainer.current) return;
 
@@ -103,20 +99,24 @@ export function ULRouteMap({
             const { lat, lon } = stop.location;
             bounds.extend([lon, lat]);
 
+            const durableKey = getDurableAssetKey(stop);
+
             // Marker styling based on status
             let color = "#a0aec0"; // pending/default (gray)
             if (stop.status === "in_progress") color = "#3182ce"; // blue
             if (stop.status === "done" || stop.status === "completed") color = "#48bb78"; // green
             if (stop.status === "skipped") color = "#ed8936"; // amber
 
+            const isActive = durableKey === activeStopKey;
+
             // Create marker element
             const el = document.createElement("div");
             el.className = "marker";
             el.style.backgroundColor = color;
-            el.style.width = stop.stop_id === activeStopId ? "24px" : "20px";
-            el.style.height = stop.stop_id === activeStopId ? "24px" : "20px";
+            el.style.width = isActive ? "24px" : "20px";
+            el.style.height = isActive ? "24px" : "20px";
             el.style.borderRadius = "50%";
-            el.style.border = stop.stop_id === activeStopId ? "3px solid white" : "2px solid white";
+            el.style.border = isActive ? "3px solid white" : "2px solid white";
             el.style.boxShadow = "0 2px 4px rgba(0,0,0,0.3)";
             el.style.display = "flex";
             el.style.alignItems = "center";
@@ -139,7 +139,7 @@ export function ULRouteMap({
 
             // Click handler (always works)
             el.addEventListener("click", () => {
-                if (onSelectStop) onSelectStop(stop.stop_id);
+                if (onSelectStop) onSelectStop(durableKey);
                 if (!hidePopups) marker.togglePopup();
             });
 
@@ -158,7 +158,7 @@ export function ULRouteMap({
         if (hasValidStops) {
             map.current.fitBounds(bounds, { padding: fitPadding, maxZoom: 15 });
         }
-    }, [stops, activeStopId, compact, hidePopups, fitPadding]);
+    }, [stops, activeStopKey, compact, hidePopups, fitPadding]);
 
     if (mapError) {
         return (

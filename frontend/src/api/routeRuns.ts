@@ -14,6 +14,7 @@ export interface RouteRun {
 export interface Stop {
     route_run_stop_id: number;
     stop_id: string;
+    asset_id?: string | null;
     stopNumber: string;
     sequence: number;
     on_street_name: string;

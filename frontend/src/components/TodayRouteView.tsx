@@ -8,6 +8,7 @@ import { StopDetail } from "./today-route/StopDetail";
 import { RouteSummary } from "./RouteSummary";
 import { UlLayout } from "./today-route/UlLayout";
 import { ULRouteMap } from "./work/ULRouteMap";
+import { getDurableAssetKey, getSafeDomIdFromKey } from "../utils/identity";
 
 export function TodayRouteView() {
     const {
@@ -54,8 +55,10 @@ export function TodayRouteView() {
     const [showSummary, setShowSummary] = useState(false);
 
     // Map selection handler
-    const handleMapStopSelect = (stopId: string) => {
-        const element = document.getElementById(`stop-${stopId}`);
+    // Map selection handler
+    const handleMapStopSelect = (durableKey: string) => {
+        const elementId = getSafeDomIdFromKey(durableKey);
+        const element = document.getElementById(elementId);
         if (element) {
             element.scrollIntoView({ behavior: "smooth", block: "center" });
         }
@@ -262,7 +265,10 @@ export function TodayRouteView() {
                         <ULRouteMap
                             stops={routeRun.stops}
                             onSelectStop={handleMapStopSelect}
-                            activeStopId={routeRun.stops.find(s => s.status === "in_progress" || s.status === "pending")?.stop_id}
+                            activeStopKey={(() => {
+                                const active = routeRun.stops.find(s => s.status === "in_progress" || s.status === "pending");
+                                return active ? getDurableAssetKey(active) : undefined;
+                            })()}
                             style={{ margin: 0, borderRadius: 0, boxShadow: 'none' }}
                         />
                         <button
