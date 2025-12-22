@@ -357,22 +357,57 @@ routeRunRoutes.post(
         try {
             const { id } = req.params;
 
+            // Idempotent/Guarded Transition:
+            // Only allow transition to 'in_progress' if currently 'pending', 'planned', or 'assigned'.
+            // Do NOT overwrite 'done', 'skipped', or 'in_progress' (if replayed).
             const updateQuery = `
                 UPDATE route_run_stops
-                SET status = 'in_progress'
+                SET status = 'in_progress',
+                    updated_at = NOW()
                 WHERE id = $1
+                  AND status IN ('pending', 'planned', 'assigned')
                 RETURNING route_run_id
             `;
             const result = await pool.query(updateQuery, [id]);
 
+            let routeRunId;
+
             if (result.rows.length === 0) {
-                return res.status(404).json({ error: "Route run stop not found" });
+                // If 0 rows updated, check why.
+                const lookupRes = await pool.query(
+                    `SELECT route_run_id, status FROM route_run_stops WHERE id = $1`,
+                    [id]
+                );
+
+                if (lookupRes.rows.length === 0) {
+                    return res.status(404).json({ error: "Route run stop not found" });
+                }
+
+                const { status, route_run_id } = lookupRes.rows[0];
+                routeRunId = route_run_id;
+
+                if (status === 'in_progress') {
+                    // Idempotent success: Already started, just return current state
+                } else if (status === 'done' || status === 'skipped') {
+                    // Conflict: Cannot restart a completed stop
+                    return res.status(409).json({
+                        error: "CONFLICT",
+                        message: `Stop is already ${status}; cannot start.`
+                    });
+                } else {
+                    // Other status? (e.g. pending/assigned logic drift?)
+                    return res.status(409).json({
+                        error: "CONFLICT",
+                        message: `Cannot start stop with status '${status}'.`
+                    });
+                }
+            } else {
+                routeRunId = result.rows[0].route_run_id;
             }
 
-            const routeRunId = result.rows[0].route_run_id;
             const routeRun = await loadRouteRunById(routeRunId);
-
             return res.json({ ok: true, route_run: routeRun });
+
         } catch (err: any) {
             console.error("Error in POST /api/route-run-stops/:id/start:", err);
             return res
