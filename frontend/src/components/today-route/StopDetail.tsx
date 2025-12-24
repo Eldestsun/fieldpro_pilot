@@ -3,6 +3,9 @@ import type { Stop, ChecklistState, InfraIssuePayload, PhotoDto } from "../../ap
 import type { SafetyState, InfraState, WizardStep } from "../../hooks/useTodayRoute";
 import { formatStopLocation } from "../../utils/formatStopLocation";
 import { ImagePreviewModal } from "../common/ImagePreviewModal";
+import { useAuth } from "../../auth/AuthContext";
+import { getQueuedUploadCountForStop, subscribe, hasPendingStartStopForStop, hasPendingSkipStopForStop } from "../../offline/offlineQueue";
+import { saveStopDraft, loadStopDraft, clearStopDraft } from "../../offline/stopDraftStore";
 
 const CHECKLIST_ITEMS: { key: keyof ChecklistState; label: string }[] = [
     { key: 'picked_up_litter', label: 'Picked up litter' },
@@ -61,8 +64,10 @@ interface StopDetailProps {
     onSkipStop?: () => void;
     currentStep?: WizardStep;
     onNextStep?: () => void;
-    uploadPhotos: (stopId: number, files: File[], kind?: string) => Promise<PhotoDto[]>;
+    onSetStep?: (step: WizardStep) => void;
+    uploadPhotos: (stopId: number, files: File[], kind?: string) => Promise<{ photos: PhotoDto[]; queued: boolean }>;
     fetchPhotos: (stopId: number) => Promise<PhotoDto[]>;
+    routeRunId: number | string;
 }
 
 
@@ -91,10 +96,48 @@ export function StopDetail({
     onSkipStop,
     currentStep = "safety",
     onNextStep,
+    onSetStep,
     uploadPhotos,
     fetchPhotos,
+    // routeRunId, // Unused
 }: StopDetailProps) {
+    const { account } = useAuth();
+    const queuedUploadCount = getQueuedUploadCountForStop(
+        account?.tenantId,
+        account?.idTokenClaims?.oid || account?.localAccountId,
+        stop.route_run_stop_id,
+        "completion" // We only track completion photos for the main badge
+    );
+
+    // Check pending actions
+    const isStartQueued = hasPendingStartStopForStop(
+        account?.tenantId,
+        account?.idTokenClaims?.oid || account?.localAccountId,
+        stop.route_run_stop_id
+    );
+
+    const isSkipQueued = hasPendingSkipStopForStop(
+        account?.tenantId,
+        account?.idTokenClaims?.oid || account?.localAccountId,
+        stop.route_run_stop_id
+    );
+
+    // Safety Photo Queue
+    const queuedSafetyCount = getQueuedUploadCountForStop(
+        account?.tenantId,
+        account?.idTokenClaims?.oid || account?.localAccountId,
+        stop.route_run_stop_id,
+        "safety"
+    );
+
     const locationString = formatStopLocation(stop);
+    const normalizedStatus = String((stop as any).status ?? "").toLowerCase();
+    const isReadOnly = normalizedStatus === "done" || normalizedStatus === "skipped" || isRouteCompleted;
+    // Some payloads may arrive with hasStartedThisStop false even when status is already in_progress.
+    // Use status as an additional source of truth to avoid showing the Not Started view incorrectly.
+    const startedByStatus = normalizedStatus === "in_progress";
+    const effectiveHasStartedThisStop = hasStartedThisStop || startedByStatus;
+
     // Multi-photo State
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [existingPhotos, setExistingPhotos] = useState<PhotoDto[]>([]);
@@ -106,14 +149,103 @@ export function StopDetail({
 
 
 
-    // Initial Load of existing photos
+    // Queue-driven Refetch
+    const [queueTick, setQueueTick] = useState(0);
+    useEffect(() => {
+        if (!account?.tenantId) return;
+        const oid = account?.idTokenClaims?.oid || account?.localAccountId;
+        // Subscribe to queue changes
+        const unsub = subscribe(account.tenantId, oid, () => {
+            // Simple tick to trigger refetch
+            setQueueTick(t => t + 1);
+        });
+        return () => unsub();
+    }, [account]);
+
+    // Initial Load of existing photos (plus refetch on queueTick)
     useEffect(() => {
         if (stop.route_run_stop_id) {
             fetchPhotos(stop.route_run_stop_id)
                 .then(setExistingPhotos)
                 .catch(console.error);
         }
-    }, [stop.route_run_stop_id, fetchPhotos]);
+    }, [stop.route_run_stop_id, fetchPhotos, queueTick]);
+
+    // DRAFTS: Load on mount
+    useEffect(() => {
+        if (!account?.tenantId || !stop.route_run_stop_id) return;
+        const oid = account?.idTokenClaims?.oid || account?.localAccountId;
+        const stopId = stop.route_run_stop_id;
+
+        loadStopDraft({ tenantId: account.tenantId, oid, routeRunStopId: stopId })
+            .then(draft => {
+                if (draft) {
+                    // Hydrate state
+                    if (draft.checklist) {
+                        // We have to set each field individually or update hook to accept bulk?
+                        // Hook exposes setChecklistForStop(key, val).
+                        Object.entries(draft.checklist).forEach(([k, v]) => {
+                            onSetChecklist(k as keyof ChecklistState, v as any);
+                        });
+                    }
+                    if (draft.trashVolume !== undefined) {
+                        onSetChecklist('trashVolume', draft.trashVolume);
+                    }
+                    if (draft.safety) {
+                        onSetSafety?.(draft.safety);
+                    }
+                    if (draft.infra) {
+                        onSetInfra?.(draft.infra);
+                    }
+                    // Restore step - map string back to WizardStep if needed
+                    // StopDraft defined stepIndex used string keys as well
+                    if (draft.stepKey && onSetStep) {
+                        onSetStep(draft.stepKey as WizardStep);
+                    }
+                }
+            })
+            .catch(console.error);
+    }, [stop.route_run_stop_id]);
+
+    // DRAFTS: Save on change (Debounced)
+    useEffect(() => {
+        if (isReadOnly) return; // Don't save drafts for read-only stops
+        const handler = setTimeout(() => {
+            if (!account?.tenantId || !stop.route_run_stop_id) return;
+            const oid = account?.idTokenClaims?.oid || account?.localAccountId;
+
+            saveStopDraft({
+                tenantId: account.tenantId,
+                oid,
+                routeRunStopId: stop.route_run_stop_id,
+                draft: {
+                    routeRunStopId: stop.route_run_stop_id,
+                    stepIndex: 0, // unused/fake
+                    stepKey: currentStep,
+                    checklist,
+                    trashVolume: checklist.trashVolume,
+                    safety,
+                    infra,
+                }
+            }).catch(console.error);
+        }, 500);
+
+        return () => clearTimeout(handler);
+    }, [checklist, safety, infra, currentStep, isReadOnly, stop.route_run_stop_id]);
+
+    // DRAFTS: Clear on complete/read-only
+    useEffect(() => {
+        if (isReadOnly) {
+            if (!account?.tenantId || !stop.route_run_stop_id) return;
+            const oid = account?.idTokenClaims?.oid || account?.localAccountId;
+
+            clearStopDraft({
+                tenantId: account.tenantId,
+                oid,
+                routeRunStopId: stop.route_run_stop_id
+            }).catch(console.error);
+        }
+    }, [isReadOnly, stop.route_run_stop_id]);
 
 
     // Skip Modal State
@@ -158,9 +290,16 @@ export function StopDetail({
     const handleConfirmUpload = async () => {
         if (selectedFiles.length === 0) return;
         try {
-            const uploaded = await uploadPhotos(stop.route_run_stop_id, selectedFiles);
-            setExistingPhotos(uploaded);
-            setSelectedFiles([]); // Clear selection on success
+            const { photos, queued } = await uploadPhotos(stop.route_run_stop_id, selectedFiles);
+
+            if (queued) {
+                // If queued, we clear selection so user knows it "went through" to the queue
+                setSelectedFiles([]);
+                // But we DO NOT clear existingPhotos or overwrite them with empty
+            } else if (photos && photos.length > 0) {
+                setExistingPhotos(photos);
+                setSelectedFiles([]);
+            }
         } catch (err) {
             // Error handled in hook (alert), but we keep selectedFiles so user can retry
             console.error(err);
@@ -178,12 +317,7 @@ export function StopDetail({
     };
 
 
-    const normalizedStatus = String((stop as any).status ?? "").toLowerCase();
-    const isReadOnly = normalizedStatus === "done" || normalizedStatus === "skipped" || isRouteCompleted;
-    // Some payloads may arrive with hasStartedThisStop false even when status is already in_progress.
-    // Use status as an additional source of truth to avoid showing the Not Started view incorrectly.
-    const startedByStatus = normalizedStatus === "in_progress";
-    const effectiveHasStartedThisStop = hasStartedThisStop || startedByStatus;
+    // Helper to handle remove selected file (moved up)
 
     const renderHotspotToggle = () => (
         <button
@@ -422,11 +556,15 @@ export function StopDetail({
 
                                 <button
                                     onClick={onStartStop}
-                                    disabled={isCompletingStop}
+                                    disabled={isCompletingStop || isStartQueued}
                                     className="btn-primary"
-                                    style={{ fontSize: "1.15rem", width: "100%" }}
+                                    style={{
+                                        fontSize: "1.15rem",
+                                        width: "100%",
+                                        opacity: (isCompletingStop || isStartQueued) ? 0.6 : 1
+                                    }}
                                 >
-                                    Start Stop
+                                    {isStartQueued ? "Start Queued..." : "Start Stop"}
                                 </button>
                             </div>
                         </div>
@@ -622,6 +760,19 @@ export function StopDetail({
                     There was an issue syncing this stop. Server truth will reload when online.
                 </div>
             )}
+
+            {queuedUploadCount > 0 && (
+                <div style={{
+                    color: '#dd6b20',
+                    fontSize: '0.85rem',
+                    marginBottom: '8px',
+                    textAlign: 'center',
+                    fontWeight: 500
+                }}>
+                    📷 {queuedUploadCount} photo{queuedUploadCount > 1 ? 's' : ''} queued for upload
+                </div>
+            )}
+
             <div style={{ display: "flex", justifyContent: "center", marginBottom: "1.5rem" }}>
                 {renderHotspotToggle()}
             </div>
@@ -731,7 +882,9 @@ export function StopDetail({
                                 <div style={{ marginBottom: "1.5rem" }}>
                                     {safety.safetyPhotoKey ? (
                                         <div style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "0.5rem", background: "#f7fafc", borderRadius: "6px" }}>
-                                            <span style={{ fontSize: "0.9rem", color: "#2f855a", fontWeight: "bold" }}>✓ Photo Attached</span>
+                                            <span style={{ fontSize: "0.9rem", color: "#2f855a", fontWeight: "bold" }}>
+                                                ✓ Photo Attached {queuedSafetyCount > 0 ? "(Queued)" : ""}
+                                            </span>
                                             <button
                                                 onClick={() => onSetSafety?.({ ...safety, safetyPhotoKey: undefined })}
                                                 style={{ color: "#c53030", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", fontSize: "0.85rem" }}
@@ -749,11 +902,16 @@ export function StopDetail({
                                                 onChange={async (e) => {
                                                     if (e.target.files && e.target.files[0]) {
                                                         try {
-                                                            const photos = await uploadPhotos(stop.route_run_stop_id, [e.target.files[0]], "safety");
-                                                            if (photos.length > 0) {
-                                                                // Use the key returned from backend. 
-                                                                // Assuming PhotoDto has 's3_key' or 'id'.
-                                                                // Backend returns PhotoDto { s3_key, ... }
+                                                            const { photos, queued } = await uploadPhotos(stop.route_run_stop_id, [e.target.files[0]], "safety");
+                                                            if (queued) {
+                                                                // Use a pseudo-key or similar to indicate persistence in UI, 
+                                                                // but mainly just set persistence. 
+                                                                // Actually uploading returns `{photos: [], queued: true}`.
+                                                                // We need to set safetyPhotoKey to valid string to allow skip.
+                                                                // Let's us a placeholder like "queued-safety-timestamp".
+                                                                const placeholder = `queued-safety-${Date.now()}`;
+                                                                onSetSafety?.({ ...safety, safetyPhotoKey: placeholder });
+                                                            } else if (photos.length > 0) {
                                                                 onSetSafety?.({ ...safety, safetyPhotoKey: photos[0].s3_key });
                                                             }
                                                         } catch (err: any) {
@@ -802,7 +960,7 @@ export function StopDetail({
                                                 setShowSkipModal(true);
                                             }
                                         }}
-                                        disabled={!safety.hazardTypes || safety.hazardTypes.length === 0 || !safety.safetyPhotoKey}
+                                        disabled={!safety.hazardTypes || safety.hazardTypes.length === 0 || !safety.safetyPhotoKey || isSkipQueued}
                                         style={{
                                             padding: "1rem",
                                             background: "#c53030",
@@ -811,10 +969,10 @@ export function StopDetail({
                                             borderRadius: "8px",
                                             fontWeight: "bold",
                                             cursor: (safety.hazardTypes?.length || 0) > 0 && safety.safetyPhotoKey ? "pointer" : "not-allowed",
-                                            opacity: (safety.hazardTypes?.length || 0) > 0 && safety.safetyPhotoKey ? 1 : 0.5,
+                                            opacity: (safety.hazardTypes?.length || 0) > 0 && safety.safetyPhotoKey && !isSkipQueued ? 1 : 0.5,
                                         }}
                                     >
-                                        Skip Stop for Safety
+                                        {isSkipQueued ? "Skip Queued..." : "Skip Stop for Safety"}
                                     </button>
                                     <button
                                         onClick={() => {
@@ -1191,7 +1349,7 @@ export function StopDetail({
                             )}
 
                             {(() => {
-                                const hasAnyPhoto = attachedPhotoKeys.length > 0 || existingPhotos.length > 0;
+                                const hasAnyPhoto = attachedPhotoKeys.length > 0 || existingPhotos.length > 0 || queuedUploadCount > 0;
                                 const hasPendingUploads = selectedFiles.length > 0;
                                 const canComplete = hasAnyPhoto && !hasPendingUploads && !isCompletingStop;
 
@@ -1253,8 +1411,11 @@ export function StopDetail({
                                         const f = e.target.files?.[0];
                                         if (!f) return;
                                         try {
-                                            const photos = await uploadPhotos(stop.route_run_stop_id, [f], "safety");
-                                            if (photos?.[0]?.s3_key) {
+                                            const { photos, queued } = await uploadPhotos(stop.route_run_stop_id, [f], "safety");
+                                            if (queued) {
+                                                const placeholder = `queued-safety-${Date.now()}`;
+                                                onSetSafety?.({ ...(safety || { hasConcern: true, hazardTypes: [] }), safetyPhotoKey: placeholder });
+                                            } else if (photos?.[0]?.s3_key) {
                                                 onSetSafety?.({ ...(safety || { hasConcern: true, hazardTypes: [] }), safetyPhotoKey: photos[0].s3_key });
                                             }
                                         } catch (err: any) {
@@ -1307,7 +1468,7 @@ export function StopDetail({
                                         });
                                         onSkipStop?.();
                                     }}
-                                    disabled={!safety?.safetyPhotoKey || isCompletingStop}
+                                    disabled={!safety?.safetyPhotoKey || isCompletingStop || isSkipQueued}
                                     style={{
                                         flex: 1,
                                         padding: "1rem",
@@ -1319,7 +1480,7 @@ export function StopDetail({
                                         cursor: safety?.safetyPhotoKey ? "pointer" : "not-allowed",
                                     }}
                                 >
-                                    {isCompletingStop ? "Skipping..." : "Confirm Skip"}
+                                    {isCompletingStop ? "Skipping..." : isSkipQueued ? "Skip Queued..." : "Confirm Skip"}
                                 </button>
                             </div>
                         </div>

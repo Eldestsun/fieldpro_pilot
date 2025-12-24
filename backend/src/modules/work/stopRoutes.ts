@@ -23,9 +23,9 @@ stopRoutes.patch(
             }
 
             const query = `
-                UPDATE stops
+                UPDATE public.transit_stops
                 SET is_hotspot = $1
-                WHERE "STOP_ID" = $2
+                WHERE stop_id = $2
             `;
 
             const result = await pool.query(query, [is_hotspot, stop_id]);
@@ -63,9 +63,9 @@ stopRoutes.patch(
             }
 
             const query = `
-                UPDATE stops
+                UPDATE public.transit_stops
                 SET compactor = $1
-                WHERE "STOP_ID" = $2
+                WHERE stop_id = $2
             `;
 
             const result = await pool.query(query, [compactor, stop_id]);
@@ -103,9 +103,9 @@ stopRoutes.patch(
             }
 
             const query = `
-                UPDATE stops
+                UPDATE public.transit_stops
                 SET has_trash = $1
-                WHERE "STOP_ID" = $2
+                WHERE stop_id = $2
             `;
 
             const result = await pool.query(query, [has_trash, stop_id]);

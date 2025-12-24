@@ -45,6 +45,7 @@ export function TodayRouteView() {
         handleNextStep,
         uploadPhotos,
         fetchPhotos,
+        setStepForStop,
     } = useTodayRoute();
 
 
@@ -180,9 +181,11 @@ export function TodayRouteView() {
                 onSkipStop={() => handleSkipStop(stop.route_run_stop_id)}
                 currentStep={stepState[stop.route_run_stop_id]}
                 onNextStep={() => handleNextStep(stop.route_run_stop_id)}
+                onSetStep={(step) => setStepForStop(stop.route_run_stop_id, step)}
 
                 uploadPhotos={uploadPhotos}
                 fetchPhotos={fetchPhotos}
+                routeRunId={routeRun.id}
             />
 
 

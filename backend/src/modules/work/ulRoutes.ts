@@ -23,24 +23,29 @@ ulRoutes.get(
     requireAnyRole(["UL", "Lead", "Admin"]),
     async (req: any, res: Response) => {
         try {
-            // DEV ONLY: Assume user_id = 123 for now
-            const userId = 123;
+            // Enterprise Identity: Use OID from token
+            const userOid = req.user?.oid;
 
-            // Find the latest planned/in_progress run for this user (regardless of date)
+            if (!userOid) {
+                return res.status(401).json({ error: "Missing authenticated user identity" });
+            }
+
+            // Find the latest planned/in_progress run EXPLICITLY assigned to this OID
+            // Do NOT use date inference. Do NOT use integer user_id.
             const findQuery = `
         SELECT id
         FROM route_runs
-        WHERE user_id = $1
+        WHERE assigned_user_oid = $1
           AND status IN ('planned', 'in_progress')
         ORDER BY created_at DESC
         LIMIT 1
       `;
-            const findRes = await pool.query(findQuery, [userId]);
+            const findRes = await pool.query(findQuery, [userOid]);
 
             if (findRes.rows.length === 0) {
                 return res
                     .status(404)
-                    .json({ error: "No active route run found for this user" });
+                    .json({ error: "No active assigned route run found" });
             }
 
             const routeRunId = findRes.rows[0].id;

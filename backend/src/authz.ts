@@ -2,6 +2,7 @@ import "dotenv/config";
 import jwksClient from "jwks-rsa";
 import jwt, { JwtHeader, JwtPayload, VerifyErrors } from "jsonwebtoken";
 import { NextFunction, Request, Response } from "express";
+import { pool } from "./db";
 
 type AuthedRequest = Request & { user?: JwtPayload; roles?: string[] };
 
@@ -62,6 +63,35 @@ function auditWarn(event: string, details: Record<string, unknown>) {
   console.warn(`[AUTHZ] ${event}`, { ...details, ts: new Date().toISOString() });
 }
 
+// Non-blocking identity cache upsert
+function upsertIdentity(user: JwtPayload, roles: string[]) {
+  // Fire and forget - do not block the request
+  (async () => {
+    try {
+      const oid = user.oid;
+      if (!oid) return;
+
+      const displayName = user.name || user.preferred_username || "Unknown";
+      const email = user.email || user.preferred_username || null; // fallback to upn if email missing
+      const lastSeenRole = roles.length > 0 ? roles[0] : null;
+
+      const query = `
+        INSERT INTO identity_directory (oid, display_name, email, last_seen_role, last_seen_at)
+        VALUES ($1, $2, $3, $4, NOW())
+        ON CONFLICT (oid) DO UPDATE SET
+          display_name = EXCLUDED.display_name,
+          email = EXCLUDED.email,
+          last_seen_role = EXCLUDED.last_seen_role,
+          last_seen_at = EXCLUDED.last_seen_at
+      `;
+      await pool.query(query, [oid, displayName, email, lastSeenRole]);
+    } catch (err) {
+      // Log only, do not fail
+      console.warn("[AUTHZ] Identity upsert failed:", err);
+    }
+  })();
+}
+
 /** ===== MIDDLEWARES ===== */
 export function requireAuth(req: AuthedRequest, res: Response, next: NextFunction) {
   const auth = req.headers.authorization || "";
@@ -101,6 +131,10 @@ export function requireAuth(req: AuthedRequest, res: Response, next: NextFunctio
       }
       req.user = payload as JwtPayload;
       req.roles = extractRolesFromClaims(payload as JwtPayload);
+
+      // Enterprise Identity: Upsert to directory cache (non-blocking)
+      upsertIdentity(req.user, req.roles);
+
       next();
     }
   );

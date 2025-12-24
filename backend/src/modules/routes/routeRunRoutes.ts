@@ -232,10 +232,27 @@ routeRunRoutes.post("/route-runs/preview", async (req: Request, res: Response) =
 routeRunRoutes.post("/route-runs", async (req: Request, res: Response) => {
     const client = await pool.connect();
     try {
-        const { stop_ids, base_id = "NORTH", route_pool_id, pool_id, run_date } = req.body;
+        const { stop_ids, base_id, route_pool_id, pool_id, run_date } = req.body;
 
         // Normalize inputs
         const targetPoolId = route_pool_id || pool_id;
+
+        let resolvedBaseId = base_id;
+
+        if (!resolvedBaseId) {
+            const baseRes = await client.query(
+                `SELECT base_id FROM route_pools WHERE id = $1 AND active = true`,
+                [targetPoolId]
+            );
+
+            if (baseRes.rows.length === 0 || !baseRes.rows[0].base_id) {
+                return res.status(400).json({
+                    error: "No base_id provided and route pool has no base assigned",
+                });
+            }
+
+            resolvedBaseId = baseRes.rows[0].base_id;
+        }
 
         // For the pilot, we force all created routes to be assigned to the dev UL user (123)
         // so that the specific Entra account can see them.
@@ -283,7 +300,7 @@ routeRunRoutes.post("/route-runs", async (req: Request, res: Response) => {
             stops: stopsToPlan,
             user_id: targetUserId,
             route_pool_id: targetPoolId,
-            base_id,
+            base_id: resolvedBaseId,
             run_date,
         });
 

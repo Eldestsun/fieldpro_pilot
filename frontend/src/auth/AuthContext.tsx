@@ -2,6 +2,8 @@ import { createContext, useContext, useMemo, useState, useCallback, useEffect } 
 import { useMsal } from "@azure/msal-react";
 import type { AccountInfo, AuthenticationResult } from "@azure/msal-browser";
 import { clearOfflineStateForUser } from "../offline/offlineQueue";
+import { clearPhotosForUser } from "../offline/photoStore";
+import { clearDraftsForUser } from "../offline/stopDraftStore";
 
 type Me = { ok: boolean; roles?: string[]; user?: any } | null;
 
@@ -88,6 +90,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // 2. Clear per-user offline state
     clearOfflineStateForUser(tenantId, oid);
+    if (tenantId && oid) {
+      // These are async but we don't necessarily block UI for them?
+      // User asked to 'await' them. signOut is strictly async.
+      // We'll await them to ensure clean state before redirect.
+      await clearPhotosForUser(tenantId, oid).catch(console.error);
+      await clearDraftsForUser(tenantId, oid).catch(console.error);
+    }
 
     setMe(null);
     await instance.logoutPopup();

@@ -31,9 +31,9 @@ export async function listStops(params: {
 
     if (q) {
         conditions.push(`(
-            "STOP_ID" ILIKE $${idx} OR 
-            "ON_STREET_NAME" ILIKE $${idx} OR 
-            "INTERSECTION_LOC" ILIKE $${idx}
+            stop_id ILIKE $${idx} OR
+            on_street_name ILIKE $${idx} OR
+            intersection_loc ILIKE $${idx}
         )`);
         values.push(`%${q}%`);
         idx++;
@@ -46,29 +46,29 @@ export async function listStops(params: {
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
-    const countQuery = `SELECT COUNT(*) FROM stops ${whereClause}`;
+    const countQuery = `SELECT COUNT(*) FROM public.transit_stops ${whereClause}`;
     const countResult = await pool.query(countQuery, values);
     const total = parseInt(countResult.rows[0].count, 10);
 
     const dataQuery = `
         SELECT 
-            "STOP_ID" as stop_id,
+            stop_id,
             pool_id,
             is_hotspot,
             compactor,
             has_trash,
-            "ON_STREET_NAME" as on_street_name,
-            "INTERSECTION_LOC" as intersection_loc,
-            "TRF_DISTRICT_CODE" as trf_district_code,
-            "BEARING_CODE" as bearing_code,
-            "HASTUS_CROSS_STREET_NAME" as hastus_cross_street_name,
+            on_street_name,
+            intersection_loc,
+            trf_district_code,
+            bearing_code,
+            hastus_cross_street_name,
             lon,
             lat,
             last_level3_at,
             notes
-        FROM stops
+        FROM public.transit_stops
         ${whereClause}
-        ORDER BY "STOP_ID" ASC
+        ORDER BY stop_id ASC
         LIMIT $${idx++} OFFSET $${idx++}
     `;
     values.push(pageSize, offset);
@@ -114,20 +114,20 @@ export async function updateStop(
 
         values.push(stopId);
         const query = `
-            UPDATE stops
+            UPDATE public.transit_stops
             SET ${fields.join(", ")}
-            WHERE "STOP_ID" = $${idx}
+            WHERE stop_id = $${idx}
             RETURNING 
-                "STOP_ID" as stop_id,
+                stop_id,
                 pool_id,
                 is_hotspot,
                 compactor,
                 has_trash,
-                "ON_STREET_NAME" as on_street_name,
-                "INTERSECTION_LOC" as intersection_loc,
-                "TRF_DISTRICT_CODE" as trf_district_code,
-                "BEARING_CODE" as bearing_code,
-                "HASTUS_CROSS_STREET_NAME" as hastus_cross_street_name,
+                on_street_name,
+                intersection_loc,
+                trf_district_code,
+                bearing_code,
+                hastus_cross_street_name,
                 lon,
                 lat,
                 last_level3_at,
@@ -173,7 +173,7 @@ export async function bulkUpdateStops(
 
         if (data.pool_id !== undefined) {
             const res = await client.query(
-                `UPDATE stops SET pool_id = $1 WHERE "STOP_ID" = ANY($2::text[])`,
+                `UPDATE public.transit_stops SET pool_id = $1 WHERE stop_id = ANY($2::text[])`,
                 [data.pool_id, stopIds]
             );
             totalUpdated = Math.max(totalUpdated, res.rowCount || 0);
@@ -181,7 +181,7 @@ export async function bulkUpdateStops(
 
         if (data.is_hotspot !== undefined) {
             const res = await client.query(
-                `UPDATE stops SET is_hotspot = $1 WHERE "STOP_ID" = ANY($2::text[])`,
+                `UPDATE public.transit_stops SET is_hotspot = $1 WHERE stop_id = ANY($2::text[])`,
                 [data.is_hotspot, stopIds]
             );
             totalUpdated = Math.max(totalUpdated, res.rowCount || 0);
@@ -189,7 +189,7 @@ export async function bulkUpdateStops(
 
         if (data.compactor !== undefined) {
             const res = await client.query(
-                `UPDATE stops SET compactor = $1 WHERE "STOP_ID" = ANY($2::text[])`,
+                `UPDATE public.transit_stops SET compactor = $1 WHERE stop_id = ANY($2::text[])`,
                 [data.compactor, stopIds]
             );
             totalUpdated = Math.max(totalUpdated, res.rowCount || 0);
@@ -197,7 +197,7 @@ export async function bulkUpdateStops(
 
         if (data.has_trash !== undefined) {
             const res = await client.query(
-                `UPDATE stops SET has_trash = $1 WHERE "STOP_ID" = ANY($2::text[])`,
+                `UPDATE public.transit_stops SET has_trash = $1 WHERE stop_id = ANY($2::text[])`,
                 [data.has_trash, stopIds]
             );
             totalUpdated = Math.max(totalUpdated, res.rowCount || 0);

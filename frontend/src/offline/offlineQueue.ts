@@ -137,10 +137,77 @@ export function enqueueAction(
 
     const key = getQueueKey(tenantId, oid);
     const currentState = loadQueueForUser(tenantId, oid);
+    const actions = [...currentState.actions];
+
+    // Special handling for photo uploads to merge into existing pending action
+    if (action.type === "UPLOAD_STOP_PHOTOS" && action.status === "pending") {
+        const payload = action.payload as any;
+        const kind = payload?.kind;
+        const newPhotoIds = payload?.localPhotoIds;
+
+        if (kind && Array.isArray(newPhotoIds)) {
+            // Find existing action to merge into (strictly PENDING)
+            // Merge identity: (type, tenantId, oid, routeRunStopId, kind)
+            // We ignore routeRunId to prevent fragmentation if re-identifying
+            const existingIndex = actions.findIndex(a =>
+                a.type === "UPLOAD_STOP_PHOTOS" &&
+                a.status === "pending" &&
+                String(a.routeRunStopId) === String(action.routeRunStopId) &&
+                (a.payload as any)?.kind === kind
+            );
+
+            if (existingIndex !== -1) {
+                const existingAction = actions[existingIndex];
+                const existingPayload = existingAction.payload as any;
+                const existingIds = existingPayload.localPhotoIds || [];
+                // Dedupe
+                const merged = Array.from(new Set([...existingIds, ...newPhotoIds]));
+
+                // Update action with new payload
+                actions[existingIndex] = {
+                    ...existingAction,
+                    payload: {
+                        ...existingPayload,
+                        localPhotoIds: merged
+                    }
+                };
+            } else {
+                actions.push(action);
+            }
+        } else {
+            actions.push(action);
+        }
+    } else if (action.type === "START_STOP" && (action.status === "pending" || action.status === "running")) {
+        // Dedupe START_STOP: If one exists for this stop, do nothing.
+        const exists = actions.some(a =>
+            a.type === "START_STOP" &&
+            (a.status === "pending" || a.status === "running") &&
+            String(a.routeRunStopId) === String(action.routeRunStopId)
+        );
+        if (!exists) {
+            actions.push(action);
+        }
+    } else if (action.type === "SKIP_STOP_WITH_HAZARD" && action.status === "pending") {
+        // Dedupe SKIP: Replace existing pending skip for this stop with latest payload
+        const existingIndex = actions.findIndex(a =>
+            a.type === "SKIP_STOP_WITH_HAZARD" &&
+            a.status === "pending" &&
+            String(a.routeRunStopId) === String(action.routeRunStopId)
+        );
+
+        if (existingIndex !== -1) {
+            // Replace existing
+            actions[existingIndex] = action;
+        } else {
+            actions.push(action);
+        }
+    } else {
+        actions.push(action);
+    }
 
     const newState: OfflineQueueState = {
         ...currentState,
-        actions: [...currentState.actions, action],
+        actions: actions,
         lastUpdatedAt: new Date().toISOString(),
     };
 
@@ -404,4 +471,56 @@ export function getStopSyncState(
     if (related.some((a) => a.status === "conflict")) return "conflict";
     if (related.some((a) => a.status === "pending" || a.status === "running")) return "queued";
     return "idle";
+}
+
+export function getQueuedUploadCountForStop(
+    tenantId: string | undefined,
+    oid: string | undefined,
+    routeRunStopId: string | number,
+    kind: string
+): number {
+    // If auth missing, no private queue
+    if (!tenantId || !oid) return 0;
+
+    const queue = loadQueueForUser(tenantId, oid);
+    const stopIdStr = String(routeRunStopId);
+
+    return queue.actions.reduce((acc, action) => {
+        if (
+            action.type === "UPLOAD_STOP_PHOTOS" &&
+            (action.status === "pending" || action.status === "running") &&
+            String(action.routeRunStopId) === stopIdStr &&
+            (action.payload as any)?.kind === kind
+        ) {
+            const photoIds = (action.payload as any)?.localPhotoIds;
+            return acc + (Array.isArray(photoIds) ? photoIds.length : 0);
+        }
+        return acc;
+    }, 0);
+}
+
+export function hasPendingStartStopForStop(
+    tenantId: string | undefined,
+    oid: string | undefined,
+    routeRunStopId: string | number
+): boolean {
+    if (!tenantId || !oid) return false;
+    const state = loadQueueForUser(tenantId, oid);
+    return state.actions.some(
+        (action) =>
+            action.type === "START_STOP" &&
+            (action.status === "pending" || action.status === "running") &&
+            String(action.routeRunStopId) === String(routeRunStopId)
+    );
+}
+
+export function getHasQueuedUploadForStop(
+    tenantId: string | undefined,
+    oid: string | undefined,
+    // routeRunId unused but kept for parity/future? No, lint complains.
+    _routeRunId: string | number,
+    routeRunStopId: string | number,
+    kind: string
+): boolean {
+    return getQueuedUploadCountForStop(tenantId, oid, routeRunStopId, kind) > 0;
 }

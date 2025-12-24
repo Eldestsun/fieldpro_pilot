@@ -19,7 +19,8 @@ import {
     getStopPhotos as apiGetStopPhotos,
     type PhotoDto,
 } from "../api/routeRuns";
-import { enqueueAction, type OfflineAction } from "../offline/offlineQueue";
+import { enqueueAction, type OfflineAction, setRequiresAuth, getHasQueuedUploadForStop } from "../offline/offlineQueue";
+import { putPhoto } from "../offline/photoStore";
 
 
 
@@ -74,13 +75,11 @@ export function useTodayRoute() {
     // Wizard Step State: { [stopId]: WizardStep }
     const [stepState, setStepState] = useState<Record<number, WizardStep>>({});
 
-    const isNetworkFailure = (err: unknown): boolean => {
-        if (typeof navigator !== "undefined" && !navigator.onLine) return true;
-        if (err instanceof TypeError) {
-            const msg = String((err as any).message || "");
-            return msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("Network request failed");
-        }
-        return false;
+    const isNetworkFailure = (err: unknown) => {
+        if (!navigator.onLine) return true;
+        if (err instanceof TypeError) return true; // fetch throws TypeError on network failure
+        const msg = String((err as any)?.message ?? "");
+        return /Failed to fetch|NetworkError|ERR_INTERNET_DISCONNECTED/i.test(msg);
     };
 
     const fetchRoute = useCallback(async () => {
@@ -137,6 +136,36 @@ export function useTodayRoute() {
             setRouteRun(updatedRun);
             setHasStartedThisStop(true);
         } catch (err: any) {
+            if (isNetworkFailure(err)) {
+                if (!routeRun) return;
+                // Offline fallback
+                const action: OfflineAction = {
+                    id: crypto.randomUUID(),
+                    type: "START_STOP",
+                    routeRunId: String(routeRun.id),
+                    routeRunStopId: String(stopId),
+                    createdAt: new Date().toISOString(),
+                    status: "pending",
+                    payload: {}
+                } as any;
+                enqueueAction(tenantId, oid, action);
+
+                // Optimistic Update
+                setRouteRun(prev => {
+                    if (!prev) return null;
+                    return {
+                        ...prev,
+                        stops: prev.stops.map(s => {
+                            if (s.route_run_stop_id === stopId && s.status !== "done" && s.status !== "skipped") {
+                                return { ...s, status: "in_progress" };
+                            }
+                            return s;
+                        })
+                    };
+                });
+                setHasStartedThisStop(true);
+                return;
+            }
             alert("Error starting stop: " + err.message);
         } finally {
             setIsStartingStop(false);
@@ -162,24 +191,69 @@ export function useTodayRoute() {
                 return;
             }
 
+            // Check for photo (Online OR Queued)
+            // Note: DB-based safety photos use `stopPhotos` usually, but we check presence via key logic or store
+            // The requirement says: safety photo exists OR getHasQueuedUploadForStop(... kind="safety")
             if (!safety.safetyPhotoKey) {
-                alert("A safety photo is required to skip a stop.");
-                setIsCompletingStop(false);
-                return;
+                const hasQueued = routeRun && getHasQueuedUploadForStop(tenantId, oid, routeRun.id, stopId, "safety");
+                if (!hasQueued) {
+                    alert("A safety photo is required to skip a stop.");
+                    setIsCompletingStop(false);
+                    return;
+                }
             }
 
             const { skipRouteRunStopWithHazard } = await import("../api/routeRuns");
-            const updatedRun = await skipRouteRunStopWithHazard(token, stopId, {
+            const payload = {
                 hazard_types: safety.hazardTypes || [], // Now array
                 severity: safety.severity,
                 notes: safety.notes,
                 safety_photo_key: safety.safetyPhotoKey,
                 photo_keys: photoKeysForStop,
-            });
+            };
+
+            const updatedRun = await skipRouteRunStopWithHazard(token, stopId, payload);
 
             setRouteRun(updatedRun);
             cleanupStopState(stopId);
         } catch (err: any) {
+            if (isNetworkFailure(err)) {
+                if (!routeRun) return;
+                const safety = safetyState[stopId];
+
+                const action: OfflineAction = {
+                    id: crypto.randomUUID(),
+                    type: "SKIP_STOP_WITH_HAZARD",
+                    routeRunId: String(routeRun.id),
+                    routeRunStopId: String(stopId),
+                    createdAt: new Date().toISOString(),
+                    status: "pending",
+                    payload: {
+                        hazard_types: safety?.hazardTypes || [],
+                        severity: safety?.severity,
+                        notes: safety?.notes,
+                        safety_photo_key: safety?.safetyPhotoKey,
+                        photo_keys: photoKeysMap[stopId] || [],
+                    }
+                } as any;
+
+                enqueueAction(tenantId, oid, action);
+
+                setRouteRun(prev => {
+                    if (!prev) return null;
+                    return {
+                        ...prev,
+                        stops: prev.stops.map(s => {
+                            if (s.route_run_stop_id === stopId) {
+                                return { ...s, status: "skipped" };
+                            }
+                            return s;
+                        })
+                    };
+                });
+                cleanupStopState(stopId);
+                return;
+            }
             alert("Error skipping stop: " + err.message);
         } finally {
             setIsCompletingStop(false);
@@ -316,16 +390,65 @@ export function useTodayRoute() {
         }
     };
 
+    const queueStopPhotosUpload = async (routeRunStopId: number, files: File[], kind: string = "completion") => {
+        if (!tenantId || !oid || !routeRun) {
+            console.warn("[UPLOAD_PHOTOS] cannot queue (missing context)", { tenantId, oid, hasRouteRun: !!routeRun });
+            return;
+        }
+
+        const localPhotoIds: string[] = [];
+        for (const file of files) {
+            const id = await putPhoto({
+                tenantId,
+                oid,
+                routeRunStopId,
+                kind,
+                filename: file.name,
+                contentType: file.type,
+                blob: file
+            });
+            localPhotoIds.push(id);
+        }
+
+        const action: OfflineAction = {
+            id: crypto.randomUUID(),
+            type: "UPLOAD_STOP_PHOTOS",
+            routeRunId: String(routeRun.id),
+            routeRunStopId: String(routeRunStopId),
+            createdAt: new Date().toISOString(),
+            status: "pending",
+            payload: {
+                kind,
+                localPhotoIds
+            }
+        } as any;
+
+        enqueueAction(tenantId, oid, action);
+        // Ensure queue knows we need auth for this (and future) replays
+        setRequiresAuth(tenantId, oid, true);
+
+        // Force update UI? The hook subscribes to offlineQueue changes via useSyncStatus elsewhere, 
+        // but this hook doesn't necessarily re-render on queue changes unless we subscribe or force it.
+        // However, StopDetail will use `getQueuedUploadCountForStop` which reads from the store when it re-renders.
+        // We might need to trigger a local state update if StopDetail depends on this hook's state.
+        // Actually StopDetail uses `useSyncStatus`? No, the plan says `StopDetail` will check `getQueuedUploadCountForStop`.
+        // That function is synchronous reader of the store.
+        // If the store updates (via enqueueAction -> notify -> triggers subscribers), we need comp to re-render.
+        // offlineQueue has `subscribe`. `useSyncStatus` subscribes. 
+        // `StopDetail` needs to be aware.
+        // I'll leave the UI trigger for the next step (StopDetail update).
+    };
+
     const handleFileUpload = async (
         e: React.ChangeEvent<HTMLInputElement>,
-        stopId: number | string
+        routeRunStopId: number | string
     ) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
         // Normalize to a real number
         const numericStopId =
-            typeof stopId === "string" ? parseInt(stopId, 10) : stopId;
+            typeof routeRunStopId === "string" ? parseInt(routeRunStopId, 10) : routeRunStopId;
 
         if (!Number.isFinite(numericStopId)) {
             alert("Internal error: stop id is not numeric");
@@ -335,6 +458,7 @@ export function useTodayRoute() {
         setIsUploadingPhoto(true);
         try {
             const token = await getAccessToken();
+            // Online path
             const { uploadUrl, objectKey } = await getUploadUrl(
                 token,
                 numericStopId,
@@ -349,6 +473,12 @@ export function useTodayRoute() {
                 return { ...prev, [numericStopId]: [...existing, objectKey] };
             });
         } catch (err: any) {
+            if (isNetworkFailure(err)) {
+                await queueStopPhotosUpload(numericStopId, [file], "completion");
+                // Don't alert, just return. UI will show 'Queued' next render.
+                // We might want to clear the input in `finally` block, which we do.
+                return;
+            }
             alert("Photo upload failed: " + err.message);
         } finally {
             setIsUploadingPhoto(false);
@@ -426,6 +556,10 @@ export function useTodayRoute() {
             else if (current === "infra") next = "photo";
             return { ...prev, [stopId]: next };
         });
+    };
+
+    const setStepForStop = (stopId: number, step: WizardStep) => {
+        setStepState(prev => ({ ...prev, [stopId]: step }));
     };
 
     const resetStopView = () => {
@@ -521,10 +655,23 @@ export function useTodayRoute() {
         };
     }, [routeRun]);
 
-    const uploadPhotos = async (stopId: number, files: File[], kind: string = "completion"): Promise<PhotoDto[]> => {
+    const uploadPhotos = async (stopId: number, files: File[], kind: string = "completion"): Promise<{ photos: PhotoDto[]; queued: boolean }> => {
         if (!routeRun) throw new Error("No active route run");
-        const token = await getAccessToken();
-        return apiUploadStopPhotos(token, routeRun.id, stopId, files, kind);
+
+        // Optimistic UI updates / Offline Handling
+        // We try online first. If network fails, we queue and return empty array.
+        try {
+            const token = await getAccessToken();
+            const photos = await apiUploadStopPhotos(token, routeRun.id, stopId, files, kind);
+            return { photos, queued: false };
+        } catch (err: any) {
+            if (isNetworkFailure(err)) {
+                await queueStopPhotosUpload(stopId, files, kind ?? "completion");
+                return { photos: [], queued: true };
+            }
+
+            throw err;
+        }
     };
 
     const fetchPhotos = useCallback(async (stopId: number): Promise<PhotoDto[]> => {
@@ -572,6 +719,7 @@ export function useTodayRoute() {
         summary,
         uploadPhotos,
         fetchPhotos,
+        setStepForStop,
     };
 
 }
