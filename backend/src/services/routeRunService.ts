@@ -250,17 +250,22 @@ export async function getCandidateStopsForPoolWithRisk(
 /**
  * Create Route Run (OSRM + Insert)
  */
+/**
+ * Create Route Run (OSRM + Insert)
+ */
 export async function createRouteRun(
   client: any, // PoolClient
   params: {
     stops?: OsrmStop[]; // Optional: if missing, we fetch based on pool_id
-    user_id: number;
+    user_id?: number;   // OPTIONAL: Legacy/Dev ID. If provided, inserted. If not, NULL/Default.
+    assigned_user_oid?: string; // Enterprise Assignment OID (UL)
+    created_by_oid?: string;    // Enterprise Creator OID (Lead/Admin)
     route_pool_id: string;
     base_id: string;
     run_date?: string | Date;
   }
 ) {
-  const { stops, user_id, route_pool_id, base_id, run_date } = params;
+  const { stops, user_id, assigned_user_oid, created_by_oid, route_pool_id, base_id, run_date } = params;
 
   let stopsToPlan = stops;
 
@@ -420,23 +425,28 @@ export async function createRouteRun(
       console.log(`[OSRM] Run Totals: Trip=${planned.duration_s}s, Final=${totalDur.toFixed(1)}s. Logic: Opt=${changedOpt}, Refine=${changedRefine}`);
     }
 
+    // Enterprise Identity: Insert OIDs.
+    // user_id is inserted only if provided. If undefined, we pass NULL.
     const insertRunText = `
       INSERT INTO route_runs (
-        user_id, route_pool_id, base_id, run_date, status, total_distance_m, total_duration_s
+        user_id, route_pool_id, base_id, run_date, status, total_distance_m, total_duration_s,
+        assigned_user_oid, created_by_oid
       )
-      VALUES ($1, $2, $3, $4, 'planned', $5, $6)
+      VALUES ($1, $2, $3, $4, 'planned', $5, $6, $7, $8)
       RETURNING id
     `;
     // Default to today if run_date is missing
     const runDateVal = run_date || new Date();
 
     const runRes = await client.query(insertRunText, [
-      user_id,
+      user_id ?? null, // Important: Explicitly null if undefined
       route_pool_id,
       base_id,
       runDateVal,
       totalDist,
       totalDur,
+      assigned_user_oid ?? null,
+      created_by_oid ?? null
     ]);
     const routeRunId = runRes.rows[0].id;
 

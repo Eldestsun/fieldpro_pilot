@@ -39,42 +39,31 @@ resourceRoutes.get(
   }
 );
 
-/** ── Get UL Users (Mock): GET /api/users ──────────────────────────────── */
+/** ── Get Assignable Users: GET /api/users ──────────────────────────────── */
 resourceRoutes.get(
-    "/users",
-    requireAuth,
-    requireAnyRole(["Lead", "Admin"]),
-    async (_req, res) => {
-        try {
-            // PILOT STUB: Returning mock users with GUIDs as requested.
-            // In a real app, this would query a users table or identity provider.
-            const mockUsers = [
-                {
-                    id: "550e8400-e29b-41d4-a716-446655440000",
-                    displayName: "Alice Driver",
-                    email: "alice@example.com",
-                    role: "UL",
-                },
-                {
-                    id: "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
-                    displayName: "Bob Operator",
-                    email: "bob@example.com",
-                    role: "UL",
-                },
-                {
-                    id: "123e4567-e89b-12d3-a456-426614174000",
-                    displayName: "Charlie Field",
-                    email: "charlie@example.com",
-                    role: "UL",
-                },
-            ];
+  "/users",
+  requireAuth,
+  requireAnyRole(["Lead", "Admin"]),
+  async (_req, res) => {
+    try {
+      const query = `
+        SELECT
+          oid AS id,
+          display_name AS "displayName",
+          email,
+          last_seen_role AS role
+        FROM identity_directory
+        WHERE last_seen_role IN ('UL', 'Lead')
+        ORDER BY display_name ASC;
+      `;
 
-            return res.json({ ok: true, users: mockUsers });
-        } catch (err: any) {
-            console.error("Error in GET /api/users:", err);
-            return res
-                .status(500)
-                .json({ error: err.message || "Internal server error" });
-        }
+      const result = await pool.query(query);
+      return res.json({ ok: true, users: result.rows });
+    } catch (err: any) {
+      console.error("Error in GET /api/users:", err);
+      return res
+        .status(500)
+        .json({ error: err.message || "Internal server error" });
     }
+  }
 );

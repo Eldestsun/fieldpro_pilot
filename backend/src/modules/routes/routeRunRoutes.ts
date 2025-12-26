@@ -229,98 +229,114 @@ routeRunRoutes.post("/route-runs/preview", async (req: Request, res: Response) =
 });
 
 /** ── Create Route Run: POST /api/route-runs ───────────────────────────── */
-routeRunRoutes.post("/route-runs", async (req: Request, res: Response) => {
-    const client = await pool.connect();
-    try {
-        const { stop_ids, base_id, route_pool_id, pool_id, run_date } = req.body;
+/** ── Create Route Run: POST /api/route-runs ───────────────────────────── */
+routeRunRoutes.post(
+    "/route-runs",
+    requireAuth,
+    requireAnyRole(["Lead", "Admin"]),
+    async (req: any, res: Response) => {
+        const client = await pool.connect();
+        try {
+            const { stop_ids, base_id, route_pool_id, pool_id, run_date, ul_id, user_id } = req.body;
 
-        // Normalize inputs
-        const targetPoolId = route_pool_id || pool_id;
-
-        let resolvedBaseId = base_id;
-
-        if (!resolvedBaseId) {
-            const baseRes = await client.query(
-                `SELECT base_id FROM route_pools WHERE id = $1 AND active = true`,
-                [targetPoolId]
-            );
-
-            if (baseRes.rows.length === 0 || !baseRes.rows[0].base_id) {
-                return res.status(400).json({
-                    error: "No base_id provided and route pool has no base assigned",
-                });
+            // Enterprise Identity: Creator
+            const createdByOid = req.user?.oid;
+            if (!createdByOid) {
+                return res.status(401).json({ error: "Missing authenticated user identity" });
             }
 
-            resolvedBaseId = baseRes.rows[0].base_id;
-        }
+            // Enterprise Identity: Assignment
+            // ul_id is assumed to be an OID payload from the frontend.
+            const assignedUserOid = ul_id; // No translation, exact mapping.
 
-        // For the pilot, we force all created routes to be assigned to the dev UL user (123)
-        // so that the specific Entra account can see them.
-        const targetUserId = PILOT_DEV_UL_USER_ID;
+            // Normalize inputs
+            const targetPoolId = route_pool_id || pool_id;
 
-        if (!targetPoolId) {
-            return res.status(400).json({ error: "Missing required field: pool_id" });
-        }
+            let resolvedBaseId = base_id;
 
-        let stopsToPlan: OsrmStop[] | undefined = [];
+            if (!resolvedBaseId) {
+                const baseRes = await client.query(
+                    `SELECT base_id FROM route_pools WHERE id = $1 AND active = true`,
+                    [targetPoolId]
+                );
 
-        // Option A: Explicit stop_ids
-        if (Array.isArray(stop_ids) && stop_ids.length >= 2) {
-            const query = `
+                if (baseRes.rows.length === 0 || !baseRes.rows[0].base_id) {
+                    return res.status(400).json({
+                        error: "No base_id provided and route pool has no base assigned",
+                    });
+                }
+
+                resolvedBaseId = baseRes.rows[0].base_id;
+            }
+
+            if (!targetPoolId) {
+                return res.status(400).json({ error: "Missing required field: pool_id" });
+            }
+
+            let stopsToPlan: OsrmStop[] | undefined = [];
+
+            // Option A: Explicit stop_ids
+            if (Array.isArray(stop_ids) && stop_ids.length >= 2) {
+                const query = `
         SELECT "STOP_ID", lon, lat, "ON_STREET_NAME", "BEARING_CODE"
         FROM stops
         WHERE "STOP_ID" = ANY($1::text[])
       `;
-            const result = await client.query(query, [stop_ids]);
-            if (result.rows.length < 2) {
-                return res.status(400).json({
-                    error: "Not enough stops found with coordinates",
-                    found: result.rows.length,
-                });
+                const result = await client.query(query, [stop_ids]);
+                if (result.rows.length < 2) {
+                    return res.status(400).json({
+                        error: "Not enough stops found with coordinates",
+                        found: result.rows.length,
+                    });
+                }
+                stopsToPlan = result.rows.map((r: any) => ({
+                    lon: r.lon,
+                    lat: r.lat,
+                    stop_id: r.STOP_ID,
+                    on_street_name: r.ON_STREET_NAME,
+                    bearing_code: r.BEARING_CODE,
+                }));
+
+                // Apply truncation for explicit list
+                if (stopsToPlan.length > MAX_OSRM_STOPS) {
+                    stopsToPlan = stopsToPlan.slice(0, MAX_OSRM_STOPS);
+                }
             }
-            stopsToPlan = result.rows.map((r: any) => ({
-                lon: r.lon,
-                lat: r.lat,
-                stop_id: r.STOP_ID,
-                on_street_name: r.ON_STREET_NAME,
-                bearing_code: r.BEARING_CODE,
-            }));
-
-            // Apply truncation for explicit list
-            if (stopsToPlan.length > MAX_OSRM_STOPS) {
-                stopsToPlan = stopsToPlan.slice(0, MAX_OSRM_STOPS);
+            // Option B: pool_id - Pass undefined/empty to createRouteRun to let it fetch
+            else {
+                stopsToPlan = undefined;
             }
-        }
-        // Option B: pool_id - Pass undefined/empty to createRouteRun to let it fetch
-        else {
-            stopsToPlan = undefined;
-        }
 
-        const { routeRunId, planned } = await createRouteRun(client, {
-            stops: stopsToPlan,
-            user_id: targetUserId,
-            route_pool_id: targetPoolId,
-            base_id: resolvedBaseId,
-            run_date,
-        });
+            const { routeRunId, planned } = await createRouteRun(client, {
+                stops: stopsToPlan,
+                // Assign explicit OIDs
+                assigned_user_oid: assignedUserOid,
+                created_by_oid: createdByOid,
+                // Pass legacy/dev ID only if explicitly provided
+                user_id: user_id,
+                route_pool_id: targetPoolId,
+                base_id: resolvedBaseId,
+                run_date,
+            });
 
-        return res.json({
-            ok: true,
-            route_run_id: routeRunId,
-            distance_m: planned.distance_m,
-            duration_s: planned.duration_s,
-            ordered_stops: planned.ordered_stops,
-            legs: planned.legs,
-        });
-    } catch (err: any) {
-        console.error("Error in /api/route-runs:", err);
-        return res
-            .status(500)
-            .json({ error: err.message || "Internal server error" });
-    } finally {
-        client.release();
+            return res.json({
+                ok: true,
+                route_run_id: routeRunId,
+                distance_m: planned.distance_m,
+                duration_s: planned.duration_s,
+                ordered_stops: planned.ordered_stops,
+                legs: planned.legs,
+            });
+        } catch (err: any) {
+            console.error("Error in /api/route-runs:", err);
+            return res
+                .status(500)
+                .json({ error: err.message || "Internal server error" });
+        } finally {
+            client.release();
+        }
     }
-});
+);
 
 /** ── Get Route Run Details: GET /api/route-runs/:id ───────────────────── */
 routeRunRoutes.get("/route-runs/:id", async (req: Request, res: Response) => {
