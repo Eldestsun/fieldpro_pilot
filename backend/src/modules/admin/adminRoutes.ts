@@ -272,6 +272,188 @@ adminRoutes.post("/admin/intelligence/rebuild-risk-map", async (_req: Request, r
     }
 });
 
+/** ── Control Center (Phase B) ─────────────────────────────────────────── */
+// Strict Guardrails: Admin Only. No PII latency/performance metrics.
+const ccRouter = Router();
+ccRouter.use(requireAuth, requireAdmin);
+
+// 1. Snapshot Summary
+ccRouter.get("/summary", async (_req: Request, res: Response) => {
+    const client = await pool.connect();
+    try {
+        // Active Routes (Planned/In Progress today)
+        const activeRes = await client.query(`
+            SELECT COUNT(*) as count 
+            FROM route_runs 
+            WHERE run_date = CURRENT_DATE 
+            AND status IN ('planned', 'in_progress')
+        `);
+
+        // Total Stops Today (in active/completed runs)
+        const stopsRes = await client.query(`
+            SELECT COUNT(rrs.id) as count
+            FROM route_run_stops rrs
+            JOIN route_runs rr ON rrs.route_run_id = rr.id
+            WHERE rr.run_date = CURRENT_DATE
+        `);
+
+        // Observed Workload (Sum of clean_logs duration for today's runs)
+        // Renamed to semantic "observed_workload_minutes"
+        const workloadRes = await client.query(`
+            SELECT COALESCE(SUM(cl.duration_minutes), 0) as total_minutes
+            FROM clean_logs cl
+            JOIN route_runs rr ON cl.route_run_stop_id = (
+                SELECT id FROM route_run_stops WHERE id = cl.route_run_stop_id
+            ) -- Indirect join via RRS usually, but cl has no direct run_id.
+              -- Actually CL -> RRS -> RR
+            JOIN route_run_stops rrs ON cl.route_run_stop_id = rrs.id
+            WHERE rrs.completed_at >= CURRENT_DATE::timestamp
+        `);
+
+        // Emergencies (Ad-hoc injections) -> We don't have a clear "emergency" flag on runs yet.
+        // Proxy: Stops added post-creation? Or just count Hazards/Infra as "Exceptions"?
+        // Requirements say "Emergency / ad-hoc work orders injected". 
+        // We probably don't have this data explicitly yet. returning 0 placeholder or counting route_overrides if they exist.
+        // For now, let's return 0 to stay safe, or count hazards as "Issues".
+        // Re-reading requirements: "Exceptions & Breaks... Emergency / ad-hoc work orders".
+        // We will return 0 for now as we haven't built ad-hoc injection yet.
+        const emergencyCount = 0;
+
+        res.json({
+            active_routes: parseInt(activeRes.rows[0].count, 10),
+            total_stops: parseInt(stopsRes.rows[0].count, 10),
+            observed_workload_minutes: parseFloat(workloadRes.rows[0].total_minutes),
+            emergency_count: emergencyCount
+        });
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// 2. Route Status Table
+ccRouter.get("/routes", async (_req: Request, res: Response) => {
+    try {
+        const query = `
+            SELECT 
+                rr.id, 
+                rp.label as pool_label,
+                rr.status,
+                -- Safe Name Aggregation
+                array_agg(DISTINCT id_dir.display_name) as assigned_names, 
+                COUNT(rrs.id) as total_stops,
+                COUNT(CASE WHEN rrs.status = 'done' THEN 1 END) as completed_stops,
+                COUNT(CASE WHEN rrs.status = 'skipped' THEN 1 END) as skipped_stops,
+                -- Observed Workload (Route Level)
+                COALESCE(SUM(cl.duration_minutes), 0) as observed_workload_minutes,
+                -- Difficulty Density (Avg duration per completed stop)
+                CASE 
+                    WHEN COUNT(CASE WHEN rrs.status = 'done' THEN 1 END) > 0 
+                    THEN COALESCE(SUM(cl.duration_minutes), 0) / COUNT(CASE WHEN rrs.status = 'done' THEN 1 END)
+                    ELSE 0 
+                END as difficulty_density
+            FROM route_runs rr
+            LEFT JOIN route_pools rp ON rr.route_pool_id = rp.id
+            LEFT JOIN route_run_stops rrs ON rr.id = rrs.route_run_id
+            -- Join Clean Logs for time
+            LEFT JOIN clean_logs cl ON rrs.id = cl.route_run_stop_id
+            -- Join Identity Directory for Names
+            LEFT JOIN identity_directory id_dir ON rr.assigned_user_oid = id_dir.oid
+            WHERE rr.run_date = CURRENT_DATE
+            GROUP BY rr.id, rp.label
+            ORDER BY rr.id ASC
+        `;
+        const result = await pool.query(query);
+        res.json({ routes: result.rows });
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 3. Exceptions
+ccRouter.get("/exceptions", async (_req: Request, res: Response) => {
+    try {
+        // Skips by Reason
+        // We assume skip reason is stored in hazards notes or distinct field?
+        // Actually RRS table doesn't have skip_reason column yet (checked earlier).
+        // It's in the linked Hazard (source='ul_skip_flow').
+        const skipsRes = await pool.query(`
+            SELECT 
+                h.hazard_types as reasons, -- This is array, might need unnesting or just return raw
+                COUNT(*) as count
+            FROM route_run_stops rrs
+            JOIN hazards h ON rrs.hazard_id = h.id
+            WHERE rrs.status = 'skipped'
+            AND rrs.updated_at >= CURRENT_DATE::timestamp
+            GROUP BY h.hazard_types
+        `);
+
+        // Hazards
+        const hazardsRes = await pool.query(`
+            SELECT COUNT(*) as count FROM hazards WHERE created_at >= CURRENT_DATE::timestamp
+        `);
+
+        // Infra
+        const infraRes = await pool.query(`
+            SELECT COUNT(*) as count FROM infrastructure_issues WHERE created_at >= CURRENT_DATE::timestamp
+        `);
+
+        res.json({
+            skips_by_reason: skipsRes.rows,
+            total_hazards: parseInt(hazardsRes.rows[0].count, 10),
+            total_infra_issues: parseInt(infraRes.rows[0].count, 10),
+            emergency_count: 0 // Placeholder
+        });
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 4. Difficulty Indicators
+ccRouter.get("/difficulty", async (_req: Request, res: Response) => {
+    try {
+        // Top 20 Heavy Routes
+        const heavyRoutes = await pool.query(`
+            SELECT 
+                rr.id, 
+                rp.label as pool_label,
+                COALESCE(SUM(cl.duration_minutes), 0) as observed_workload_minutes
+            FROM route_runs rr
+            JOIN route_pools rp ON rr.route_pool_id = rp.id
+            JOIN route_run_stops rrs ON rr.id = rrs.route_run_id
+            JOIN clean_logs cl ON rrs.id = cl.route_run_stop_id
+            WHERE rr.run_date = CURRENT_DATE
+            GROUP BY rr.id, rp.label
+            ORDER BY observed_workload_minutes DESC
+            LIMIT 20
+        `);
+
+        // Top 20 Heavy Stops
+        // Do NOT expose user_id
+        const heavyStops = await pool.query(`
+            SELECT 
+                s."STOP_ID",
+                s."ON_STREET_NAME",
+                cl.duration_minutes as observed_minutes
+            FROM clean_logs cl
+            JOIN stops s ON cl.stop_id = s."STOP_ID"
+            WHERE cl.cleaned_at >= CURRENT_DATE::timestamp
+            ORDER BY cl.duration_minutes DESC
+            LIMIT 20
+        `);
+
+        res.json({
+            heavy_routes: heavyRoutes.rows,
+            heavy_stops: heavyStops.rows
+        });
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+adminRoutes.use("/admin/control-center", ccRouter);
+
 adminRoutes.get("/admin/secret", async (_req, res) => {
     res.json({ secret: "Only admins can see this!" });
 });

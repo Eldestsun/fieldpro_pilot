@@ -7,6 +7,7 @@ import * as LeadRoutesPanelMod from "./components/LeadRoutesPanel";
 import * as AdminDashboardMod from "./components/admin/AdminDashboard";
 import * as AdminPoolsPanelMod from "./components/admin/AdminPoolsPanel";
 import * as AdminStopsPanelMod from "./components/admin/AdminStopsPanel";
+import * as AdminControlCenterMod from "./components/admin/AdminControlCenter";
 import * as LoginPageMod from "./auth/LoginPage";
 import { OfflineSyncManager } from "./offline/OfflineSyncManager";
 
@@ -19,6 +20,7 @@ const LeadRoutesPanel = resolveComponent(LeadRoutesPanelMod, "LeadRoutesPanel");
 const AdminDashboard = resolveComponent(AdminDashboardMod, "AdminDashboard");
 const AdminPoolsPanel = resolveComponent(AdminPoolsPanelMod, "AdminPoolsPanel");
 const AdminStopsPanel = resolveComponent(AdminStopsPanelMod, "AdminStopsPanel");
+const AdminControlCenter = resolveComponent(AdminControlCenterMod, "AdminControlCenter");
 const LoginPage = resolveComponent(LoginPageMod, "LoginPage");
 
 export default function App() {
@@ -26,7 +28,7 @@ export default function App() {
   const { isSignedIn, signIn, signOut, me, isLoading } = useAuth();
 
   // ---- View State ----
-  const [activeView, setActiveView] = useState<"work" | "routes" | "admin_dash" | "admin_pools" | "admin_stops" | "ops_dash" | "ops_pools" | "ops_stops">("work");
+  const [activeView, setActiveView] = useState<"work" | "routes" | "admin_dash" | "admin_pools" | "admin_stops" | "admin_control_center" | "ops_dash" | "ops_pools" | "ops_stops">("work");
 
   // ---- Role Logic ----
   const roles = me?.roles || [];
@@ -156,6 +158,12 @@ export default function App() {
                 <>
                   <div style={{ width: "1px", background: "#cbd5e0", margin: "0 0.5rem" }}></div>
                   <button
+                    onClick={() => setActiveView("admin_control_center")}
+                    style={navButtonStyle(activeView === "admin_control_center")}
+                  >
+                    Control Center
+                  </button>
+                  <button
                     onClick={() => setActiveView("admin_dash")}
                     style={navButtonStyle(activeView === "admin_dash")}
                   >
@@ -205,6 +213,7 @@ export default function App() {
                 if (activeView === "ops_pools") return <AdminPoolsPanel scope="ops" />;
                 if (activeView === "ops_stops") return <AdminStopsPanel scope="ops" />;
 
+                if (activeView === "admin_control_center") return <AdminControlCenter />;
                 if (activeView === "admin_dash") return <AdminDashboard scope="admin" />;
                 if (activeView === "admin_pools") return <AdminPoolsPanel scope="admin" />;
                 if (activeView === "admin_stops") return <AdminStopsPanel scope="admin" />;

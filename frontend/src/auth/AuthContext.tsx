@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, useState, useCallback, useEffect } from "react";
 import { useMsal } from "@azure/msal-react";
 import type { AccountInfo, AuthenticationResult } from "@azure/msal-browser";
+import { InteractionRequiredAuthError } from "@azure/msal-browser";
 import { clearOfflineStateForUser } from "../offline/offlineQueue";
 import { clearPhotosForUser } from "../offline/photoStore";
 import { clearDraftsForUser } from "../offline/stopDraftStore";
@@ -16,6 +17,7 @@ type AuthCtx = {
   me: Me;
   refreshMe: () => Promise<void>;
   isLoading: boolean;
+  authReady: boolean;
 };
 
 const AuthContext = createContext<AuthCtx | undefined>(undefined);
@@ -31,6 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const account = (accounts && accounts[0]) || null;
   const isSignedIn = !!account;
+  const authReady = isSignedIn && !!me && !isLoading;
 
   const getAccessToken = useCallback(async () => {
     const acc =
@@ -38,37 +41,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       account ||
       instance.getAllAccounts()[0];
 
-    if (!acc) throw new Error("No signed-in account found for token acquisition.");
+    if (!acc) {
+      throw new Error("No signed-in account found for token acquisition.");
+    }
 
-    const res: AuthenticationResult = await instance.acquireTokenSilent({
-      account: acc,
-      scopes: apiScopes,
-    });
+    try {
+      const res: AuthenticationResult = await instance.acquireTokenSilent({
+        account: acc,
+        scopes: apiScopes,
+      });
 
-    return res.accessToken;
+      return res.accessToken;
+    } catch (err) {
+      if (err instanceof InteractionRequiredAuthError) {
+        // Do NOT trigger interactive auth from a render lifecycle
+        throw new Error("interaction_required");
+      }
+      throw err;
+    }
   }, [account, instance]);
 
   const fetchMe = useCallback(async () => {
     try {
       const token = await getAccessToken();
-      const r = await fetch("/api/secure/ping", { headers: { Authorization: `Bearer ${token}` } });
+      const r = await fetch("/api/secure/ping", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
       if (r.ok) {
         setMe(await r.json());
       } else {
         setMe(null);
       }
-    } catch {
+    } catch (err: any) {
+      if (err?.message === "interaction_required") {
+        // Auth not ready yet; wait for explicit user sign-in
+        return;
+      }
       setMe(null);
     }
   }, [getAccessToken]);
 
-  // Auto-fetch identity when signed in but me is missing
-  useEffect(() => {
-    if (isSignedIn && !me && !isLoading) {
-      setIsLoading(true);
-      fetchMe().finally(() => setIsLoading(false));
-    }
-  }, [isSignedIn, me, isLoading, fetchMe]);
 
   const signIn = useCallback(async () => {
     const result = await instance.loginPopup({ scopes: [...basicScopes, ...apiScopes] });
@@ -109,8 +122,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchMe]);
 
   const value = useMemo<AuthCtx>(() => ({
-    account, isSignedIn, signIn, signOut, getAccessToken, me, refreshMe, isLoading,
-  }), [account, isSignedIn, signIn, signOut, getAccessToken, me, refreshMe, isLoading]);
+    account,
+    isSignedIn,
+    signIn,
+    signOut,
+    getAccessToken,
+    me,
+    refreshMe,
+    isLoading,
+    authReady
+  }), [
+    account,
+    isSignedIn,
+    signIn,
+    signOut,
+    getAccessToken,
+    me,
+    refreshMe,
+    isLoading,
+    authReady
+  ]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
