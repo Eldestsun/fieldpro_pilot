@@ -9,6 +9,7 @@ import {
     finishRouteRun,
     getCandidateStopsForPoolWithRisk,
 } from "../../services/routeRunService";
+import { ensureVisitForRouteRunStop } from "../../services/visitService";
 
 export const routeRunRoutes = Router();
 
@@ -387,8 +388,12 @@ routeRunRoutes.post(
     requireAuth,
     requireAnyRole(["UL", "Lead", "Admin"]),
     async (req: Request, res: Response) => {
+        const client = await pool.connect();
         try {
             const { id } = req.params;
+            if (!req.user?.oid) {
+                return res.status(401).json({ error: "Missing authenticated user identity" });
+            }
 
             // Idempotent/Guarded Transition:
             // Only allow transition to 'in_progress' if currently 'pending', 'planned', or 'assigned'.
@@ -396,18 +401,19 @@ routeRunRoutes.post(
             const updateQuery = `
                 UPDATE route_run_stops
                 SET status = 'in_progress',
+                    started_at = COALESCE(started_at, NOW()),
                     updated_at = NOW()
                 WHERE id = $1
                   AND status IN ('pending', 'planned', 'assigned')
                 RETURNING route_run_id
             `;
-            const result = await pool.query(updateQuery, [id]);
+            const result = await client.query(updateQuery, [id]);
 
             let routeRunId;
 
             if (result.rows.length === 0) {
                 // If 0 rows updated, check why.
-                const lookupRes = await pool.query(
+                const lookupRes = await client.query(
                     `SELECT route_run_id, status FROM route_run_stops WHERE id = $1`,
                     [id]
                 );
@@ -436,6 +442,16 @@ routeRunRoutes.post(
                 }
             } else {
                 routeRunId = result.rows[0].route_run_id;
+                // Ensure a Visit after successful start
+                console.log("[VISIT] ensureVisitForRouteRunStop called", {
+                  routeRunStopId: Number(id),
+                  actorOid: req.user.oid,
+                });
+                await ensureVisitForRouteRunStop(client, {
+                  routeRunStopId: Number(id),
+                  actorOid: req.user.oid,
+                  visitType: "service",
+                });
             }
 
             const routeRun = await loadRouteRunById(routeRunId);
@@ -446,6 +462,8 @@ routeRunRoutes.post(
             return res
                 .status(500)
                 .json({ error: err.message || "Internal server error" });
+        } finally {
+            client.release();
         }
     }
 );

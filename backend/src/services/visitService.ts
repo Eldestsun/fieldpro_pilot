@@ -1,0 +1,108 @@
+// backend/src/services/visitService.ts
+
+import type { PoolClient } from "pg";
+import { v5 as uuidv5 } from "uuid";
+
+const ROUTE_RUN_STOP_NAMESPACE = "4c5e1b10-1f0a-4ce4-9a6b-3b9b6a0f8b9c"; // stable constant UUID
+
+type EnsureVisitParams = {
+  routeRunStopId: number;
+  actorOid: string;
+  visitType: string; // e.g. "service"
+  outcome?: string | null;
+  clientVisitId?: string; // optional override
+};
+
+/**
+ * Ensures a Visit exists for a given route_run_stop.
+ * Safe to call multiple times — returns existing visit if found,
+ * using deterministic client_visit_id for idempotency.
+ */
+export async function ensureVisitForRouteRunStop(client: PoolClient, params: EnsureVisitParams): Promise<number> {
+  const visitClientId =
+    params.clientVisitId ??
+    uuidv5(`route-run-stop:${params.routeRunStopId}`, ROUTE_RUN_STOP_NAMESPACE);
+
+  // 1) Idempotency: use unique client_visit_id
+  const existing = await client.query(
+    `SELECT id FROM core.visits WHERE client_visit_id = $1 LIMIT 1`,
+    [visitClientId]
+  );
+  if (existing.rows.length) return existing.rows[0].id as number;
+
+  // 2) Resolve org/location/asset context (no routing fields in visits)
+  const ctx = await client.query(
+    `
+    SELECT
+      a.org_id,
+      rrs.asset_id AS primary_asset_id,
+      loc.location_id
+    FROM public.route_run_stops rrs
+    JOIN public.assets a ON a.id = rrs.asset_id
+    LEFT JOIN core.v_locations_transit loc ON loc.stop_id = rrs.stop_id
+    WHERE rrs.id = $1
+    `,
+    [params.routeRunStopId]
+  );
+
+  if (!ctx.rows.length) {
+    throw new Error(
+      `ensureVisitForRouteRunStop: route_run_stop not found: ${params.routeRunStopId}`
+    );
+  }
+
+  const { org_id, primary_asset_id, location_id } = ctx.rows[0];
+
+  if (!org_id || !primary_asset_id) {
+    throw new Error(
+      `ensureVisitForRouteRunStop: missing org_id/primary_asset_id for route_run_stop ${params.routeRunStopId}`
+    );
+  }
+  if (!location_id) {
+    throw new Error(
+      `ensureVisitForRouteRunStop: missing location_id for route_run_stop ${params.routeRunStopId} (stop_id mapping failed)`
+    );
+  }
+
+  // 3) Insert (idempotent + race-safe)
+  const insert = await client.query(
+    `
+    INSERT INTO core.visits (
+      org_id,
+      location_id,
+      primary_asset_id,
+      actor_oid,
+      visit_type,
+      outcome,
+      client_visit_id,
+      started_at
+    )
+    VALUES ($1,$2,$3,$4,$5,$6,$7, NOW())
+    ON CONFLICT (client_visit_id) DO NOTHING
+    RETURNING id
+    `,
+    [
+      org_id,
+      location_id,
+      primary_asset_id,
+      params.actorOid,
+      params.visitType,
+      params.outcome ?? null,
+      visitClientId,
+    ]
+  );
+
+  if (insert.rows.length) return insert.rows[0].id as number;
+
+  // Concurrent insert: fetch the row that won the race
+  const after = await client.query(
+    `SELECT id FROM core.visits WHERE client_visit_id = $1 LIMIT 1`,
+    [visitClientId]
+  );
+  if (!after.rows.length) {
+    throw new Error(
+      `ensureVisitForRouteRunStop: insert race but visit not found for client_visit_id=${visitClientId}`
+    );
+  }
+  return after.rows[0].id as number;
+}

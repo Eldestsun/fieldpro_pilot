@@ -37,7 +37,7 @@ export async function completeStop(
 
         // 1. Look up route_run_stop
         const findQuery = `
-      SELECT route_run_id, stop_id, asset_id, status
+      SELECT route_run_id, stop_id, asset_id, status, started_at
       FROM route_run_stops
       WHERE id = $1
     `;
@@ -47,12 +47,21 @@ export async function completeStop(
             return null;
         }
 
-        const { route_run_id, stop_id, asset_id, status } = findRes.rows[0];
+        const { route_run_id, stop_id, asset_id, status, started_at } = findRes.rows[0];
 
         if (status === 'done') {
             const err: any = new Error("Stop is already complete");
             err.code = "ALREADY_COMPLETE";
             throw err;
+        }
+
+        // Authoritative Duration Calculation
+        const now = new Date();
+        let computedDuration: number | null = null;
+        if (started_at) {
+            const start = new Date(started_at);
+            const diffMs = now.getTime() - start.getTime();
+            computedDuration = Math.max(1, Math.ceil(diffMs / 60000));
         }
 
         // 2. Insert clean_logs and update route_run_stops
@@ -72,7 +81,7 @@ export async function completeStop(
         washed_can,
         photo_keys,
         cleaned_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING id
     `;
 
@@ -84,13 +93,14 @@ export async function completeStop(
             stop_id,
             asset_id,
             user_id,
-            duration_minutes,
+            computedDuration, // Authoritative duration (can be null)
             picked_up_litter,
             emptied_trash,
             washed_shelter,
             washed_pad,
             washed_can,
             photoKeysVal,
+            now // Use consistent timestamp
         ]);
         const cleanLogId = logRes.rows[0].id;
 
@@ -128,11 +138,11 @@ export async function completeStop(
         const updateStopQuery = `
       UPDATE route_run_stops
       SET status = 'done',
-          completed_at = NOW(),
-          updated_at = NOW()
+          completed_at = $2,
+          updated_at = $2
       WHERE id = $1
     `;
-        await client.query(updateStopQuery, [routeRunStopId]);
+        await client.query(updateStopQuery, [routeRunStopId, now]);
 
         await client.query("COMMIT");
 

@@ -277,178 +277,367 @@ adminRoutes.post("/admin/intelligence/rebuild-risk-map", async (_req: Request, r
 const ccRouter = Router();
 ccRouter.use(requireAuth, requireAdmin);
 
-// 1. Snapshot Summary
-ccRouter.get("/summary", async (_req: Request, res: Response) => {
+// 0. Overview / Today at a Glance (Panel 1 - Authoritative)
+ccRouter.get("/overview", async (_req: Request, res: Response) => {
     const client = await pool.connect();
     try {
-        // Active Routes (Planned/In Progress today)
-        const activeRes = await client.query(`
-            SELECT COUNT(*) as count 
-            FROM route_runs 
-            WHERE run_date = CURRENT_DATE 
-            AND status IN ('planned', 'in_progress')
-        `);
+        const query = `
+            WITH today AS (
+              SELECT current_date AS service_date
+            ),
 
-        // Total Stops Today (in active/completed runs)
-        const stopsRes = await client.query(`
-            SELECT COUNT(rrs.id) as count
-            FROM route_run_stops rrs
-            JOIN route_runs rr ON rrs.route_run_id = rr.id
-            WHERE rr.run_date = CURRENT_DATE
-        `);
+            clean_metrics AS (
+              SELECT
+                COUNT(*) AS clean_events,
+                COALESCE(SUM(duration_minutes), 0) AS total_clean_minutes
+              FROM core.v_clean_logs_transit c
+              JOIN today t
+                ON c.cleaned_at::date = t.service_date
+            ),
 
-        // Observed Workload (Sum of clean_logs duration for today's runs)
-        // Renamed to semantic "observed_workload_minutes"
-        const workloadRes = await client.query(`
-            SELECT COALESCE(SUM(cl.duration_minutes), 0) as total_minutes
-            FROM clean_logs cl
-            JOIN route_runs rr ON cl.route_run_stop_id = (
-                SELECT id FROM route_run_stops WHERE id = cl.route_run_stop_id
-            ) -- Indirect join via RRS usually, but cl has no direct run_id.
-              -- Actually CL -> RRS -> RR
-            JOIN route_run_stops rrs ON cl.route_run_stop_id = rrs.id
-            WHERE rrs.completed_at >= CURRENT_DATE::timestamp
-        `);
+            hazard_metrics AS (
+              SELECT
+                COUNT(*) AS hazards_reported,
+                COUNT(*) FILTER (WHERE severity >= 4) AS high_severity_hazards
+              FROM core.v_hazards_transit h
+              JOIN today t
+                ON h.reported_at::date = t.service_date
+            )
 
-        // Emergencies (Ad-hoc injections) -> We don't have a clear "emergency" flag on runs yet.
-        // Proxy: Stops added post-creation? Or just count Hazards/Infra as "Exceptions"?
-        // Requirements say "Emergency / ad-hoc work orders injected". 
-        // We probably don't have this data explicitly yet. returning 0 placeholder or counting route_overrides if they exist.
-        // For now, let's return 0 to stay safe, or count hazards as "Issues".
-        // Re-reading requirements: "Exceptions & Breaks... Emergency / ad-hoc work orders".
-        // We will return 0 for now as we haven't built ad-hoc injection yet.
-        const emergencyCount = 0;
+            SELECT
+              c.clean_events,
+              c.total_clean_minutes,
+              h.hazards_reported,
+              h.high_severity_hazards
+            FROM clean_metrics c
+            CROSS JOIN hazard_metrics h;
+        `;
+
+        const result = await client.query(query);
+        // Return row 0 as JSON, or default zeros if something goes strictly wrong (though aggregate always returns 1 row)
+        const row = result.rows[0] || {
+            clean_events: 0,
+            total_clean_minutes: 0,
+            hazards_reported: 0,
+            high_severity_hazards: 0
+        };
 
         res.json({
-            active_routes: parseInt(activeRes.rows[0].count, 10),
-            total_stops: parseInt(stopsRes.rows[0].count, 10),
-            observed_workload_minutes: parseFloat(workloadRes.rows[0].total_minutes),
-            emergency_count: emergencyCount
+            clean_events: parseInt(row.clean_events, 10),
+            total_clean_minutes: parseFloat(row.total_clean_minutes),
+            hazards_reported: parseInt(row.hazards_reported, 10),
+            high_severity_hazards: parseInt(row.high_severity_hazards, 10)
         });
     } catch (err: any) {
-        res.status(500).json({ error: err.message });
+        console.error("Error in /api/admin/control-center/overview:", err);
+        res.status(500).json({ error: "Failed to fetch overview metrics" });
     } finally {
         client.release();
     }
 });
 
-// 2. Route Status Table
+
+
+// 2. Route Status Table (Panel 2 - Authoritative)
 ccRouter.get("/routes", async (_req: Request, res: Response) => {
+    const client = await pool.connect();
     try {
         const query = `
-            SELECT 
-                rr.id, 
-                rp.label as pool_label,
-                rr.status,
-                -- Safe Name Aggregation
-                array_agg(DISTINCT id_dir.display_name) as assigned_names, 
-                COUNT(rrs.id) as total_stops,
-                COUNT(CASE WHEN rrs.status = 'done' THEN 1 END) as completed_stops,
-                COUNT(CASE WHEN rrs.status = 'skipped' THEN 1 END) as skipped_stops,
-                -- Observed Workload (Route Level)
-                COALESCE(SUM(cl.duration_minutes), 0) as observed_workload_minutes,
-                -- Difficulty Density (Avg duration per completed stop)
-                CASE 
-                    WHEN COUNT(CASE WHEN rrs.status = 'done' THEN 1 END) > 0 
-                    THEN COALESCE(SUM(cl.duration_minutes), 0) / COUNT(CASE WHEN rrs.status = 'done' THEN 1 END)
-                    ELSE 0 
-                END as difficulty_density
-            FROM route_runs rr
-            LEFT JOIN route_pools rp ON rr.route_pool_id = rp.id
-            LEFT JOIN route_run_stops rrs ON rr.id = rrs.route_run_id
-            -- Join Clean Logs for time
-            LEFT JOIN clean_logs cl ON rrs.id = cl.route_run_stop_id
-            -- Join Identity Directory for Names
-            LEFT JOIN identity_directory id_dir ON rr.assigned_user_oid = id_dir.oid
-            WHERE rr.run_date = CURRENT_DATE
-            GROUP BY rr.id, rp.label
-            ORDER BY rr.id ASC
+WITH route_base AS (
+  SELECT
+    rr.id            AS route_run_id,
+    rr.route_pool_id AS pool_id,
+    rr.status        AS route_status,
+    rr.run_date,
+    rr.started_at,
+    rr.finished_at,
+    MAX(idd.display_name) AS assigned_ul_name
+  FROM public.route_runs rr
+  LEFT JOIN public.identity_directory idd
+    ON idd.oid = rr.assigned_user_oid
+  WHERE rr.run_date = (
+    SELECT MAX(run_date) FROM public.route_runs
+  )
+  GROUP BY
+    rr.id,
+    rr.route_pool_id,
+    rr.status,
+    rr.run_date,
+    rr.started_at,
+    rr.finished_at
+),
+
+stop_counts AS (
+  SELECT
+    rrs.route_run_id,
+    COUNT(*) FILTER (
+      WHERE rrs.origin_type IS DISTINCT FROM 'emergency'
+    ) AS planned_stops,
+    COUNT(*) FILTER (
+      WHERE rrs.origin_type = 'emergency'
+    ) AS emergency_stops,
+    COUNT(*) FILTER (
+      WHERE rrs.status IN ('done', 'skipped')
+    ) AS resolved_stops,
+    COUNT(*) FILTER (
+      WHERE rrs.status = 'skipped'
+    ) AS skipped_stops
+  FROM public.route_run_stops rrs
+  JOIN route_base rb
+    ON rb.route_run_id = rrs.route_run_id
+  GROUP BY rrs.route_run_id
+),
+
+observed_minutes AS (
+  SELECT
+    rrs.route_run_id,
+    COALESCE(SUM(cl.duration_minutes), 0) AS observed_minutes
+  FROM public.route_run_stops rrs
+  JOIN route_base rb
+    ON rb.route_run_id = rrs.route_run_id
+  LEFT JOIN public.clean_logs cl
+    ON cl.route_run_stop_id = rrs.id
+  GROUP BY rrs.route_run_id
+),
+
+deviation_flags AS (
+  SELECT
+    rrs.route_run_id,
+    BOOL_OR(rrs.origin_type = 'emergency') AS has_emergency_additions,
+    COUNT(*) FILTER (WHERE rrs.status = 'skipped') >= 3 AS high_skip_count
+  FROM public.route_run_stops rrs
+  JOIN route_base rb
+    ON rb.route_run_id = rrs.route_run_id
+  GROUP BY rrs.route_run_id
+)
+
+SELECT
+  rb.route_run_id,
+  rb.pool_id,
+  rb.assigned_ul_name,
+
+  COALESCE(sc.planned_stops, 0)     AS planned_stops,
+  COALESCE(sc.emergency_stops, 0)   AS emergency_stops,
+  COALESCE(sc.resolved_stops, 0)    AS resolved_stops,
+  COALESCE(sc.skipped_stops, 0)     AS skipped_stops,
+
+  (COALESCE(sc.planned_stops, 0) + COALESCE(sc.emergency_stops, 0))
+    AS total_known_stops,
+
+  COALESCE(om.observed_minutes, 0)  AS observed_minutes,
+
+  COALESCE(df.has_emergency_additions, false) AS has_emergency_additions,
+  COALESCE(df.high_skip_count, false)         AS high_skip_count
+
+FROM route_base rb
+LEFT JOIN stop_counts sc
+  ON sc.route_run_id = rb.route_run_id
+LEFT JOIN observed_minutes om
+  ON om.route_run_id = rb.route_run_id
+LEFT JOIN deviation_flags df
+  ON df.route_run_id = rb.route_run_id
+
+ORDER BY rb.route_run_id;
         `;
-        const result = await pool.query(query);
-        res.json({ routes: result.rows });
+        const result = await client.query(query);
+        console.log("[ControlCenter:Routes] rows =", result.rows);
+        res.json(result.rows);
     } catch (err: any) {
-        res.status(500).json({ error: err.message });
+        console.error("Error in /api/admin/control-center/routes:", err);
+        res.status(500).json({ error: "Failed to fetch route status" });
+    } finally {
+        client.release();
     }
 });
 
-// 3. Exceptions
+// 3. Exceptions (Strict Guardrails - Phase B)
 ccRouter.get("/exceptions", async (_req: Request, res: Response) => {
+    const client = await pool.connect();
     try {
-        // Skips by Reason
-        // We assume skip reason is stored in hazards notes or distinct field?
-        // Actually RRS table doesn't have skip_reason column yet (checked earlier).
-        // It's in the linked Hazard (source='ul_skip_flow').
-        const skipsRes = await pool.query(`
-            SELECT 
-                h.hazard_types as reasons, -- This is array, might need unnesting or just return raw
-                COUNT(*) as count
-            FROM route_run_stops rrs
-            JOIN hazards h ON rrs.hazard_id = h.id
-            WHERE rrs.status = 'skipped'
-            AND rrs.updated_at >= CURRENT_DATE::timestamp
-            GROUP BY h.hazard_types
-        `);
+        const queries = {
+            // 1. Skips by Reason
+            skips: `
+                WITH skipped AS (
+                  SELECT
+                    rrs.id,
+                    COALESCE(
+                      NULLIF(h.details->>'hazard_types', ''),
+                      h.hazard_type,
+                      'unspecified'
+                    ) AS reason
+                  FROM public.route_run_stops rrs
+                  LEFT JOIN public.hazards h
+                    ON h.id = rrs.hazard_id
+                  WHERE
+                    rrs.status = 'skipped'
+                    AND rrs.updated_at::date = CURRENT_DATE
+                )
+                SELECT
+                  reason,
+                  COUNT(*)::int AS count
+                FROM skipped
+                GROUP BY reason
+                ORDER BY count DESC;
+            `,
+            // 2. Total Hazards Today
+            hazards: `
+                SELECT COUNT(*)::int AS total_hazards
+                FROM public.hazards
+                WHERE reported_at >= CURRENT_DATE;
+            `,
+            // 3. Infrastructure Issues Today
+            infra: `
+                SELECT COUNT(*)::int AS total_infra_issues
+                FROM public.infrastructure_issues
+                WHERE reported_at >= CURRENT_DATE;
+            `,
+            // 4. Emergency / Ad-Hoc Stops Today
+            emergency: `
+                SELECT COUNT(*)::int AS emergency_count
+                FROM public.route_run_stops
+                WHERE
+                  origin_type IN ('emergency', 'ul_ad_hoc')
+                  AND created_at::date = CURRENT_DATE;
+            `
+        };
 
-        // Hazards
-        const hazardsRes = await pool.query(`
-            SELECT COUNT(*) as count FROM hazards WHERE created_at >= CURRENT_DATE::timestamp
-        `);
-
-        // Infra
-        const infraRes = await pool.query(`
-            SELECT COUNT(*) as count FROM infrastructure_issues WHERE created_at >= CURRENT_DATE::timestamp
-        `);
+        const [skipsRes, hazardsRes, infraRes, emergencyRes] = await Promise.all([
+            client.query(queries.skips),
+            client.query(queries.hazards),
+            client.query(queries.infra),
+            client.query(queries.emergency)
+        ]);
 
         res.json({
             skips_by_reason: skipsRes.rows,
-            total_hazards: parseInt(hazardsRes.rows[0].count, 10),
-            total_infra_issues: parseInt(infraRes.rows[0].count, 10),
-            emergency_count: 0 // Placeholder
+            total_hazards: parseInt(hazardsRes.rows[0]?.total_hazards || '0', 10),
+            total_infra_issues: parseInt(infraRes.rows[0]?.total_infra_issues || '0', 10),
+            emergency_count: parseInt(emergencyRes.rows[0]?.emergency_count || '0', 10)
         });
+
     } catch (err: any) {
-        res.status(500).json({ error: err.message });
+        console.error("Error in /api/admin/control-center/exceptions:", err);
+        res.status(500).json({ error: "Failed to fetch exceptions" });
+    } finally {
+        client.release();
     }
 });
 
-// 4. Difficulty Indicators
+// 4. Difficulty Indicators (Observational Intelligence - Phase B)
 ccRouter.get("/difficulty", async (_req: Request, res: Response) => {
+    const client = await pool.connect();
     try {
-        // Top 20 Heavy Routes
-        const heavyRoutes = await pool.query(`
-            SELECT 
-                rr.id, 
-                rp.label as pool_label,
-                COALESCE(SUM(cl.duration_minutes), 0) as observed_workload_minutes
-            FROM route_runs rr
-            JOIN route_pools rp ON rr.route_pool_id = rp.id
-            JOIN route_run_stops rrs ON rr.id = rrs.route_run_id
-            JOIN clean_logs cl ON rrs.id = cl.route_run_stop_id
-            WHERE rr.run_date = CURRENT_DATE
-            GROUP BY rr.id, rp.label
-            ORDER BY observed_workload_minutes DESC
-            LIMIT 20
-        `);
+        const queries = {
+            // A. Heavy Stops (Location Difficulty)
+            heavyStops: `
+                WITH today AS (
+                  SELECT CURRENT_DATE AS service_date
+                ),
+                cleaned AS (
+                  SELECT
+                    cl.location_id,
+                    AVG(cl.duration_minutes) AS avg_minutes
+                  FROM core.v_clean_logs_transit cl
+                  JOIN today t
+                    ON cl.cleaned_at::date = t.service_date
+                  GROUP BY cl.location_id
+                ),
+                baseline AS (
+                  SELECT
+                    PERCENTILE_CONT(0.5)
+                      WITHIN GROUP (ORDER BY avg_minutes) AS median_minutes
+                  FROM cleaned
+                )
+                SELECT
+                  c.location_id,
+                  l.label,
+                  CASE
+                    WHEN c.avg_minutes >= b.median_minutes * 1.5 THEN 'very_heavy'
+                    WHEN c.avg_minutes >= b.median_minutes * 1.2 THEN 'heavy'
+                    ELSE 'normal'
+                  END AS difficulty_band
+                FROM cleaned c
+                CROSS JOIN baseline b
+                JOIN core.v_locations_transit l
+                  ON l.location_id = c.location_id
+                WHERE c.avg_minutes >= b.median_minutes * 1.2
+                LIMIT 25;
+            `,
+            // B. Routes with High Difficulty Density
+            heavyRoutes: `
+                WITH today AS (
+                  SELECT CURRENT_DATE AS service_date
+                ),
+                route_work AS (
+                  SELECT
+                    a.source_route_run_id AS route_id,
+                    a.assignment_type     AS pool_label,
+                    SUM(cl.duration_minutes) AS total_minutes,
+                    COUNT(*) FILTER (WHERE cl.duration_minutes IS NOT NULL) AS stop_count
+                  FROM core.v_clean_logs_transit cl
+                  JOIN core.v_assignments_transit a
+                    ON a.primary_asset_id = cl.asset_id
+                  JOIN today t
+                    ON cl.cleaned_at::date = t.service_date
+                  GROUP BY
+                    a.source_route_run_id,
+                    a.assignment_type
+                ),
+                density AS (
+                  SELECT
+                    route_id,
+                    pool_label,
+                    total_minutes / NULLIF(stop_count, 0) AS minutes_per_stop
+                  FROM route_work
+                )
+                SELECT
+                  route_id,
+                  pool_label,
+                  CASE
+                    WHEN minutes_per_stop >= 18 THEN 'high'
+                    WHEN minutes_per_stop >= 14 THEN 'elevated'
+                    ELSE 'normal'
+                  END AS difficulty_density_band
+                FROM density
+                WHERE minutes_per_stop >= 14;
+            `,
+            // C. Hotspot Concentration
+            hotspots: `
+                WITH heavy_stops AS (
+                  SELECT
+                    location_id
+                  FROM core.v_clean_logs_transit
+                  WHERE cleaned_at::date = CURRENT_DATE
+                  GROUP BY location_id
+                  HAVING AVG(duration_minutes) >= 15
+                )
+                SELECT
+                  a.assignment_type        AS pool_label,
+                  COUNT(*)::int            AS heavy_stop_count
+                FROM heavy_stops hs
+                JOIN core.v_assignments_transit a
+                  ON a.location_id = hs.location_id
+                GROUP BY a.assignment_type
+                ORDER BY heavy_stop_count DESC;
+            `
+        };
 
-        // Top 20 Heavy Stops
-        // Do NOT expose user_id
-        const heavyStops = await pool.query(`
-            SELECT 
-                s."STOP_ID",
-                s."ON_STREET_NAME",
-                cl.duration_minutes as observed_minutes
-            FROM clean_logs cl
-            JOIN stops s ON cl.stop_id = s."STOP_ID"
-            WHERE cl.cleaned_at >= CURRENT_DATE::timestamp
-            ORDER BY cl.duration_minutes DESC
-            LIMIT 20
-        `);
+        const [heavyStopsRes, heavyRoutesRes, hotspotsRes] = await Promise.all([
+            client.query(queries.heavyStops),
+            client.query(queries.heavyRoutes),
+            client.query(queries.hotspots)
+        ]);
 
         res.json({
-            heavy_routes: heavyRoutes.rows,
-            heavy_stops: heavyStops.rows
+            heavy_stops: heavyStopsRes.rows,
+            heavy_routes: heavyRoutesRes.rows,
+            hotspot_areas: hotspotsRes.rows
         });
     } catch (err: any) {
-        res.status(500).json({ error: err.message });
+        console.error("Error in /api/admin/control-center/difficulty:", err);
+        res.status(500).json({ error: "Failed to fetch difficulty indicators" });
+    } finally {
+        client.release();
     }
 });
 

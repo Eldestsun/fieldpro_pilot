@@ -25,10 +25,21 @@ const LoginPage = resolveComponent(LoginPageMod, "LoginPage");
 
 export default function App() {
   // ---- Auth/RBAC via context ----
-  const { isSignedIn, signIn, signOut, me, isLoading } = useAuth();
+  const { isSignedIn, signIn, signOut, me, isLoading, authReady } = useAuth();
 
   // ---- View State ----
-  const [activeView, setActiveView] = useState<"work" | "routes" | "admin_dash" | "admin_pools" | "admin_stops" | "admin_control_center" | "ops_dash" | "ops_pools" | "ops_stops">("work");
+  const [activeView, setActiveView] = useState<
+    "work" |
+    "routes" |
+    "admin_dash" |
+    "admin_pools" |
+    "admin_stops" |
+    "admin_control_center" |
+    "ops_dash" |
+    "ops_pools" |
+    "ops_stops" |
+    null
+  >(null);
 
   // ---- Role Logic ----
   const roles = me?.roles || [];
@@ -38,29 +49,26 @@ export default function App() {
 
   // Determine default view on login
   useEffect(() => {
-    if (isSignedIn && !isLoading) {
-      if (isAdmin) setActiveView("admin_dash");
-      // Lead defaults to routes, or ops_dash if they prefer, but per requirements: "Lead -> routes"
-      else if (isLead) setActiveView("routes");
-      else setActiveView("work");
-    }
-  }, [isSignedIn, isAdmin, isLead, isLoading]);
+    if (!authReady) return;
+
+    if (isAdmin) setActiveView("admin_control_center");
+    else if (isLead) setActiveView("routes");
+    else setActiveView("work");
+  }, [authReady, isAdmin, isLead]);
 
   // ---- Security Guard ----
   useEffect(() => {
-    if (!isSignedIn || isLoading) return;
+    if (!isSignedIn || isLoading || !activeView) return;
 
     const isAdminView = activeView.startsWith("admin_");
     const isOpsView = activeView.startsWith("ops_");
 
     if (isAdminView && !isAdmin) {
-      // Boot them out
       if (isLead) setActiveView("routes");
       else setActiveView("work");
     }
 
     if (isOpsView && !(isLead || isAdmin)) {
-      // Boot them out
       setActiveView("work");
     }
   }, [activeView, isAdmin, isLead, isSignedIn, isLoading]);
@@ -188,7 +196,7 @@ export default function App() {
         )}
 
         {/* Main Content Area */}
-        {isSignedIn && (
+        {isSignedIn && authReady && activeView && (
           <section>
             {/* Original content replaced by renderView */}
             {(() => {

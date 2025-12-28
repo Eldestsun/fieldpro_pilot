@@ -121,6 +121,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false);
   }, [fetchMe]);
 
+  // On refresh, MSAL may already have an account cached. Make sure we hydrate `me`
+  // so the rest of the app can render the correct view/roles.
+  useEffect(() => {
+    if (!isSignedIn || me || isLoading) return;
+    setIsLoading(true);
+    fetchMe().finally(() => setIsLoading(false));
+  }, [isSignedIn, me, isLoading, fetchMe]);
+
   const value = useMemo<AuthCtx>(() => ({
     account,
     isSignedIn,

@@ -86,7 +86,7 @@ routeRunStopRoutes.post(
                 UPDATE route_run_stops
                 SET status = 'skipped',
                     hazard_id = $1,
-                    completed_at = COALESCE(completed_at, NOW()),
+                    completed_at = NOW(),
                     updated_at = NOW()
                 WHERE id = $2
                 RETURNING *

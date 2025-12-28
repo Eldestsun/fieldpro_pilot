@@ -306,7 +306,6 @@ export function useTodayRoute() {
 
             // Moved payload definition up to be accessible in catch block
             const payload: CompleteStopPayload = {
-                duration_minutes: 10,
                 picked_up_litter: checklist.picked_up_litter,
                 emptied_trash: checklist.emptied_trash,
                 washed_shelter: checklist.washed_shelter,
@@ -338,7 +337,6 @@ export function useTodayRoute() {
                 const infraIssues = infra?.hasIssues && infra.issues.length > 0 ? infra.issues : [];
 
                 const offlinePayload: CompleteStopPayload = {
-                    duration_minutes: 10,
                     picked_up_litter: checklist.picked_up_litter,
                     emptied_trash: checklist.emptied_trash,
                     washed_shelter: checklist.washed_shelter,
