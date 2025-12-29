@@ -1,4 +1,5 @@
 import { PoolClient } from "pg";
+import { ensureVisitForRouteRunStop } from "./visitService";
 
 export async function createHazardForRouteRunStop(
     client: PoolClient,
@@ -11,9 +12,10 @@ export async function createHazardForRouteRunStop(
         photoKey?: string; // Singular column for primary photo
         photoKeys?: string[]; // Kept for backward compatibility or extra photos in details
         source?: string;
+        actorOid?: string;
     }
 ) {
-    const { routeRunStopId, userId, hazardTypes, severity, notes, photoKey, photoKeys } = params;
+    const { routeRunStopId, userId, hazardTypes, severity, notes, photoKey, photoKeys, actorOid } = params;
 
     // 1. Look up stop_id from route_run_stops
     const lookupQuery = `
@@ -37,9 +39,17 @@ export async function createHazardForRouteRunStop(
         hazardType = "multiple";
     }
 
+    // Ensure visit exists for this hazard
+    const visitId = await ensureVisitForRouteRunStop(client, {
+        routeRunStopId: Number(routeRunStopId),
+        actorOid: actorOid || "unknown",
+        visitType: "service",
+    });
+
     // 2. Insert hazard
     const insertQuery = `
         INSERT INTO hazards (
+            visit_id,
             stop_id,
             asset_id,
             route_run_stop_id,
@@ -50,7 +60,7 @@ export async function createHazardForRouteRunStop(
             notes,
             details,
             reported_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
         RETURNING *
     `;
 
@@ -61,6 +71,7 @@ export async function createHazardForRouteRunStop(
     };
 
     const insertRes = await client.query(insertQuery, [
+        visitId,
         stopId,
         assetId,
         routeRunStopId,

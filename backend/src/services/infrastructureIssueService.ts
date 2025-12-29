@@ -1,4 +1,5 @@
 import { PoolClient } from "pg";
+import { ensureVisitForRouteRunStop } from "./visitService";
 
 export interface InfraIssueInput {
     issue_type: string;
@@ -35,12 +36,21 @@ export async function createInfrastructureIssuesForRouteRunStop(
         }
     }
 
+    // Ensure visit exists (idempotent)
+    // Using reportedBy as transitional actorOid
+    const visitId = await ensureVisitForRouteRunStop(client, {
+        routeRunStopId: Number(params.routeRunStopId),
+        actorOid: params.reportedBy.toString(),
+        visitType: "service",
+    });
+
     const insertedRows = [];
 
     for (const issue of params.issues) {
         const result = await client.query(
             `
             INSERT INTO public.infrastructure_issues (
+                visit_id,
                 route_run_stop_id,
                 stop_id,
                 asset_id,
@@ -54,10 +64,11 @@ export async function createInfrastructureIssuesForRouteRunStop(
                 needs_facilities,
                 reported_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
             RETURNING *
             `,
             [
+                visitId,
                 params.routeRunStopId,
                 params.stopId,
                 assetId || null,

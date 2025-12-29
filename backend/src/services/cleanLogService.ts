@@ -138,13 +138,14 @@ export async function completeStop(
 
             const logVolumeQuery = `
                 INSERT INTO trash_volume_logs (
+                    visit_id,
                     route_run_stop_id,
                     stop_id,
                     asset_id,
                     volume
-                ) VALUES ($1, $2, $3, $4)
+                ) VALUES ($1, $2, $3, $4, $5)
              `;
-            await client.query(logVolumeQuery, [routeRunStopId, stop_id, asset_id, trashVolume]);
+            await client.query(logVolumeQuery, [visitId, routeRunStopId, stop_id, asset_id, trashVolume]);
         }
 
         const updateStopQuery = `

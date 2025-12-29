@@ -85,6 +85,7 @@ routeRunStopRoutes.post(
                 photoKey: safety_photo_key,
                 photoKeys: photo_keys,
                 source: "ul_skip_flow",
+                actorOid: req.user?.oid || "unknown",
             });
 
             const updateQuery = `
@@ -207,6 +208,7 @@ routeRunStopRoutes.post(
                         notes: safety.notes,
                         photoKey: safety.safety_photo_key,
                         source: "ul_safety_flow",
+                        actorOid: req.user?.oid || "unknown",
                     });
 
                     // Link the hazard to the route_run_stop for visibility in route_run_stops
