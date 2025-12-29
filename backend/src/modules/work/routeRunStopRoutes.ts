@@ -1,8 +1,13 @@
+
 import { Router, Request, Response } from "express";
 import { requireAuth, requireAnyRole } from "../../authz";
 import { completeStop } from "../../services/cleanLogService";
 import { createHazardForRouteRunStop } from "../../services/hazardService";
 import { pool } from "../../db";
+import {
+    ensureVisitForRouteRunStop,
+    closeVisitForRouteRunStop,
+} from "../../services/visitService";
 
 export const routeRunStopRoutes = Router();
 
@@ -53,7 +58,7 @@ routeRunStopRoutes.post(
                 SELECT status, stop_id, route_run_id 
                 FROM route_run_stops 
                 WHERE id = $1
-            `;
+    `;
             const lookupRes = await client.query(lookupQuery, [id]);
 
             if (lookupRes.rows.length === 0) {
@@ -85,13 +90,25 @@ routeRunStopRoutes.post(
             const updateQuery = `
                 UPDATE route_run_stops
                 SET status = 'skipped',
-                    hazard_id = $1,
-                    completed_at = NOW(),
-                    updated_at = NOW()
+                hazard_id = $1,
+                completed_at = NOW(),
+                updated_at = NOW()
                 WHERE id = $2
                 RETURNING *
             `;
             const updateRes = await client.query(updateQuery, [hazard.id, id]);
+
+            // Ensure visit exists (idempotent)
+            await ensureVisitForRouteRunStop(client, {
+                routeRunStopId: Number(id),
+                actorOid: req.user?.oid || "unknown", // Safe access
+                visitType: "service",
+            });
+
+            // Close visit (idempotent)
+            await closeVisitForRouteRunStop(client, {
+                routeRunStopId: Number(id),
+            });
 
             await client.query("COMMIT");
 
@@ -196,7 +213,7 @@ routeRunStopRoutes.post(
                     await client.query(
                         `UPDATE route_run_stops
                          SET hazard_id = $1,
-                             updated_at = NOW()
+    updated_at = NOW()
                          WHERE id = $2`,
                         [hazard.id, route_run_stop_id]
                     );
@@ -236,6 +253,7 @@ routeRunStopRoutes.post(
                 photo_keys,
                 infraIssues,
                 trashVolume,
+                actorOid: req.user?.oid || "unknown", // Pass actorOid, fallback for safety
             });
 
             if (!result) {

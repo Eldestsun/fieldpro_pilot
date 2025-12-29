@@ -1,6 +1,7 @@
 import { pool } from "../db";
 import { loadRouteRunById, checkAndCompleteRouteRun } from "./routeRunService";
 import { createInfrastructureIssuesForRouteRunStop, InfraIssueInput } from "./infrastructureIssueService";
+import { ensureVisitForRouteRunStop, closeVisitForRouteRunStop } from "./visitService";
 
 /**
  * Complete a stop and create a clean log
@@ -18,6 +19,7 @@ export async function completeStop(
         photo_keys?: string[] | null;
         infraIssues?: InfraIssueInput[];
         trashVolume?: number;
+        actorOid?: string;
     }
 ) {
     const client = await pool.connect();
@@ -33,6 +35,7 @@ export async function completeStop(
             photo_keys,
             infraIssues = [],
             trashVolume,
+            actorOid,
         } = data;
 
         // 1. Look up route_run_stop
@@ -143,6 +146,16 @@ export async function completeStop(
       WHERE id = $1
     `;
         await client.query(updateStopQuery, [routeRunStopId, now]);
+
+        // 2d. Close the visit
+        if (actorOid) {
+            await ensureVisitForRouteRunStop(client, {
+                routeRunStopId: Number(routeRunStopId),
+                actorOid,
+                visitType: "service",
+            });
+            await closeVisitForRouteRunStop(client, { routeRunStopId: Number(routeRunStopId) });
+        }
 
         await client.query("COMMIT");
 

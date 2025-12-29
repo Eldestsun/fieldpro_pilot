@@ -5,6 +5,13 @@ import { v5 as uuidv5 } from "uuid";
 
 const ROUTE_RUN_STOP_NAMESPACE = "4c5e1b10-1f0a-4ce4-9a6b-3b9b6a0f8b9c"; // stable constant UUID
 
+/**
+ * Deterministically derives the client_visit_id for a route_run_stop.
+ */
+export function deriveClientVisitId(routeRunStopId: number): string {
+  return uuidv5(`route-run-stop:${routeRunStopId}`, ROUTE_RUN_STOP_NAMESPACE);
+}
+
 type EnsureVisitParams = {
   routeRunStopId: number;
   actorOid: string;
@@ -21,7 +28,7 @@ type EnsureVisitParams = {
 export async function ensureVisitForRouteRunStop(client: PoolClient, params: EnsureVisitParams): Promise<number> {
   const visitClientId =
     params.clientVisitId ??
-    uuidv5(`route-run-stop:${params.routeRunStopId}`, ROUTE_RUN_STOP_NAMESPACE);
+    deriveClientVisitId(params.routeRunStopId);
 
   // 1) Idempotency: use unique client_visit_id
   const existing = await client.query(
@@ -105,4 +112,29 @@ export async function ensureVisitForRouteRunStop(client: PoolClient, params: Ens
     );
   }
   return after.rows[0].id as number;
+}
+
+/**
+ * Closes an open visit associated with the route_run_stop.
+ * Idempotent: safe to call even if already closed.
+ */
+export async function closeVisitForRouteRunStop(
+  client: PoolClient,
+  params: { routeRunStopId: number; endedAt?: Date }
+): Promise<number | null> {
+  const visitClientId = deriveClientVisitId(params.routeRunStopId);
+
+  const res = await client.query(
+    `
+    UPDATE core.visits
+    SET ended_at = COALESCE(ended_at, COALESCE($2, NOW()))
+    WHERE client_visit_id = $1
+      AND ended_at IS NULL
+    RETURNING id
+    `,
+    [visitClientId, params.endedAt ?? null]
+  );
+
+  if (res.rows.length) return res.rows[0].id;
+  return null;
 }
