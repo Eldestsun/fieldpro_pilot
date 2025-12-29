@@ -70,8 +70,16 @@ export async function completeStop(
         // 2. Insert clean_logs and update route_run_stops
         await client.query("BEGIN");
 
+        // Ensure visit exists for this stop execution
+        const visitId = await ensureVisitForRouteRunStop(client, {
+            routeRunStopId: Number(routeRunStopId),
+            actorOid: actorOid || "unknown",
+            visitType: "service",
+        });
+
         const insertLogQuery = `
       INSERT INTO clean_logs (
+        visit_id,
         route_run_stop_id,
         stop_id,
         asset_id,
@@ -84,7 +92,7 @@ export async function completeStop(
         washed_can,
         photo_keys,
         cleaned_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING id
     `;
 
@@ -92,6 +100,7 @@ export async function completeStop(
         const photoKeysVal = Array.isArray(photo_keys) ? photo_keys : null;
 
         const logRes = await client.query(insertLogQuery, [
+            visitId,
             routeRunStopId,
             stop_id,
             asset_id,
@@ -148,14 +157,8 @@ export async function completeStop(
         await client.query(updateStopQuery, [routeRunStopId, now]);
 
         // 2d. Close the visit
-        if (actorOid) {
-            await ensureVisitForRouteRunStop(client, {
-                routeRunStopId: Number(routeRunStopId),
-                actorOid,
-                visitType: "service",
-            });
-            await closeVisitForRouteRunStop(client, { routeRunStopId: Number(routeRunStopId) });
-        }
+        // (visit was ensured at start of transaction)
+        await closeVisitForRouteRunStop(client, { routeRunStopId: Number(routeRunStopId) });
 
         await client.query("COMMIT");
 
