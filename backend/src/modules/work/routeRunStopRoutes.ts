@@ -4,12 +4,76 @@ import { requireAuth, requireAnyRole } from "../../authz";
 import { completeStop } from "../../services/cleanLogService";
 import { createHazardForRouteRunStop } from "../../services/hazardService";
 import { pool } from "../../db";
+import { emitObservationsForStop, StopUiPayload } from "../../services/observationService";
 import {
     ensureVisitForRouteRunStop,
     closeVisitForRouteRunStop,
+    getVisitContext,
 } from "../../services/visitService";
 
 export const routeRunStopRoutes = Router();
+
+routeRunStopRoutes.post(
+    "/route-run-stops/:id/start",
+    requireAuth,
+    requireAnyRole(["UL", "Lead", "Admin"]),
+    async (req: Request, res: Response) => {
+        const client = await pool.connect();
+        try {
+            const { id } = req.params;
+            const actorOid = req.user?.oid || "unknown";
+
+            // 1. Transaction to update status
+            await client.query("BEGIN");
+
+            const updateQuery = `
+                UPDATE route_run_stops
+                SET status = 'in_progress',
+                    started_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = $1 AND status = 'pending'
+                RETURNING *
+            `;
+            const updateRes = await client.query(updateQuery, [id]);
+
+            if (updateRes.rows.length === 0) {
+                await client.query("ROLLBACK");
+                return res.status(409).json({ error: "Stop already started or not pending" });
+            }
+
+            // 2. Ensure Visit (Start of visit interval)
+            const visitId = await ensureVisitForRouteRunStop(client, {
+                routeRunStopId: Number(id),
+                actorOid,
+                visitType: "service",
+            });
+
+            await client.query("COMMIT");
+
+            // 3. Emit "Arrival" Observations (Post-Commit, authoritative side-effect)
+            // We need context (org, loc, asset)
+            const ctx = await getVisitContext(client, Number(id));
+
+            await emitObservationsForStop({
+                phase: "arrival",
+                visitId,
+                orgId: ctx.orgId,
+                assetId: ctx.assetId,
+                locationId: ctx.locationId,
+                actorOid,
+            });
+
+            return res.json({ ok: true, route_run_stop: updateRes.rows[0] });
+
+        } catch (err: any) {
+            await client.query("ROLLBACK");
+            console.error("Error in /api/route-run-stops/:id/start:", err);
+            return res.status(500).json({ error: err.message });
+        } finally {
+            client.release();
+        }
+    }
+);
 
 /** ── Skip with Hazard: POST /api/route-run-stops/:id/skip-with-hazard ── */
 routeRunStopRoutes.post(
@@ -100,7 +164,7 @@ routeRunStopRoutes.post(
             const updateRes = await client.query(updateQuery, [hazard.id, id]);
 
             // Ensure visit exists (idempotent)
-            await ensureVisitForRouteRunStop(client, {
+            const visitId = await ensureVisitForRouteRunStop(client, {
                 routeRunStopId: Number(id),
                 actorOid: req.user?.oid || "unknown", // Safe access
                 visitType: "service",
@@ -112,6 +176,26 @@ routeRunStopRoutes.post(
             });
 
             await client.query("COMMIT");
+
+            // 5. Emit "Submit" Observations (Post-Commit, authoritative side-effect)
+            const ctx = await getVisitContext(client, Number(id));
+
+            const uiPayload: StopUiPayload = {
+                skipForSafety: true,
+                safetyConcern: true,
+                safetyHazards: hazard_types,
+                // No cleaning or infra actions on skip
+            };
+
+            await emitObservationsForStop({
+                phase: "submit",
+                visitId,
+                orgId: ctx.orgId,
+                assetId: ctx.assetId,
+                locationId: ctx.locationId,
+                actorOid: req.user?.oid || "unknown",
+                uiPayload,
+            });
 
             // 4. Reload Route Run (and check for completion first)
             const { loadRouteRunById, checkAndCompleteRouteRun } = await import("../../services/routeRunService");
@@ -256,6 +340,7 @@ routeRunStopRoutes.post(
                 infraIssues,
                 trashVolume,
                 actorOid: req.user?.oid || "unknown", // Pass actorOid, fallback for safety
+                safety, // Pass safety object for observation mapping
             });
 
             if (!result) {

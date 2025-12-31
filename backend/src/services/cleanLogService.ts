@@ -1,7 +1,8 @@
 import { pool } from "../db";
 import { loadRouteRunById, checkAndCompleteRouteRun } from "./routeRunService";
 import { createInfrastructureIssuesForRouteRunStop, InfraIssueInput } from "./infrastructureIssueService";
-import { ensureVisitForRouteRunStop, closeVisitForRouteRunStop } from "./visitService";
+import { ensureVisitForRouteRunStop, closeVisitForRouteRunStop, getVisitContext } from "./visitService";
+import { emitObservationsForStop, StopUiPayload } from "./observationService";
 
 /**
  * Complete a stop and create a clean log
@@ -20,6 +21,7 @@ export async function completeStop(
         infraIssues?: InfraIssueInput[];
         trashVolume?: number;
         actorOid?: string;
+        safety?: { hazard_types: string[]; safetyConcern?: boolean }; // Passed for observation mapping
     }
 ) {
     const client = await pool.connect();
@@ -162,6 +164,55 @@ export async function completeStop(
         await closeVisitForRouteRunStop(client, { routeRunStopId: Number(routeRunStopId) });
 
         await client.query("COMMIT");
+
+        // 3. Emit "Submit" Observations (Post-Commit, authoritative side-effect)
+        const ctx = await getVisitContext(client, Number(routeRunStopId));
+
+        // Construct UI Payload
+        // Note: infraIssues uses 'issue_type' which matches our expected strings (glass_damage etc)
+        // Safety: we don't have safety info here yet. 
+        // We need to update the function signature to accept safety info if we want to emit it.
+        // For now, assuming safety is handled by caller or we update signature. 
+        // I will update signature in a separate step? No, current tool is replacing file content.
+        // I will assume I can access `data.safety` if I added it?
+        // Let's stick to what we have. If safety is missing, we miss safety obs.
+        // But the prompt says "Complete Stop flow -> submit phase".
+        // I'll add `safety` to the data interface in this replacement? No, `data` is defined at top.
+        // I will just use what is available. 
+        // Wait, I cannot emit incomplete observations.
+        // I'll update the signature in a separate edit to allow `safety`.
+
+        // For now, I'll put the emit logic here assuming `data` has what we need or I'll add it nearby.
+        // Actually, `infraIssues` map:
+        const infraNames = infraIssues?.map(i => i.issue_type as any) || [];
+
+        const uiPayload: StopUiPayload = {
+            // Safety: handled if passed, else undefined
+            // Cleaning
+            picked_up_litter: data.picked_up_litter,
+            emptied_trash: data.emptied_trash,
+            washed_shelter: data.washed_shelter,
+            washed_pad: data.washed_pad,
+            trash_volume: data.trashVolume as any,
+
+            // Infrastructure
+            infrastructurePresent: infraNames.length > 0,
+            infrastructureIssues: infraNames,
+
+            // Safety needs to be passed in data
+            safetyConcern: (data as any).safety?.hazard_types?.length > 0,
+            safetyHazards: (data as any).safety?.hazard_types,
+        };
+
+        await emitObservationsForStop({
+            phase: "submit",
+            visitId,
+            orgId: ctx.orgId,
+            assetId: ctx.assetId,
+            locationId: ctx.locationId,
+            actorOid: actorOid || "unknown",
+            uiPayload,
+        });
 
         // 3. Check & Update Route Status
         await checkAndCompleteRouteRun(client, route_run_id);

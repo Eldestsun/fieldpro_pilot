@@ -25,6 +25,52 @@ type EnsureVisitParams = {
  * Safe to call multiple times — returns existing visit if found,
  * using deterministic client_visit_id for idempotency.
  */
+
+/**
+ * Resolves context for a given route_run_stop (idempotent read).
+ */
+export async function getVisitContext(client: PoolClient, routeRunStopId: number) {
+  const ctx = await client.query(
+    `
+    SELECT
+      a.org_id,
+      rrs.asset_id AS primary_asset_id,
+      loc.location_id
+    FROM public.route_run_stops rrs
+    JOIN public.assets a ON a.id = rrs.asset_id
+    LEFT JOIN core.v_locations_transit loc ON loc.stop_id = rrs.stop_id
+    WHERE rrs.id = $1
+    `,
+    [routeRunStopId]
+  );
+
+  if (!ctx.rows.length) {
+    throw new Error(
+      `getVisitContext: route_run_stop not found: ${routeRunStopId}`
+    );
+  }
+
+  const { org_id, primary_asset_id, location_id } = ctx.rows[0];
+
+  if (!org_id || !primary_asset_id) {
+    throw new Error(
+      `getVisitContext: missing org_id/primary_asset_id for route_run_stop ${routeRunStopId}`
+    );
+  }
+  if (!location_id) {
+    throw new Error(
+      `getVisitContext: missing location_id for route_run_stop ${routeRunStopId} (stop_id mapping failed)`
+    );
+  }
+
+  return { orgId: org_id, assetId: primary_asset_id, locationId: location_id };
+}
+
+/**
+ * Ensures a Visit exists for a given route_run_stop.
+ * Safe to call multiple times — returns existing visit if found,
+ * using deterministic client_visit_id for idempotency.
+ */
 export async function ensureVisitForRouteRunStop(client: PoolClient, params: EnsureVisitParams): Promise<number> {
   const visitClientId =
     params.clientVisitId ??
@@ -38,38 +84,7 @@ export async function ensureVisitForRouteRunStop(client: PoolClient, params: Ens
   if (existing.rows.length) return existing.rows[0].id as number;
 
   // 2) Resolve org/location/asset context (no routing fields in visits)
-  const ctx = await client.query(
-    `
-    SELECT
-      a.org_id,
-      rrs.asset_id AS primary_asset_id,
-      loc.location_id
-    FROM public.route_run_stops rrs
-    JOIN public.assets a ON a.id = rrs.asset_id
-    LEFT JOIN core.v_locations_transit loc ON loc.stop_id = rrs.stop_id
-    WHERE rrs.id = $1
-    `,
-    [params.routeRunStopId]
-  );
-
-  if (!ctx.rows.length) {
-    throw new Error(
-      `ensureVisitForRouteRunStop: route_run_stop not found: ${params.routeRunStopId}`
-    );
-  }
-
-  const { org_id, primary_asset_id, location_id } = ctx.rows[0];
-
-  if (!org_id || !primary_asset_id) {
-    throw new Error(
-      `ensureVisitForRouteRunStop: missing org_id/primary_asset_id for route_run_stop ${params.routeRunStopId}`
-    );
-  }
-  if (!location_id) {
-    throw new Error(
-      `ensureVisitForRouteRunStop: missing location_id for route_run_stop ${params.routeRunStopId} (stop_id mapping failed)`
-    );
-  }
+  const { orgId, assetId, locationId } = await getVisitContext(client, params.routeRunStopId);
 
   // 3) Insert (idempotent + race-safe)
   const insert = await client.query(
@@ -89,9 +104,9 @@ export async function ensureVisitForRouteRunStop(client: PoolClient, params: Ens
     RETURNING id
     `,
     [
-      org_id,
-      location_id,
-      primary_asset_id,
+      orgId,
+      locationId,
+      assetId,
       params.actorOid,
       params.visitType,
       params.outcome ?? null,
@@ -100,6 +115,7 @@ export async function ensureVisitForRouteRunStop(client: PoolClient, params: Ens
   );
 
   if (insert.rows.length) return insert.rows[0].id as number;
+
 
   // Concurrent insert: fetch the row that won the race
   const after = await client.query(

@@ -1,5 +1,6 @@
 
 import { PoolClient } from "pg";
+import { ensureVisitForRouteRunStop } from "./visitService";
 
 export interface StopPhoto {
     id: string;
@@ -24,15 +25,32 @@ export async function createStopPhotos(
 
     if (s3Keys.length === 0) return;
 
+    // 1. Fetch asset_id (needed for consistency)
+    const lookupRes = await client.query(
+        `SELECT asset_id FROM route_run_stops WHERE id = $1`,
+        [routeRunStopId]
+    );
+    let assetId = null;
+    if (lookupRes.rows.length > 0) {
+        assetId = lookupRes.rows[0].asset_id;
+    }
+
+    // 2. Ensure visit exists
+    const visitId = await ensureVisitForRouteRunStop(client, {
+        routeRunStopId: Number(routeRunStopId),
+        actorOid: userOid,
+        visitType: "service",
+    });
+
     const query = `
     INSERT INTO stop_photos (
-      route_run_stop_id, s3_key, kind, created_by_oid, captured_at
+      visit_id, route_run_stop_id, asset_id, s3_key, kind, created_by_oid, captured_at
     )
-    VALUES ($1, $2, $3, $4, NOW())
+    VALUES ($1, $2, $3, $4, $5, $6, NOW())
   `;
 
     for (const key of s3Keys) {
-        await client.query(query, [routeRunStopId, key, kind, userOid]);
+        await client.query(query, [visitId, routeRunStopId, assetId, key, kind, userOid]);
     }
 }
 
