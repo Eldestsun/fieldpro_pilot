@@ -4,12 +4,15 @@ import { pool } from "../../db";
 import { planRouteWithOsrm, OsrmStop } from "../../osrmClient";
 import {
     createRouteRun,
-    loadRouteRunById,
+
     startRouteRun,
     finishRouteRun,
     getCandidateStopsForPoolWithRisk,
-} from "../../services/routeRunService";
-import { ensureVisitForRouteRunStop } from "../../services/visitService";
+    assignRouteRun,
+} from "../../domains/routeRun/routeRunService";
+import { loadRouteRunById } from "../../domains/routeRun/loaders/loadRouteRunById";
+import { ensureVisitForRouteRunStop } from "../../domains/visit/visitService";
+import { startRouteRunStopInternal } from "../../domains/routeRun/operations/startRouteRunStop";
 
 export const routeRunRoutes = Router();
 
@@ -37,10 +40,14 @@ routeRunRoutes.get(
           rr.status,
           rr.run_date,
           rr.created_at,
-          COALESCE(rs.stop_count, 0) AS stop_count
+          COALESCE(rs.stop_count, 0) AS stop_count,
+          COALESCE(rs.completed_stop_count, 0) AS completed_stops
         FROM route_runs rr
         LEFT JOIN (
-          SELECT route_run_id, COUNT(*) AS stop_count
+          SELECT 
+            route_run_id, 
+            COUNT(*) AS stop_count,
+            COUNT(*) FILTER (WHERE status IN ('done', 'skipped')) AS completed_stop_count
           FROM route_run_stops
           GROUP BY route_run_id
         ) rs ON rs.route_run_id = rr.id
@@ -340,6 +347,7 @@ routeRunRoutes.post(
 );
 
 /** ── Get Route Run Details: GET /api/route-runs/:id ───────────────────── */
+// [GOVERNANCE-SENSITIVE] Transitional endpoint. Prefer domain-specific accessors where possible.
 routeRunRoutes.get("/route-runs/:id", async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
@@ -388,70 +396,51 @@ routeRunRoutes.post(
     requireAuth,
     requireAnyRole(["UL", "Lead", "Admin"]),
     async (req: Request, res: Response) => {
-        const client = await pool.connect();
         try {
             const { id } = req.params;
             if (!req.user?.oid) {
                 return res.status(401).json({ error: "Missing authenticated user identity" });
             }
 
-            // Idempotent/Guarded Transition:
-            // Only allow transition to 'in_progress' if currently 'pending', 'planned', or 'assigned'.
-            // Do NOT overwrite 'done', 'skipped', or 'in_progress' (if replayed).
-            const updateQuery = `
-                UPDATE route_run_stops
-                SET status = 'in_progress',
-                    started_at = COALESCE(started_at, NOW()),
-                    updated_at = NOW()
-                WHERE id = $1
-                  AND status IN ('pending', 'planned', 'assigned')
-                RETURNING route_run_id
-            `;
-            const result = await client.query(updateQuery, [id]);
+            // Use shared internal helper (Strict Neutrality)
+            // Endpoint Logic: Allowed statuses: ['pending', 'planned', 'assigned']
+            const result = await startRouteRunStopInternal(pool, {
+                routeRunStopId: id,
+                actorOid: req.user.oid,
+                allowedStatuses: ["pending", "planned", "assigned"],
+            });
 
             let routeRunId;
 
-            if (result.rows.length === 0) {
-                // If 0 rows updated, check why.
-                const lookupRes = await client.query(
-                    `SELECT route_run_id, status FROM route_run_stops WHERE id = $1`,
-                    [id]
-                );
-
-                if (lookupRes.rows.length === 0) {
-                    return res.status(404).json({ error: "Route run stop not found" });
-                }
-
-                const { status, route_run_id } = lookupRes.rows[0];
-                routeRunId = route_run_id;
-
-                if (status === 'in_progress') {
-                    // Idempotent success: Already started, just return current state
-                } else if (status === 'done' || status === 'skipped') {
-                    // Conflict: Cannot restart a completed stop
-                    return res.status(409).json({
-                        error: "CONFLICT",
-                        message: `Stop is already ${status}; cannot start.`
-                    });
-                } else {
-                    // Other status? (e.g. pending/assigned logic drift?)
-                    return res.status(409).json({
-                        error: "CONFLICT",
-                        message: `Cannot start stop with status '${status}'.`
-                    });
-                }
+            if (result.updated) {
+                // Success: Transitioned
+                routeRunId = result.routeRunId;
             } else {
-                routeRunId = result.rows[0].route_run_id;
-                // Ensure a Visit after successful start
-                console.log("[VISIT] ensureVisitForRouteRunStop called", {
-                  routeRunStopId: Number(id),
-                  actorOid: req.user.oid,
-                });
-                await ensureVisitForRouteRunStop(client, {
-                  routeRunStopId: Number(id),
-                  actorOid: req.user.oid,
-                  visitType: "service",
-                });
+                // Not updated: Check Idempotency
+                if (result.status === "in_progress") {
+                    // Idempotent success: Already started
+                    routeRunId = result.routeRunId;
+                } else if (result.status === "done" || result.status === "skipped") {
+                    // Conflict
+                    return res.status(409).json({
+                        error: "CONFLICT",
+                        message: `Stop is already ${result.status}; cannot start.`
+                    });
+                } else if (result.status === "NOT_FOUND") {
+                    return res.status(404).json({ error: "Route run stop not found" });
+                } else {
+                    // Other status (drift?)
+                    return res.status(409).json({
+                        error: "CONFLICT",
+                        message: `Cannot start stop with status '${result.status}'.`
+                    });
+                }
+            }
+
+            // Load full route run to match original response shape
+            if (!routeRunId) {
+                // Fallback safe guard, though routeRunId should be present if not 404
+                return res.status(404).json({ error: "Route run stop not found (no route_run_id)" });
             }
 
             const routeRun = await loadRouteRunById(routeRunId);
@@ -462,8 +451,6 @@ routeRunRoutes.post(
             return res
                 .status(500)
                 .json({ error: err.message || "Internal server error" });
-        } finally {
-            client.release();
         }
     }
 );
@@ -488,6 +475,43 @@ routeRunRoutes.post(
             return res
                 .status(500)
                 .json({ error: err.message || "Internal server error" });
+        }
+    }
+);
+
+/** ── Assign Route Run: PATCH /api/route-runs/:id/assign ──────────────── */
+routeRunRoutes.patch(
+    "/route-runs/:id/assign",
+    requireAuth,
+    requireAnyRole(["Lead", "Admin"]),
+    async (req: Request, res: Response) => {
+        const client = await pool.connect();
+        try {
+            const { id } = req.params;
+            const { assigned_user_oid } = req.body;
+
+            // Input Validation
+            if (assigned_user_oid === "") {
+                return res.status(400).json({ error: "assigned_user_oid cannot be empty string" });
+            }
+
+            // Execute Assignment
+            await assignRouteRun(client, id, assigned_user_oid);
+
+            // Reload & Return
+            const routeRun = await loadRouteRunById(id);
+            return res.json({ ok: true, route_run: routeRun });
+
+        } catch (err: any) {
+            console.error("Error in PATCH /api/route-runs/:id/assign:", err);
+            if (err.status === 404) {
+                return res.status(404).json({ error: err.message });
+            }
+            return res
+                .status(500)
+                .json({ error: err.message || "Internal server error" });
+        } finally {
+            client.release();
         }
     }
 );

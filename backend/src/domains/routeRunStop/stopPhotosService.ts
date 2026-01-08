@@ -1,6 +1,6 @@
 
 import { PoolClient } from "pg";
-import { ensureVisitForRouteRunStop } from "./visitService";
+import { ensureVisitForRouteRunStop } from "../../domains/visit/visitService";
 
 export interface StopPhoto {
     id: string;
@@ -54,7 +54,7 @@ export async function createStopPhotos(
     }
 }
 
-import { getPresignedReadUrl } from "../s3Client";
+import { getPresignedReadUrl } from "../../s3Client";
 
 export async function countStopPhotosByRouteRunStop(
     client: PoolClient | any,

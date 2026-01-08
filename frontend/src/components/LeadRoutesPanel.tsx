@@ -81,10 +81,14 @@ export function LeadRoutesPanel() {
               <OpsTableCell style={{ fontFamily: "monospace", color: "#718096" }}>#{run.id}</OpsTableCell>
               <OpsTableCell>{run.pool_label || run.route_pool_id}</OpsTableCell>
               <OpsTableCell>
-                <OpsBadge
-                  variant={run.status === "in_progress" ? "status" : "neutral"}
-                  value={(run.status || "unknown").replaceAll("_", " ")}
-                />
+                {run.status === "in_progress" && run.completed_stops > 0 ? (
+                  <OpsBadge variant="warning" value="Partially completed" />
+                ) : (
+                  <OpsBadge
+                    variant={run.status === "in_progress" ? "status" : "neutral"}
+                    value={(run.status || "unknown").replaceAll("_", " ")}
+                  />
+                )}
               </OpsTableCell>
               <OpsTableCell>{run.stop_count}</OpsTableCell>
               <OpsTableCell>{new Date(run.run_date).toLocaleDateString()}</OpsTableCell>

@@ -1,5 +1,5 @@
 import { PoolClient } from "pg";
-import { ensureVisitForRouteRunStop } from "./visitService";
+import { ensureVisitForRouteRunStop } from "../../domains/visit/visitService";
 
 export interface InfraIssueInput {
     issue_type: string;

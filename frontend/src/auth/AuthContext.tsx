@@ -6,6 +6,8 @@ import { clearOfflineStateForUser } from "../offline/offlineQueue";
 import { clearPhotosForUser } from "../offline/photoStore";
 import { clearDraftsForUser } from "../offline/stopDraftStore";
 
+let interactionStarted = false;
+
 type Me = { ok: boolean; roles?: string[]; user?: any } | null;
 
 type AuthCtx = {
@@ -54,8 +56,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return res.accessToken;
     } catch (err) {
       if (err instanceof InteractionRequiredAuthError) {
-        // Do NOT trigger interactive auth from a render lifecycle
-        throw new Error("interaction_required");
+        if (interactionStarted) {
+          throw err;
+        }
+        interactionStarted = true;
+        instance.loginRedirect({ scopes: apiScopes, account: acc });
+        throw new Error("auth_redirect_initiated");
       }
       throw err;
     }

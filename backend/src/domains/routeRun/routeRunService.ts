@@ -1,110 +1,12 @@
-import { pool } from "../db";
-import { planRouteWithOsrm, OsrmStop } from "../osrmClient";
-import { makeLegCostCache } from "../routing/routeCost";
-import { postOptimizeCurbsideOrder } from "../routing/curbsidePostOptimize";
-import { regroupCorridorWithinWindow, refineCorridorRuns, enforceCorridorSanity } from "../routing/corridorRefine";
+import { pool } from "../../db";
+import { loadRouteRunById } from "./loaders/loadRouteRunById";
+import { planRouteWithOsrm, OsrmStop } from "../../osrmClient";
+import { makeLegCostCache } from "../../routing/routeCost";
+import { postOptimizeCurbsideOrder } from "../../routing/curbsidePostOptimize";
+import { regroupCorridorWithinWindow, refineCorridorRuns, enforceCorridorSanity } from "../../routing/corridorRefine";
 import { getOverridesByPool } from "./routeOverrideService";
 
-/**
- * Load full route run by ID
- */
-export async function loadRouteRunById(id: number | string) {
-  // ... existing loadRouteRunById body ...
-  const query = `
-    SELECT
-      rr.id                  AS route_run_id,
-      rr.user_id,
-      rr.route_pool_id,
-      rr.base_id,
-      rr.run_date,
-      rr.status,
-      rr.started_at,
-      rr.finished_at,
-      rr.total_distance_m,
-      rr.total_duration_s,
-      rr.created_at          AS route_run_created_at,
-      rr.updated_at          AS route_run_updated_at,
-      rp.label               AS route_pool_label,
-      rrs.id                 AS route_run_stop_id,
-      rrs.sequence,
-      rrs.status             AS stop_status,
-      rrs.completed_at,
-      rrs.planned_distance_m,
-      rrs.planned_duration_s,
-      rrs.created_at         AS route_run_stop_created_at,
-      rrs.updated_at         AS route_run_stop_updated_at,
-      rrs.trash_volume,
-      COALESCE(rrs.asset_id, s.asset_id) AS asset_id,
-      s."STOP_ID",
-      s."STOP_ID"            AS stop_number,
-      s."TRF_DISTRICT_CODE",
-      s."BAY_CODE",
-      s."BEARING_CODE",
-      s."ON_STREET_NAME",
-      s."INTERSECTION_LOC",
-      s."HASTUS_CROSS_STREET_NAME",
-      s."NUM_SHELTERS",
-      s.is_hotspot,
-      s.compactor,
-      s.has_trash,
-      s.lon,
-      s.lat,
-      s.notes
-    FROM route_runs rr
-    LEFT JOIN route_pools rp ON rp.id = rr.route_pool_id
-    JOIN route_run_stops rrs ON rrs.route_run_id = rr.id
-    JOIN stops s ON s."STOP_ID" = rrs.stop_id
-    WHERE rr.id = $1
-    ORDER BY rrs.sequence;
-  `;
 
-  const result = await pool.query(query, [id]);
-
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  const first = result.rows[0];
-  return {
-    id: first.route_run_id,
-    user_id: first.user_id,
-    route_pool_id: first.route_pool_id,
-    route_pool_label: first.route_pool_label,
-    base_id: first.base_id,
-    run_date: first.run_date,
-    status: first.status,
-    started_at: first.started_at,
-    finished_at: first.finished_at,
-    total_distance_m: first.total_distance_m,
-    total_duration_s: first.total_duration_s,
-    created_at: first.route_run_created_at,
-    updated_at: first.route_run_updated_at,
-    stops: result.rows.map((r: any) => ({
-      route_run_stop_id: r.route_run_stop_id,
-      stop_id: r.STOP_ID,
-      asset_id: r.asset_id,
-      stopNumber: r.stop_number,
-      sequence: r.sequence,
-      status: r.stop_status,
-      completed_at: r.completed_at,
-      planned_distance_m: r.planned_distance_m,
-      planned_duration_s: r.planned_duration_s,
-      trash_volume: r.trash_volume,
-      location: { lon: r.lon, lat: r.lat },
-      on_street_name: r.ON_STREET_NAME,
-      cross_street: r.HASTUS_CROSS_STREET_NAME,
-      intersection_loc: r.INTERSECTION_LOC,
-      bearing_code: r.BEARING_CODE,
-      trf_district_code: r.TRF_DISTRICT_CODE,
-      bay_code: r.BAY_CODE,
-      num_shelters: r.NUM_SHELTERS,
-      is_hotspot: r.is_hotspot,
-      compactor: r.compactor,
-      has_trash: r.has_trash,
-      notes: r.notes,
-    })),
-  };
-}
 
 
 const MAX_OSRM_STOPS = 25;
@@ -257,7 +159,7 @@ export async function createRouteRun(
   client: any, // PoolClient
   params: {
     stops?: OsrmStop[]; // Optional: if missing, we fetch based on pool_id
-    user_id?: number;   // OPTIONAL: Legacy/Dev ID. If provided, inserted. If not, NULL/Default.
+    user_id?: number;   // [LEGACY] OID is the preferred identity. If provided, inserted for back-compat.
     assigned_user_oid?: string; // Enterprise Assignment OID (UL)
     created_by_oid?: string;    // Enterprise Creator OID (Lead/Admin)
     route_pool_id: string;
@@ -595,5 +497,25 @@ export async function checkAndCompleteRouteRun(
          AND status NOT IN ('finished', 'completed') -- Avoid overwriting if already done
     `;
     await client.query(updateQuery, [routeRunId]);
+  }
+}
+
+/**
+ * Assign a route run to a specific user (UL)
+ */
+export async function assignRouteRun(client: any, routeRunId: number | string, assignedUserOid: string | null) {
+  const updateQuery = `
+    UPDATE route_runs
+    SET assigned_user_oid = $1,
+        updated_at = NOW()
+    WHERE id = $2
+  `;
+  const result = await client.query(updateQuery, [assignedUserOid, routeRunId]);
+
+  if (result.rowCount === 0) {
+    // throw consistent error
+    const error: any = new Error("Route run not found");
+    error.status = 404;
+    throw error;
   }
 }

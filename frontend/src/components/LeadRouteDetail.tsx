@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
-import { getLeadRouteRunById, type RouteRun } from "../api/routeRuns";
+import { getLeadRouteRunById, assignRouteRun, fetchUlUsers, type RouteRun, type UlUser } from "../api/routeRuns";
 import { OpsLayout } from "./ui/OpsLayout";
 import { OpsCard } from "./ui/OpsCard";
 import { OpsTable, OpsTableRow, OpsTableCell } from "./ui/OpsTable";
@@ -17,13 +17,30 @@ export function LeadRouteDetail({ id, onBack }: LeadRouteDetailProps) {
     const [routeRun, setRouteRun] = useState<RouteRun | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [assignableUsers, setAssignableUsers] = useState<UlUser[]>([]);
+    const [selectedUser, setSelectedUser] = useState<string>("");
+    const [reassigning, setReassigning] = useState(false);
 
     useEffect(() => {
         const fetchDetail = async () => {
             try {
                 const token = await getAccessToken();
-                const data = await getLeadRouteRunById(token, id);
-                setRouteRun(data);
+                const [runData, usersData] = await Promise.all([
+                    getLeadRouteRunById(token, id),
+                    fetchUlUsers(token)
+                ]);
+                setRouteRun(runData);
+
+                // Filter for assignable users (non-Admins)
+                const assignableUsers = usersData.filter(u => u.role !== "Admin");
+                setAssignableUsers(assignableUsers);
+
+                // Preselect current user if found in list
+                const assignedOid = runData.assigned_user_oid; // Note: Ensure interface has this field
+                if (assignedOid) {
+                    setSelectedUser(assignedOid);
+                }
+
             } catch (err: any) {
                 setError(err.message || "Failed to load route detail");
             } finally {
@@ -32,6 +49,29 @@ export function LeadRouteDetail({ id, onBack }: LeadRouteDetailProps) {
         };
         fetchDetail();
     }, [id, getAccessToken]);
+
+    const handleReassign = async () => {
+        if (!routeRun || reassigning) return;
+        setReassigning(true);
+        try {
+            const token = await getAccessToken();
+            // Handle "unassigned" as potential empty string from select, convert to null
+            const targetOid = selectedUser === "" ? null : selectedUser;
+
+            const updatedRun = await assignRouteRun(token, routeRun.id, targetOid);
+            setRouteRun(updatedRun);
+            // Reset local selection to match actual result
+            if (updatedRun.assigned_user_oid) {
+                setSelectedUser(updatedRun.assigned_user_oid);
+            } else {
+                setSelectedUser("");
+            }
+        } catch (err: any) {
+            alert(err.message || "Reassignment failed");
+        } finally {
+            setReassigning(false);
+        }
+    };
 
     if (loading) {
         return (
@@ -73,16 +113,60 @@ export function LeadRouteDetail({ id, onBack }: LeadRouteDetailProps) {
                     <div>
                         <div style={{ fontSize: "0.75rem", color: "#718096", fontWeight: 600, textTransform: "uppercase" }}>Status</div>
                         <div style={{ marginTop: "0.25rem" }}>
-                            <OpsBadge variant={routeRun.status === "completed" ? "success" : "status"} value={routeRun.status.replace("_", " ")} />
+                            {routeRun.status !== "completed" && routeRun.status !== "finished" && routeRun.stops.filter(s => s.status === "done" || s.status === "skipped").length > 0 ? (
+                                <OpsBadge variant="warning" value="Partially completed" />
+                            ) : (
+                                <OpsBadge variant={routeRun.status === "completed" ? "success" : "status"} value={routeRun.status.replace("_", " ")} />
+                            )}
                         </div>
+                    </div>
+                    <div>
+                        <div style={{ fontSize: "0.75rem", color: "#718096", fontWeight: 600, textTransform: "uppercase" }}>Created By</div>
+                        <div style={{ marginTop: "0.25rem", fontWeight: 600 }}>{routeRun.created_by?.display_name ?? "—"}</div>
                     </div>
                     <div>
                         <div style={{ fontSize: "0.75rem", color: "#718096", fontWeight: 600, textTransform: "uppercase" }}>Pool</div>
                         <div style={{ marginTop: "0.25rem", fontWeight: 600 }}>{routeRun.route_pool_id}</div>
                     </div>
                     <div>
-                        <div style={{ fontSize: "0.75rem", color: "#718096", fontWeight: 600, textTransform: "uppercase" }}>Worker</div>
-                        <div style={{ marginTop: "0.25rem", fontWeight: 600 }}>UID:{routeRun.user_id}</div>
+                        <div style={{ fontSize: "0.75rem", color: "#718096", fontWeight: 600, textTransform: "uppercase" }}>Operator</div>
+                        <div style={{ marginTop: "0.25rem", fontWeight: 600 }}>
+                            {routeRun.assigned_user?.display_name ?? "Unassigned"}
+                        </div>
+                    </div>
+                </div>
+
+                <div style={{ marginTop: "1.5rem", paddingTop: "1rem", borderTop: "1px solid #e2e8f0" }}>
+                    <label style={{ fontSize: "0.75rem", color: "#718096", fontWeight: 600, textTransform: "uppercase", display: "block", marginBottom: "0.5rem" }}>
+                        Reassign Route
+                    </label>
+                    <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                        <select
+                            value={selectedUser}
+                            onChange={(e) => setSelectedUser(e.target.value)}
+                            style={{
+                                padding: "0.5rem",
+                                border: "1px solid #e2e8f0",
+                                borderRadius: "0.25rem",
+                                background: "white",
+                                minWidth: "200px"
+                            }}
+                            disabled={reassigning}
+                        >
+                            <option value="">Select New Operator</option>
+                            {assignableUsers.map(u => (
+                                <option key={u.id} value={u.id}>
+                                    {u.displayName}
+                                </option>
+                            ))}
+                        </select>
+                        <OpsButton
+                            onClick={handleReassign}
+                            disabled={reassigning || selectedUser === (routeRun.assigned_user_oid || "")}
+                            size="sm"
+                        >
+                            {reassigning ? "Saving..." : "Reassign"}
+                        </OpsButton>
                     </div>
                 </div>
             </OpsCard>

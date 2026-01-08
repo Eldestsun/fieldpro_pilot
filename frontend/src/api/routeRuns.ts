@@ -8,6 +8,16 @@ export interface RouteRun {
     total_distance_m: number;
     total_duration_s: number;
     status: string;
+    assigned_user_oid?: string | null;
+    assigned_user?: {
+        oid: string;
+        display_name: string;
+        role: string;
+    };
+    created_by?: {
+        oid: string;
+        display_name: string;
+    };
     stops: Stop[];
 }
 
@@ -103,6 +113,29 @@ export async function finishRoute(token: string, routeRunId: number): Promise<Ro
     if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Failed to finish route");
+    }
+
+    const data = await res.json();
+    return data.route_run;
+}
+
+export async function assignRouteRun(
+    token: string,
+    routeRunId: number,
+    assignedUserOid: string | null
+): Promise<RouteRun> {
+    const res = await fetch(`/api/route-runs/${routeRunId}/assign`, {
+        method: "PATCH",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ assigned_user_oid: assignedUserOid }),
+    });
+
+    if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to reassign route");
     }
 
     const data = await res.json();
@@ -476,6 +509,7 @@ export interface LeadRouteRunSummary {
     run_date: string;
     created_at: string;
     stopCount: number;
+    completed_stops: number;
 }
 
 export async function fetchLeadTodaysRuns(token: string): Promise<LeadRouteRunSummary[]> {
@@ -498,6 +532,7 @@ export async function fetchLeadTodaysRuns(token: string): Promise<LeadRouteRunSu
         run_date: r.run_date,
         created_at: r.created_at,
         stopCount: Number(r.stop_count || 0),
+        completed_stops: Number(r.completed_stops || 0),
     }));
 }
 
@@ -886,6 +921,7 @@ export interface OpsRouteRun {
     created_at: string;
     pool_label?: string;
     stop_count: number;
+    completed_stops: number;
 }
 
 export interface OpsCleanLog {

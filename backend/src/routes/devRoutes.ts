@@ -1,7 +1,8 @@
 import { Router, Request, Response } from "express";
 import { pool } from "../db";
 import { OsrmStop } from "../osrmClient";
-import { createRouteRun, loadRouteRunById } from "../services/routeRunService";
+import { createRouteRun } from "../domains/routeRun/routeRunService";
+import { loadRouteRunById } from "../domains/routeRun/loaders/loadRouteRunById";
 
 export const devRoutes = Router();
 

@@ -1,15 +1,16 @@
 
 import { Router, Request, Response } from "express";
 import { requireAuth, requireAnyRole } from "../../authz";
-import { completeStop } from "../../services/cleanLogService";
-import { createHazardForRouteRunStop } from "../../services/hazardService";
+import { completeStop } from "../../domains/routeRunStop/cleanLogService";
+import { createHazardForRouteRunStop } from "../../domains/routeRunStop/hazardService";
 import { pool } from "../../db";
-import { emitObservationsForStop, StopUiPayload } from "../../services/observationService";
+import { emitObservationsForStop, StopUiPayload } from "../../domains/observation/observationService";
 import {
     ensureVisitForRouteRunStop,
     closeVisitForRouteRunStop,
     getVisitContext,
-} from "../../services/visitService";
+} from "../../domains/visit/visitService";
+import { startRouteRunStopInternal } from "../../domains/routeRun/operations/startRouteRunStop";
 
 export const routeRunStopRoutes = Router();
 
@@ -18,59 +19,30 @@ routeRunStopRoutes.post(
     requireAuth,
     requireAnyRole(["UL", "Lead", "Admin"]),
     async (req: Request, res: Response) => {
-        const client = await pool.connect();
         try {
             const { id } = req.params;
             const actorOid = req.user?.oid || "unknown";
 
-            // 1. Transaction to update status
-            await client.query("BEGIN");
+            // Use shared internal helper (Strict Neutrality)
+            // Endpoint Logic: Only 'pending' is allowed.
+            const result = await startRouteRunStopInternal(pool, {
+                routeRunStopId: id,
+                actorOid,
+                allowedStatuses: ["pending"],
+            });
 
-            const updateQuery = `
-                UPDATE route_run_stops
-                SET status = 'in_progress',
-                    started_at = NOW(),
-                    updated_at = NOW()
-                WHERE id = $1 AND status = 'pending'
-                RETURNING *
-            `;
-            const updateRes = await client.query(updateQuery, [id]);
-
-            if (updateRes.rows.length === 0) {
-                await client.query("ROLLBACK");
+            if (result.updated) {
+                // Success
+                return res.json({ ok: true, route_run_stop: result.row });
+            } else {
+                // Failure (Idempotency / Conflict)
+                // UL Endpoint: 409 if not pending (no idempotent success for already started)
                 return res.status(409).json({ error: "Stop already started or not pending" });
             }
 
-            // 2. Ensure Visit (Start of visit interval)
-            const visitId = await ensureVisitForRouteRunStop(client, {
-                routeRunStopId: Number(id),
-                actorOid,
-                visitType: "service",
-            });
-
-            await client.query("COMMIT");
-
-            // 3. Emit "Arrival" Observations (Post-Commit, authoritative side-effect)
-            // We need context (org, loc, asset)
-            const ctx = await getVisitContext(client, Number(id));
-
-            await emitObservationsForStop({
-                phase: "arrival",
-                visitId,
-                orgId: ctx.orgId,
-                assetId: ctx.assetId,
-                locationId: ctx.locationId,
-                actorOid,
-            });
-
-            return res.json({ ok: true, route_run_stop: updateRes.rows[0] });
-
         } catch (err: any) {
-            await client.query("ROLLBACK");
             console.error("Error in /api/route-run-stops/:id/start:", err);
             return res.status(500).json({ error: err.message });
-        } finally {
-            client.release();
         }
     }
 );
@@ -102,10 +74,11 @@ routeRunStopRoutes.post(
             const safety_photo_key = safety_photo_key_legacy ?? safety?.safety_photo_key;
 
             // DEV ONLY: Assume user_id = 123 for now
+            // [LEGACY/DEV-ONLY] Hardcoded legacy ID for development.
             const user_id = 123;
 
             // 1. Validate safety photo in DB (Mandatory for skip)
-            const { countStopPhotosByRouteRunStop } = await import("../../services/stopPhotosService");
+            const { countStopPhotosByRouteRunStop } = await import("../../domains/routeRunStop/stopPhotosService");
             const photoCount = await countStopPhotosByRouteRunStop(pool, Number(id), 'safety');
 
             if (photoCount === 0) {
@@ -198,7 +171,8 @@ routeRunStopRoutes.post(
             });
 
             // 4. Reload Route Run (and check for completion first)
-            const { loadRouteRunById, checkAndCompleteRouteRun } = await import("../../services/routeRunService");
+            const { loadRouteRunById } = await import("../../domains/routeRun/loaders/loadRouteRunById");
+            const { checkAndCompleteRouteRun } = await import("../../domains/routeRun/routeRunService");
             await checkAndCompleteRouteRun(client, lookupRes.rows[0].route_run_id);
 
             const routeRun = await loadRouteRunById(lookupRes.rows[0].route_run_id);
@@ -241,6 +215,7 @@ routeRunStopRoutes.post(
             } = req.body;
 
             // DEV ONLY: Assume user_id = 123 for now
+            // [LEGACY/DEV-ONLY] Hardcoded legacy ID for development. In production, rely on OID.
             const user_id = 123;
 
             // Validate photo_keys (Required for completion)
@@ -249,7 +224,7 @@ routeRunStopRoutes.post(
 
             let hasNewPhotos = false;
             if (!hasLegacyPhotos) {
-                const { countStopPhotosByRouteRunStop } = await import("../../services/stopPhotosService");
+                const { countStopPhotosByRouteRunStop } = await import("../../domains/routeRunStop/stopPhotosService");
                 const count = await countStopPhotosByRouteRunStop(pool, Number(route_run_stop_id));
                 hasNewPhotos = count > 0;
             }

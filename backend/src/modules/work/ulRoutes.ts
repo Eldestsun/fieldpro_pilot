@@ -1,10 +1,10 @@
 import { Router, Response } from "express";
 import { requireAuth, requireAnyRole } from "../../authz";
 import { pool } from "../../db";
-import { loadRouteRunById } from "../../services/routeRunService";
+import { loadRouteRunById } from "../../domains/routeRun/loaders/loadRouteRunById";
 import multer from "multer";
 import { uploadStopPhotos } from "../../s3Client";
-import { createStopPhotos, listStopPhotosByRouteRunStop } from "../../services/stopPhotosService";
+import { createStopPhotos, listStopPhotosByRouteRunStop } from "../../domains/routeRunStop/stopPhotosService";
 
 const upload = multer({ storage: multer.memoryStorage() });
 

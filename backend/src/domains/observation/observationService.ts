@@ -1,5 +1,5 @@
 import { PoolClient } from "pg";
-import { pool } from "../db";
+import { pool } from "../../db";
 
 // Raw UI payload from UL
 export type StopUiPayload = {
