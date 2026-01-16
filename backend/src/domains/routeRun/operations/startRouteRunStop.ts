@@ -53,24 +53,9 @@ export async function startRouteRunStopInternal(
             await client.query("COMMIT");
 
             // 3. Emit Observations (post-commit)
-            // We need context
-            const ctx = await getVisitContext(client, Number(routeRunStopId));
-            // getVisitContext usually takes a client?
-            // Checking usage in other files... ensureVisit takes client. getVisitContext takes client?
-            // I'll use a new client or the pool for getVisitContext to be safe if it's read-only.
-            // Actually `emitObservationsForStop` takes NO client, it imports pool or service.
-            // So emitting is fine.
-            // Just need ctx.
-            // Context reading is separate read.
+            // [REMOVED] Per user requirement, we do NOT emit "assumed dirty" observations on start.
+            // Observations are only emitted on completion (paired dirty->clean) or skip.
 
-            await emitObservationsForStop({
-                phase: "arrival",
-                visitId,
-                orgId: ctx.orgId,
-                assetId: ctx.assetId,
-                locationId: ctx.locationId,
-                actorOid,
-            });
 
             return {
                 updated: true,

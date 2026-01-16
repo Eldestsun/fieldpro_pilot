@@ -3,8 +3,8 @@ import { useMsal } from "@azure/msal-react";
 import type { AccountInfo, AuthenticationResult } from "@azure/msal-browser";
 import { InteractionRequiredAuthError } from "@azure/msal-browser";
 import { clearOfflineStateForUser } from "../offline/offlineQueue";
-import { clearPhotosForUser } from "../offline/photoStore";
-import { clearDraftsForUser } from "../offline/stopDraftStore";
+import { clearPhotosForUser, closePhotoDB } from "../offline/photoStore";
+import { clearDraftsForUser, closeStopDraftDB } from "../offline/stopDraftStore";
 
 let interactionStarted = false;
 
@@ -115,6 +115,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // We'll await them to ensure clean state before redirect.
       await clearPhotosForUser(tenantId, oid).catch(console.error);
       await clearDraftsForUser(tenantId, oid).catch(console.error);
+    }
+
+    // 3. Purge entire IndexedDB (Hygiene)
+    // Close any open connections first to prevent 'blocked' events
+    closePhotoDB();
+    closeStopDraftDB();
+
+    // Give a tiny tick for closing to process? Not strictly needed if sync, but safe.
+    try {
+      const req = indexedDB.deleteDatabase('fieldpro-offline');
+      req.onerror = () => console.error("Failed to delete offline DB", req.error);
+      req.onblocked = () => console.warn("Offline DB delete blocked");
+      req.onsuccess = () => console.log("Offline DB deleted successfully");
+    } catch (e) {
+      console.error("Error initiating DB delete", e);
     }
 
     setMe(null);

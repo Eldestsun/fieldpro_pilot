@@ -2,6 +2,7 @@ export interface StopDraft {
     draftVersion: 1;
     updatedAt: string;
     routeRunStopId: number;
+    routeRunId?: number; // Added for scope validation
     stepIndex: number;
     stepKey?: string;
 
@@ -16,10 +17,17 @@ const DB_NAME = "fieldpro-offline";
 const STORE_NAME = "stopDrafts";
 const DB_VERSION = 2; // Bumped to 2 to include new store
 
+let dbInstance: IDBDatabase | null = null;
+
 function openDB(): Promise<IDBDatabase> {
+    if (dbInstance) return Promise.resolve(dbInstance);
+
     return new Promise((resolve, reject) => {
         const req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onerror = () => console.error("[stopDraftStore] open error", req.error);
+        req.onerror = () => {
+            console.error("[stopDraftStore] open error", req.error);
+            reject(req.error);
+        };
         req.onupgradeneeded = (e) => {
             const db = (e.target as IDBOpenDBRequest).result;
             // Ensure photos store exists (if we started from scratch here)
@@ -31,9 +39,26 @@ function openDB(): Promise<IDBDatabase> {
                 db.createObjectStore(STORE_NAME, { keyPath: "id" });
             }
         };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+            dbInstance = req.result;
+            // Handle connection closing (e.g. from other tabs or deleteDatabase calls)
+            dbInstance.onversionchange = () => {
+                dbInstance?.close();
+                dbInstance = null;
+            };
+            dbInstance.onclose = () => {
+                dbInstance = null;
+            };
+            resolve(dbInstance);
+        };
     });
+}
+
+export function closeStopDraftDB() {
+    if (dbInstance) {
+        dbInstance.close();
+        dbInstance = null;
+    }
 }
 
 function getDraftKey(tenantId: string, oid: string, routeRunStopId: number | string): string {
@@ -44,7 +69,7 @@ export async function saveStopDraft(params: {
     tenantId: string;
     oid: string;
     routeRunStopId: number;
-    draft: Omit<StopDraft, "updatedAt" | "draftVersion">;
+    draft: Omit<StopDraft, "updatedAt" | "draftVersion"> & { routeRunId?: number };
 }): Promise<void> {
     const { tenantId, oid, routeRunStopId, draft } = params;
     if (!tenantId || !oid) return;
@@ -73,8 +98,9 @@ export async function loadStopDraft(params: {
     tenantId: string;
     oid: string;
     routeRunStopId: number;
+    currentRouteRunId?: number; // Optional check
 }): Promise<StopDraft | null> {
-    const { tenantId, oid, routeRunStopId } = params;
+    const { tenantId, oid, routeRunStopId, currentRouteRunId } = params;
     if (!tenantId || !oid) return null;
 
     const db = await openDB();
@@ -85,7 +111,35 @@ export async function loadStopDraft(params: {
         const store = tx.objectStore(STORE_NAME);
         const req = store.get(id);
 
-        req.onsuccess = () => resolve(req.result || null);
+        req.onsuccess = () => {
+            const draft = req.result as StopDraft;
+            if (!draft) {
+                resolve(null);
+                return;
+            }
+
+            // 1. Validate Scope (prevent zombie drafts from previous runs with same stop ID)
+            if (currentRouteRunId !== undefined && draft.routeRunId !== undefined) {
+                if (draft.routeRunId !== currentRouteRunId) {
+                    console.warn("[loadStopDraft] Discarding draft due to routeRunId mismatch", { draftRun: draft.routeRunId, currentRun: currentRouteRunId });
+                    resolve(null);
+                    return;
+                }
+            }
+
+            // 2. Validate TTL (24 hours)
+            const draftTime = new Date(draft.updatedAt).getTime();
+            const now = Date.now();
+            const hoursOld = (now - draftTime) / (1000 * 60 * 60);
+
+            if (hoursOld > 24) {
+                console.warn("[loadStopDraft] Discarding expired draft", { ageHours: hoursOld });
+                resolve(null); // Optionally delete it here too?
+                return;
+            }
+
+            resolve(draft);
+        };
         req.onerror = () => reject(req.error);
     });
 }

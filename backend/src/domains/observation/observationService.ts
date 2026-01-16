@@ -119,6 +119,7 @@ function submitObservations(ui: StopUiPayload): ObservationInsert[] {
     }
 
     // Cleaning (Paired: Dirty -> Clean)
+    // Cleaning (Paired: Dirty -> Clean)
     if (ui.picked_up_litter) {
         obs.push({ observation_type: "ground_condition", payload: { state: "dirty" } });
         obs.push({ observation_type: "ground_condition", payload: { state: "clean" } });
@@ -260,4 +261,29 @@ async function insertObservations(
             ]
         );
     }
+}
+
+export async function emitSpotCheckObservation(params: {
+    pool: any;
+    visitId: number;
+    orgId: number;
+    locationId: number;
+    assetId: number;
+    actorOid: string;
+}) {
+    const { pool, visitId, orgId, locationId, assetId, actorOid } = params;
+    await pool.query(
+        `
+    INSERT INTO core.observations (
+      org_id,
+      visit_id,
+      location_id,
+      asset_id,
+      observation_type,
+      payload,
+      created_by_oid
+    ) VALUES ($1, $2, $3, $4, 'spot_check', '{}'::jsonb, $5)
+    `,
+        [orgId, visitId, locationId, assetId, actorOid]
+    );
 }

@@ -3,7 +3,7 @@ import { checkAndCompleteRouteRun } from "../../domains/routeRun/routeRunService
 import { loadRouteRunById } from "../../domains/routeRun/loaders/loadRouteRunById";
 import { createInfrastructureIssuesForRouteRunStop, InfraIssueInput } from "./infrastructureIssueService";
 import { ensureVisitForRouteRunStop, closeVisitForRouteRunStop, getVisitContext } from "../../domains/visit/visitService";
-import { emitObservationsForStop, StopUiPayload } from "../../domains/observation/observationService";
+import { emitObservationsForStop, StopUiPayload, emitSpotCheckObservation } from "../../domains/observation/observationService";
 
 /**
  * Complete a stop and create a clean log
@@ -23,6 +23,7 @@ export async function completeStop(
         trashVolume?: number;
         actorOid?: string;
         safety?: { hazard_types: string[]; safetyConcern?: boolean }; // Passed for observation mapping
+        spotCheck?: boolean; // New field for spot check logic
     }
 ) {
     const client = await pool.connect();
@@ -39,23 +40,31 @@ export async function completeStop(
             infraIssues = [],
             trashVolume,
             actorOid,
+            spotCheck,
         } = data;
 
-        // 1. Look up route_run_stop
+
+        // 1. Start transaction immediately to lock the row
+        await client.query("BEGIN");
+
+        // 2. Look up route_run_stop with locking to prevent double-submit races
         const findQuery = `
       SELECT route_run_id, stop_id, asset_id, status, started_at
       FROM route_run_stops
       WHERE id = $1
+      FOR UPDATE
     `;
         const findRes = await client.query(findQuery, [routeRunStopId]);
 
         if (findRes.rows.length === 0) {
+            await client.query("ROLLBACK");
             return null;
         }
 
         const { route_run_id, stop_id, asset_id, status, started_at } = findRes.rows[0];
 
         if (status === 'done') {
+            await client.query("ROLLBACK");
             const err: any = new Error("Stop is already complete");
             err.code = "ALREADY_COMPLETE";
             throw err;
@@ -71,7 +80,8 @@ export async function completeStop(
         }
 
         // 2. Insert clean_logs and update route_run_stops
-        await client.query("BEGIN");
+        // (Transaction already started)
+
 
         // Ensure visit exists for this stop execution
         const visitId = await ensureVisitForRouteRunStop(client, {
@@ -79,6 +89,39 @@ export async function completeStop(
             actorOid: actorOid || "unknown",
             visitType: "service",
         });
+
+        // Fetch context early for observations (used by both Spot Check and Submit phases)
+        const ctx = await getVisitContext(client, Number(routeRunStopId));
+
+        // Spot Check observation (document-only, no payload)
+        if (spotCheck === true) {
+            await emitSpotCheckObservation({
+                pool: client,
+                visitId,
+                orgId: ctx.orgId,
+                locationId: ctx.locationId,
+                assetId: ctx.assetId,
+                actorOid: actorOid || "unknown",
+            });
+            // Re-use keys for main payload if needed, but we typically use them from input
+        }
+
+        // Fetch context if we didn't already (e.g. if spotCheck was false)
+        // Or better, just fetch it once above.
+        // It's cheaper to just fetch it once.
+        // HOWEVER, the code below used `ctx` at line 180+. I removed it from 188.
+        // So I must ensure `ctx` is available for the bottom part too.
+
+        // Strategy: 
+        // 1. Fetch ctx ONCE before the spotCheck check.
+        // 2. Use it for spotCheck.
+        // 3. Use it for the bottom part.
+
+        // Wait, the ReplacementChunks logic requires me to be precise about what I am replacing.
+        // I deleted line 188. I need to insert `const ctx = ...` somewhere above line 94.
+
+        // Correction: I will do this in two chunks correctly.
+
 
         const insertLogQuery = `
       INSERT INTO clean_logs (
@@ -167,7 +210,7 @@ export async function completeStop(
         await client.query("COMMIT");
 
         // 3. Emit "Submit" Observations (Post-Commit, authoritative side-effect)
-        const ctx = await getVisitContext(client, Number(routeRunStopId));
+
 
         // Construct UI Payload
         // Note: infraIssues uses 'issue_type' which matches our expected strings (glass_damage etc)

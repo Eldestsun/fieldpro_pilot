@@ -8,7 +8,6 @@ import { OpsTable, OpsTableRow, OpsTableCell } from "./ui/OpsTable";
 import { OpsBadge } from "./ui/OpsBadge";
 import { OpsButton } from "./ui/OpsButton";
 import { LeadRouteDetail } from "./LeadRouteDetail";
-import { LeadCompletedRouteDetail } from "./LeadCompletedRouteDetail";
 import { RouteCreatePanel } from "./RouteCreatePanel";
 
 export function LeadRoutesPanel() {
@@ -39,12 +38,18 @@ export function LeadRoutesPanel() {
     fetchRuns();
   }, [getAccessToken]);
 
-  if (selectedActiveRunId) {
-    return <LeadRouteDetail id={selectedActiveRunId} onBack={() => setSelectedActiveRunId(null)} />;
-  }
-
-  if (selectedCompletedRunId) {
-    return <LeadCompletedRouteDetail id={selectedCompletedRunId} onBack={() => setSelectedCompletedRunId(null)} />;
+  // Unified detail view for both active and completed
+  const selectedRunId = selectedActiveRunId || selectedCompletedRunId;
+  if (selectedRunId) {
+    return (
+      <LeadRouteDetail
+        id={selectedRunId}
+        onBack={() => {
+          setSelectedActiveRunId(null);
+          setSelectedCompletedRunId(null);
+        }}
+      />
+    );
   }
 
   const isCompletedStatus = (s?: string) => {

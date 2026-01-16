@@ -320,6 +320,7 @@ export function useTodayRoute() {
                     notes: safetyState[stopId]?.notes || "",
                     safety_photo_key: safetyState[stopId]?.safetyPhotoKey,
                 } : undefined,
+                spotCheck: checklist.spotCheck,
             };
 
             const updatedRun = await completeStop(token, stopId, payload);
@@ -351,6 +352,7 @@ export function useTodayRoute() {
                         notes: safetyState[stopId]?.notes || "",
                         safety_photo_key: safetyState[stopId]?.safetyPhotoKey,
                     } : undefined,
+                    spotCheck: checklist.spotCheck,
                 };
 
                 const action: OfflineAction = {
@@ -661,6 +663,16 @@ export function useTodayRoute() {
         try {
             const token = await getAccessToken();
             const photos = await apiUploadStopPhotos(token, routeRun.id, stopId, files, kind);
+
+            // Sync with photoKeysMap so handleCompleteStop can find them
+            const newKeys = photos.map(p => p.s3_key);
+            setPhotoKeysMap(prev => {
+                const existing = prev[stopId] || [];
+                // Avoid duplicates
+                const set = new Set([...existing, ...newKeys]);
+                return { ...prev, [stopId]: Array.from(set) };
+            });
+
             return { photos, queued: false };
         } catch (err: any) {
             if (isNetworkFailure(err)) {

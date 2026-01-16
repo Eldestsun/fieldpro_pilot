@@ -48,22 +48,67 @@ export async function loadRouteRunById(id: number | string) {
       s.has_trash,
       s.lon,
       s.lat,
-      s.notes
+      s.notes,
+      cl.picked_up_litter,
+      cl.emptied_trash,
+      cl.washed_shelter,
+      cl.washed_pad,
+      cl.washed_can
     FROM route_runs rr
     LEFT JOIN route_pools rp ON rp.id = rr.route_pool_id
     LEFT JOIN identity_directory id_dir ON id_dir.oid = rr.assigned_user_oid
     LEFT JOIN identity_directory creator ON creator.oid = rr.created_by_oid
     JOIN route_run_stops rrs ON rrs.route_run_id = rr.id
     JOIN stops s ON s."STOP_ID" = rrs.stop_id
+    LEFT JOIN clean_logs cl ON cl.route_run_stop_id = rrs.id
     WHERE rr.id = $1
     ORDER BY rrs.sequence;
   `;
 
-    const result = await pool.query(query, [id]);
+    // Fetch observation-based events
+    const eventsQuery = `
+      SELECT
+        sp.route_run_stop_id,
+        o.observation_type,
+        o.created_at AS observed_at,
+        array_agg(sp.s3_key)
+          FILTER (WHERE sp.s3_key IS NOT NULL) AS photo_keys
+      FROM public.route_run_stops rrs
+      JOIN public.stop_photos sp ON sp.route_run_stop_id = rrs.id
+      JOIN core.visits v ON v.id = sp.visit_id
+      JOIN core.observations o ON o.visit_id = v.id
+      WHERE rrs.route_run_id = $1
+        AND o.observation_type = 'spot_check'
+      GROUP BY
+        sp.route_run_stop_id,
+        o.observation_type,
+        o.created_at
+    `;
 
-    if (result.rows.length === 0) {
+    // Execute queries in parallel
+    const [runRes, eventsRes] = await Promise.all([
+        pool.query(query, [id]),
+        pool.query(eventsQuery, [id])
+    ]);
+
+    if (runRes.rows.length === 0) {
         return null;
     }
+
+    // Map events by stop ID
+    const eventsByStop: Record<number, any[]> = {};
+    eventsRes.rows.forEach((row: any) => {
+        if (!eventsByStop[row.route_run_stop_id]) {
+            eventsByStop[row.route_run_stop_id] = [];
+        }
+        eventsByStop[row.route_run_stop_id].push({
+            type: row.observation_type,
+            occurredAt: row.observed_at,
+            photoKeys: row.photo_keys || []
+        });
+    });
+
+    const result = runRes;
 
     const first = result.rows[0];
     return {
@@ -112,6 +157,13 @@ export async function loadRouteRunById(id: number | string) {
             compactor: r.compactor,
             has_trash: r.has_trash,
             notes: r.notes,
+            // Cleaning data
+            picked_up_litter: r.picked_up_litter,
+            emptied_trash: r.emptied_trash,
+            washed_shelter: r.washed_shelter,
+            washed_pad: r.washed_pad,
+            washed_can: r.washed_can,
+            events: eventsByStop[r.route_run_stop_id] || [], // Attach events
         })),
     };
 }

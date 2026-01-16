@@ -40,6 +40,19 @@ export interface Stop {
     compactor: boolean;
     has_trash: boolean;
     trash_volume?: number;
+    events?: RouteRunStopEvent[];
+    // Cleaning Data
+    picked_up_litter?: boolean;
+    emptied_trash?: boolean;
+    washed_shelter?: boolean;
+    washed_pad?: boolean;
+    washed_can?: boolean;
+}
+
+export interface RouteRunStopEvent {
+    type: string;
+    occurredAt: string;
+    photoKeys: string[];
 }
 
 export interface ChecklistState {
@@ -49,6 +62,7 @@ export interface ChecklistState {
     washed_pad: boolean;
     washed_can: boolean;
     trashVolume?: number;
+    spotCheck?: boolean;
 }
 
 export const EMPTY_CHECKLIST: ChecklistState = {
@@ -58,6 +72,7 @@ export const EMPTY_CHECKLIST: ChecklistState = {
     washed_pad: false,
     washed_can: false,
     trashVolume: undefined,
+    spotCheck: false,
 };
 
 export async function getTodayRoute(token: string): Promise<RouteRun | null> {
@@ -165,6 +180,7 @@ export interface InfraIssuePayload {
     component?: string;
     cause?: string;
     notes?: string | null;
+    photo_key?: string;
 }
 
 export interface HazardPayload {
@@ -193,6 +209,7 @@ export interface CompleteStopPayload {
     infraIssues?: InfraIssuePayload[];
     safety?: SafetyPayload;
     trashVolume?: number;
+    spotCheck?: boolean;
 }
 
 export async function completeStop(
@@ -377,7 +394,7 @@ export interface Pool {
     id: string;
     name: string;          // normalized display label for UI
     label?: string;        // raw backend label if present
-    active?: boolean;
+    active: boolean;
     trfDistrict?: string;
     defaultMaxMinutes?: number;
     region_id?: string;

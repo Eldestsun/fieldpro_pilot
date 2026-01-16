@@ -212,6 +212,7 @@ routeRunStopRoutes.post(
                 infraIssues, // optional array of infra issues
                 safety, // optional safety object { hazard_types[], notes?, severity?, safety_photo_key? }
                 trashVolume, // optional integer 0-4
+                spotCheck, // optional boolean
             } = req.body;
 
             // DEV ONLY: Assume user_id = 123 for now
@@ -233,24 +234,31 @@ routeRunStopRoutes.post(
                 return res.status(400).json({ error: "After photo is required to complete a stop" });
             }
 
-            // Validate trashVolume (Required for completion)
-            if (trashVolume === undefined || trashVolume === null) {
-                return res.status(400).json({ error: "trashVolume is required" });
-            }
-            if (!Number.isInteger(trashVolume) || trashVolume < 0 || trashVolume > 4) {
-                return res.status(400).json({ error: "trashVolume must be an integer between 0 and 4" });
-            }
-
-            // Validate cleaning tasks (At least one required)
+            // Validate cleaning tasks or Spot Check
             const anyCleaningTask =
                 !!picked_up_litter ||
                 !!emptied_trash ||
                 !!washed_shelter ||
-                !!washed_pad;
+                !!washed_pad ||
+                !!washed_can;
 
-            if (!anyCleaningTask) {
-                return res.status(400).json({ error: "At least one cleaning task must be true to complete a stop" });
+            const isSpotCheck = spotCheck === true;
+
+            if (!anyCleaningTask && !isSpotCheck) {
+                return res.status(400).json({ error: "Stop completion requires a cleaning action or a spot check" });
             }
+
+            // Validate trashVolume (Required only if cleaning)
+            if (anyCleaningTask) {
+                if (trashVolume === undefined || trashVolume === null) {
+                    return res.status(400).json({ error: "trashVolume is required" });
+                }
+                if (!Number.isInteger(trashVolume) || trashVolume < 0 || trashVolume > 4) {
+                    return res.status(400).json({ error: "trashVolume must be an integer between 0 and 4" });
+                }
+            }
+
+
 
             // Start transaction for complete + hazard
             const client = await pool.connect();
@@ -316,6 +324,7 @@ routeRunStopRoutes.post(
                 trashVolume,
                 actorOid: req.user?.oid || "unknown", // Pass actorOid, fallback for safety
                 safety, // Pass safety object for observation mapping
+                spotCheck: isSpotCheck,
             });
 
             if (!result) {
