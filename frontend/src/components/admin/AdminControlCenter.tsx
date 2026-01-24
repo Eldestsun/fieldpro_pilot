@@ -61,7 +61,8 @@ interface DifficultyResponse {
 // ── Component ───────────────────────────────────────────────────────────────
 
 export const AdminControlCenter: React.FC = () => {
-    const { getAccessToken, authReady } = useAuth();
+    const { getAccessToken, isLoading } = useAuth();
+    const authReady = !isLoading;
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 

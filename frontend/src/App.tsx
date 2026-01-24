@@ -75,7 +75,6 @@ export default function App() {
     return <LoginPage onSignIn={signIn} />;
   }
 
-
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "#f8fafc" }}>
       <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "1rem 2rem" }}>
