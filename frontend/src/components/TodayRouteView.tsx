@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useTodayRoute } from "../hooks/useTodayRoute";
 import type { RouteRun } from "../api/routeRuns";
 import { useSyncStatus } from "../offline/useSyncStatus";
@@ -54,18 +54,6 @@ export function TodayRouteView() {
     const syncStatus = useSyncStatus();
 
     const [showSummary, setShowSummary] = useState(false);
-
-    // Reassignment Banner Logic
-    const [showReassignedBanner, setShowReassignedBanner] = useState(false);
-
-    useEffect(() => {
-        if (routeRun) {
-            sessionStorage.setItem("ul_had_route", "true");
-            setShowReassignedBanner(false);
-        } else if (!loading && !routeRun && sessionStorage.getItem("ul_had_route") === "true") {
-            setShowReassignedBanner(true);
-        }
-    }, [routeRun, loading]);
 
     // Map selection handler
     // Map selection handler
@@ -127,29 +115,7 @@ export function TodayRouteView() {
         );
     }
 
-    // Reassigned Banner State
-    if (showReassignedBanner) {
-        return (
-            <div style={{ padding: "2rem", textAlign: "center", color: "#2d3748" }}>
-                <div style={{
-                    backgroundColor: "#ebf8ff",
-                    border: "1px solid #bee3f8",
-                    borderRadius: "8px",
-                    padding: "1.5rem",
-                    maxWidth: "400px",
-                    margin: "0 auto"
-                }}>
-                    <h3 style={{ margin: "0 0 0.5rem 0", color: "#2c5282" }}>This route has been reassigned</h3>
-                    <p style={{ margin: 0, color: "#4a5568" }}>If you believe this is a mistake, contact your lead.</p>
-                </div>
-                <button onClick={fetchRoute} style={{ padding: "0.5rem 1rem", marginTop: "2rem", color: "#718096", textDecoration: "underline", background: "none", border: "none", cursor: "pointer" }}>
-                    Check for updates
-                </button>
-            </div>
-        );
-    }
-
-    // Empty State (No Route & No Reassignment history)
+    // Empty State
     if (!routeRun) {
         return (
             <div style={{ padding: "2rem", textAlign: "center", color: "#555" }}>

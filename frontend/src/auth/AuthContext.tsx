@@ -1,12 +1,9 @@
 import { createContext, useContext, useMemo, useState, useCallback, useEffect } from "react";
 import { useMsal } from "@azure/msal-react";
 import type { AccountInfo, AuthenticationResult } from "@azure/msal-browser";
-import { InteractionRequiredAuthError } from "@azure/msal-browser";
 import { clearOfflineStateForUser } from "../offline/offlineQueue";
-import { clearPhotosForUser, closePhotoDB } from "../offline/photoStore";
-import { clearDraftsForUser, closeStopDraftDB } from "../offline/stopDraftStore";
-
-let interactionStarted = false;
+import { clearPhotosForUser } from "../offline/photoStore";
+import { clearDraftsForUser } from "../offline/stopDraftStore";
 
 type Me = { ok: boolean; roles?: string[]; user?: any } | null;
 
@@ -19,7 +16,6 @@ type AuthCtx = {
   me: Me;
   refreshMe: () => Promise<void>;
   isLoading: boolean;
-  authReady: boolean;
 };
 
 const AuthContext = createContext<AuthCtx | undefined>(undefined);
@@ -35,7 +31,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const account = (accounts && accounts[0]) || null;
   const isSignedIn = !!account;
-  const authReady = isSignedIn && !!me && !isLoading;
 
   const getAccessToken = useCallback(async () => {
     const acc =
@@ -43,51 +38,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       account ||
       instance.getAllAccounts()[0];
 
-    if (!acc) {
-      throw new Error("No signed-in account found for token acquisition.");
-    }
+    if (!acc) throw new Error("No signed-in account found for token acquisition.");
 
-    try {
-      const res: AuthenticationResult = await instance.acquireTokenSilent({
-        account: acc,
-        scopes: apiScopes,
-      });
+    const res: AuthenticationResult = await instance.acquireTokenSilent({
+      account: acc,
+      scopes: apiScopes,
+    });
 
-      return res.accessToken;
-    } catch (err) {
-      if (err instanceof InteractionRequiredAuthError) {
-        if (interactionStarted) {
-          throw err;
-        }
-        interactionStarted = true;
-        instance.loginRedirect({ scopes: apiScopes, account: acc });
-        throw new Error("auth_redirect_initiated");
-      }
-      throw err;
-    }
+    return res.accessToken;
   }, [account, instance]);
 
   const fetchMe = useCallback(async () => {
     try {
       const token = await getAccessToken();
-      const r = await fetch("/api/secure/ping", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
+      const r = await fetch("/api/secure/ping", { headers: { Authorization: `Bearer ${token}` } });
       if (r.ok) {
         setMe(await r.json());
       } else {
         setMe(null);
       }
-    } catch (err: any) {
-      if (err?.message === "interaction_required") {
-        // Auth not ready yet; wait for explicit user sign-in
-        return;
-      }
+    } catch {
       setMe(null);
     }
   }, [getAccessToken]);
 
+  // Auto-fetch identity when signed in but me is missing
+  useEffect(() => {
+    if (isSignedIn && !me && !isLoading) {
+      setIsLoading(true);
+      fetchMe().finally(() => setIsLoading(false));
+    }
+  }, [isSignedIn, me, isLoading, fetchMe]);
 
   const signIn = useCallback(async () => {
     const result = await instance.loginPopup({ scopes: [...basicScopes, ...apiScopes] });
@@ -117,21 +98,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await clearDraftsForUser(tenantId, oid).catch(console.error);
     }
 
-    // 3. Purge entire IndexedDB (Hygiene)
-    // Close any open connections first to prevent 'blocked' events
-    closePhotoDB();
-    closeStopDraftDB();
-
-    // Give a tiny tick for closing to process? Not strictly needed if sync, but safe.
-    try {
-      const req = indexedDB.deleteDatabase('fieldpro-offline');
-      req.onerror = () => console.error("Failed to delete offline DB", req.error);
-      req.onblocked = () => console.warn("Offline DB delete blocked");
-      req.onsuccess = () => console.log("Offline DB deleted successfully");
-    } catch (e) {
-      console.error("Error initiating DB delete", e);
-    }
-
     setMe(null);
     await instance.logoutPopup();
   }, [instance, account]);
@@ -142,35 +108,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false);
   }, [fetchMe]);
 
-  // On refresh, MSAL may already have an account cached. Make sure we hydrate `me`
-  // so the rest of the app can render the correct view/roles.
-  useEffect(() => {
-    if (!isSignedIn || me || isLoading) return;
-    setIsLoading(true);
-    fetchMe().finally(() => setIsLoading(false));
-  }, [isSignedIn, me, isLoading, fetchMe]);
-
   const value = useMemo<AuthCtx>(() => ({
-    account,
-    isSignedIn,
-    signIn,
-    signOut,
-    getAccessToken,
-    me,
-    refreshMe,
-    isLoading,
-    authReady
-  }), [
-    account,
-    isSignedIn,
-    signIn,
-    signOut,
-    getAccessToken,
-    me,
-    refreshMe,
-    isLoading,
-    authReady
-  ]);
+    account, isSignedIn, signIn, signOut, getAccessToken, me, refreshMe, isLoading,
+  }), [account, isSignedIn, signIn, signOut, getAccessToken, me, refreshMe, isLoading]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

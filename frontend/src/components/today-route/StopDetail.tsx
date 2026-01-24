@@ -80,7 +80,7 @@ export function StopDetail({
     isRouteCompleted,
     hasStartedThisStop,
     checklist,
-    attachedPhotoKeys: _attachedPhotoKeys,
+    attachedPhotoKeys,
     isUploadingPhoto,
     isCompletingStop,
     onBack,
@@ -95,11 +95,11 @@ export function StopDetail({
     onSetInfra,
     onSkipStop,
     currentStep = "safety",
-    onNextStep: _onNextStep,
+    onNextStep,
     onSetStep,
     uploadPhotos,
     fetchPhotos,
-    routeRunId,
+    // routeRunId, // Unused
 }: StopDetailProps) {
     const { account } = useAuth();
     const queuedUploadCount = getQueuedUploadCountForStop(
@@ -116,14 +116,14 @@ export function StopDetail({
         stop.route_run_stop_id
     );
 
-    const _isSkipQueued = hasPendingSkipStopForStop(
+    const isSkipQueued = hasPendingSkipStopForStop(
         account?.tenantId,
         account?.idTokenClaims?.oid || account?.localAccountId,
         stop.route_run_stop_id
     );
 
     // Safety Photo Queue
-    const _queuedSafetyCount = getQueuedUploadCountForStop(
+    const queuedSafetyCount = getQueuedUploadCountForStop(
         account?.tenantId,
         account?.idTokenClaims?.oid || account?.localAccountId,
         stop.route_run_stop_id,
@@ -138,34 +138,10 @@ export function StopDetail({
     const startedByStatus = normalizedStatus === "in_progress";
     const effectiveHasStartedThisStop = hasStartedThisStop || startedByStatus;
 
-    // Prevent state leakage: Reset per-stop UI state when the active stop changes, before draft hydration runs.
-    useEffect(() => {
-        // Reset all checklist fields to false, trashVolume undefined
-        onSetChecklist('picked_up_litter', false);
-        onSetChecklist('emptied_trash', false);
-        onSetChecklist('washed_shelter', false);
-        onSetChecklist('washed_pad', false);
-        onSetChecklist('trashVolume', undefined as any);
-        // Reset local UI state related to the stop
-        setSelectedFiles([]);
-        setExistingPhotos([]);
-        setPreviewUrl(null);
-        setSelectedInfraKeys([]);
-        setInfraNotes("");
-        // Reset collapsible state
-        setIsReportSafetyOpen(false);
-        setIsReportInfraOpen(false);
-        // Reset after-photo taken state
-        setAfterPhotoTaken(false);
-        // (Safety and Infra state are managed by parent via onSetSafety/onSetInfra)
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [stop.route_run_stop_id]);
-
     // Multi-photo State
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [existingPhotos, setExistingPhotos] = useState<PhotoDto[]>([]);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-    const [afterPhotoTaken, setAfterPhotoTaken] = useState(false);
 
 
 
@@ -195,53 +171,40 @@ export function StopDetail({
         }
     }, [stop.route_run_stop_id, fetchPhotos, queueTick]);
 
-    // DRAFTS: Load on mount (guarded against stale async results)
+    // DRAFTS: Load on mount
     useEffect(() => {
         if (!account?.tenantId || !stop.route_run_stop_id) return;
-
         const oid = account?.idTokenClaims?.oid || account?.localAccountId;
-        const stopIdAtRequestTime = stop.route_run_stop_id;
-        let cancelled = false;
+        const stopId = stop.route_run_stop_id;
 
-        loadStopDraft({
-            tenantId: account.tenantId,
-            oid,
-            routeRunStopId: stopIdAtRequestTime,
-            currentRouteRunId: Number(routeRunId), // Pass scope for validation
-        })
+        loadStopDraft({ tenantId: account.tenantId, oid, routeRunStopId: stopId })
             .then(draft => {
-                // Guard: only apply if still on the same stop
-                if (cancelled) return;
-                if (stop.route_run_stop_id !== stopIdAtRequestTime) return;
-                if (!draft) return;
-
-                if (draft.checklist) {
-                    Object.entries(draft.checklist).forEach(([k, v]) => {
-                        onSetChecklist(k as keyof ChecklistState, v as any);
-                    });
-                }
-
-                if (draft.trashVolume !== undefined) {
-                    onSetChecklist("trashVolume", draft.trashVolume);
-                }
-
-                if (draft.safety) {
-                    onSetSafety?.(draft.safety);
-                }
-
-                if (draft.infra) {
-                    onSetInfra?.(draft.infra);
-                }
-
-                if (draft.stepKey && onSetStep) {
-                    onSetStep(draft.stepKey as WizardStep);
+                if (draft) {
+                    // Hydrate state
+                    if (draft.checklist) {
+                        // We have to set each field individually or update hook to accept bulk?
+                        // Hook exposes setChecklistForStop(key, val).
+                        Object.entries(draft.checklist).forEach(([k, v]) => {
+                            onSetChecklist(k as keyof ChecklistState, v as any);
+                        });
+                    }
+                    if (draft.trashVolume !== undefined) {
+                        onSetChecklist('trashVolume', draft.trashVolume);
+                    }
+                    if (draft.safety) {
+                        onSetSafety?.(draft.safety);
+                    }
+                    if (draft.infra) {
+                        onSetInfra?.(draft.infra);
+                    }
+                    // Restore step - map string back to WizardStep if needed
+                    // StopDraft defined stepIndex used string keys as well
+                    if (draft.stepKey && onSetStep) {
+                        onSetStep(draft.stepKey as WizardStep);
+                    }
                 }
             })
             .catch(console.error);
-
-        return () => {
-            cancelled = true;
-        };
     }, [stop.route_run_stop_id]);
 
     // DRAFTS: Save on change (Debounced)
@@ -256,7 +219,6 @@ export function StopDetail({
                 oid,
                 routeRunStopId: stop.route_run_stop_id,
                 draft: {
-                    routeRunId: Number(routeRunId), // Add scope
                     routeRunStopId: stop.route_run_stop_id,
                     stepIndex: 0, // unused/fake
                     stepKey: currentStep,
@@ -294,48 +256,24 @@ export function StopDetail({
     const [selectedInfraKeys, setSelectedInfraKeys] = useState<InfraIssueKey[]>([]);
     const [infraNotes, setInfraNotes] = useState("");
 
-    // Active Stop Layout State
-    const [isReportSafetyOpen, setIsReportSafetyOpen] = useState(false);
-    const [isReportInfraOpen, setIsReportInfraOpen] = useState(false);
-
-    // Local state for Infra Photo (one photo for the whole report context)
-    const [localInfraPhotoKey, setLocalInfraPhotoKey] = useState<string | null>(null);
-
-    // Local Safety State for Modal
-    const [localSafety, setLocalSafety] = useState<SafetyState>({ hasConcern: false, hazardTypes: [] });
-
-    // Sync safety prop to local when opening
+    // Sync local state with props when entering infra step or when props change
     useEffect(() => {
-        if (isReportSafetyOpen) {
-            setLocalSafety(safety || { hasConcern: true }); // Default to concern=true when opening report
-        }
-    }, [isReportSafetyOpen, safety]);
-
-    // Sync local infra state with props when entering infra step or when props change
-    useEffect(() => {
-        if (isReportInfraOpen) {
-            // Load from props if available
-            if (infra?.issues) {
-                const keys: InfraIssueKey[] = [];
-                infra.issues.forEach(issue => {
-                    const foundKey = (Object.keys(INFRA_ISSUE_META) as InfraIssueKey[]).find(
-                        k => INFRA_ISSUE_META[k].issueType === issue.issue_type
-                    );
-                    if (foundKey) keys.push(foundKey);
-                });
-                setSelectedInfraKeys(keys);
-                if (infra.issues.length > 0) {
-                    setInfraNotes(infra.issues[0].notes || "");
-                    setLocalInfraPhotoKey(infra.issues[0].photo_key || null);
-                }
-            } else {
-                // Reset if no existing data
-                setSelectedInfraKeys([]);
-                setInfraNotes("");
-                setLocalInfraPhotoKey(null);
+        if (infra?.issues) {
+            // Reverse map issues to keys (simplified matching by issueType)
+            const keys: InfraIssueKey[] = [];
+            infra.issues.forEach(issue => {
+                const foundKey = (Object.keys(INFRA_ISSUE_META) as InfraIssueKey[]).find(
+                    k => INFRA_ISSUE_META[k].issueType === issue.issue_type
+                );
+                if (foundKey) keys.push(foundKey);
+            });
+            setSelectedInfraKeys(keys);
+            // Assuming notes are shared or taking the first one
+            if (infra.issues.length > 0) {
+                setInfraNotes(infra.issues[0].notes || "");
             }
         }
-    }, [isReportInfraOpen, infra]);
+    }, [infra]);
 
     // Helper to handle file selection
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -748,7 +686,7 @@ export function StopDetail({
     const steps: WizardStep[] = ["safety", "tasks", "infra", "photo"];
     const currentStepIndex = steps.indexOf(currentStep);
 
-    const _renderProgressBar = () => (
+    const renderProgressBar = () => (
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1.5rem", padding: "0 1rem" }}>
             {steps.map((step, index) => {
                 const isActive = index === currentStepIndex;
@@ -781,13 +719,6 @@ export function StopDetail({
         </div>
     );
 
-    void _onNextStep;
-    void _isSkipQueued;
-    void _queuedSafetyCount;
-    void _renderProgressBar;
-    void _attachedPhotoKeys;
-
-
     const handleSaveInfra = () => {
         const issues: InfraIssuePayload[] = selectedInfraKeys.map(key => {
             const meta = INFRA_ISSUE_META[key];
@@ -796,7 +727,6 @@ export function StopDetail({
                 component: meta.component,
                 cause: meta.defaultCause,
                 notes: infraNotes || null,
-                photo_key: localInfraPhotoKey || undefined,
             };
         });
 
@@ -804,33 +734,8 @@ export function StopDetail({
             hasIssues: issues.length > 0,
             issues: issues,
         });
-        setIsReportInfraOpen(false);
+        onNextStep?.();
     };
-
-    // Finish requires cleaning + trash volume + AFTER photo (accountability).
-    // Validation Logic (Hoisted)
-    const anyCleaningTask =
-        checklist.picked_up_litter ||
-        checklist.emptied_trash ||
-        checklist.washed_shelter ||
-        checklist.washed_pad;
-    const hasCleaning = anyCleaningTask;
-    const hasTrashVolume = checklist.trashVolume !== undefined;
-    const hasAfterPhoto = afterPhotoTaken;
-    const hasPendingUploads = selectedFiles.length > 0;
-
-    // Safety Validation: If concern is yes, MUST have hazards
-    const isSafetyValid = !safety?.hasConcern || (safety.hazardTypes && safety.hazardTypes.length > 0);
-
-    const canComplete =
-        (
-            (hasCleaning && hasTrashVolume) ||
-            checklist.spotCheck
-        ) &&
-        hasAfterPhoto &&
-        !hasPendingUploads &&
-        !isCompletingStop &&
-        isSafetyValid;
 
     return (
         <UlLayout>
@@ -855,6 +760,7 @@ export function StopDetail({
                     There was an issue syncing this stop. Server truth will reload when online.
                 </div>
             )}
+
             {queuedUploadCount > 0 && (
                 <div style={{
                     color: '#dd6b20',
@@ -867,523 +773,720 @@ export function StopDetail({
                 </div>
             )}
 
-            {/* Top Controls: Report Buttons */}
-            <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem" }}>
-                <button
-                    onClick={() => setIsReportSafetyOpen(!isReportSafetyOpen)}
-                    style={{
-                        flex: 1,
-                        padding: "0.75rem",
-                        background: "#fffaf0",
-                        border: "1px solid #ed8936",
-                        color: "#c05621",
-                        borderRadius: "8px",
-                        fontWeight: "bold",
-                        display: "flex", justifyContent: "center", alignItems: "center", gap: "0.5rem"
-                    }}
-                >
-                    ⚠️ REPORT SAFETY
-                </button>
-                <button
-                    onClick={() => setIsReportInfraOpen(!isReportInfraOpen)}
-                    style={{
-                        flex: 1,
-                        padding: "0.75rem",
-                        background: "#ebf8ff",
-                        border: "1px solid #4299e1",
-                        color: "#2b6cb0",
-                        borderRadius: "8px",
-                        fontWeight: "bold",
-                        display: "flex", justifyContent: "center", alignItems: "center", gap: "0.5rem"
-                    }}
-                >
-                    🏗 REPORT INFRASTRUCTURE
-                </button>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: "1.5rem" }}>
+                {renderHotspotToggle()}
             </div>
 
-            {/* Safety Modal */}
-            {isReportSafetyOpen && (
-                <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: "1rem" }}>
-                    <div style={{ background: "white", width: "100%", maxWidth: "500px", maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden", borderRadius: "12px", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
-                        {/* Header */}
-                        <div style={{ padding: "1rem", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f7fafc" }}>
-                            <h3 style={{ margin: 0, color: "#c05621" }}>Report Safety Concern</h3>
-                            <button
-                                onClick={() => setIsReportSafetyOpen(false)}
-                                style={{ background: "none", border: "none", fontSize: "1.5rem", color: "#718096", cursor: "pointer", padding: "0 0.5rem" }}
-                            >
-                                ✕
-                            </button>
-                        </div>
-
-                        <div style={{ padding: "1.5rem", flex: 1, overflowY: "auto" }}>
-                            <div style={{ marginBottom: "1rem", background: "#fff5f5", padding: "1rem", borderRadius: "8px", border: "1px solid #feb2b2" }}>
-                                <p style={{ marginTop: 0, color: "#c53030", fontWeight: "bold" }}>Is there a safety issue preventing work?</p>
-                                <p style={{ margin: 0, fontSize: "0.9rem", color: "#e53e3e" }}>Select hazards below. If unsafe to work, you can Skip Stop.</p>
-                            </div>
-
-                            <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "bold" }}>Hazards (Required):</label>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "1.5rem" }}>
-                                {[
-                                    { val: "encampment", label: "Encampment" },
-                                    { val: "fire", label: "Fire" },
-                                    { val: "dangerous_activity", label: "Dangerous Activity" },
-                                    { val: "active_drug_use", label: "Active Drug Use" },
-                                    { val: "violence", label: "Violence" },
-                                    { val: "biohazard", label: "Biohazard" },
-                                    { val: "traffic", label: "Traffic / Access" },
-                                    { val: "other", label: "Other" },
-                                ].map((opt) => (
-                                    <label
-                                        key={opt.val}
-                                        style={{
-                                            display: "flex", alignItems: "center", padding: "0.75rem",
-                                            background: localSafety.hazardTypes?.includes(opt.val) ? "#fff5f5" : "white",
-                                            border: `1px solid ${localSafety.hazardTypes?.includes(opt.val) ? "#c53030" : "#e2e8f0"}`,
-                                            borderRadius: "8px", fontSize: "0.9rem", transition: "all 0.2s"
-                                        }}
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={localSafety.hazardTypes?.includes(opt.val) || false}
-                                            onChange={(e) => {
-                                                const current = localSafety.hazardTypes || [];
-                                                const next = e.target.checked ? [...current, opt.val] : current.filter((h) => h !== opt.val);
-                                                setLocalSafety(prev => ({ ...prev, hazardTypes: next }));
-                                            }}
-                                            style={{ marginRight: "0.75rem", transform: "scale(1.2)" }}
-                                        />
-                                        {opt.label}
-                                    </label>
-                                ))}
-                            </div>
-
-                            <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "bold" }}>Safety Photo (For Skipping):</label>
-                            <div style={{ marginBottom: "1.5rem" }}>
-                                <input
-                                    type="file" accept="image/*" id="safety-photo-upload-modal" style={{ display: "none" }}
-                                    onChange={async (e) => {
-                                        if (e.target.files && e.target.files[0]) {
-                                            try {
-                                                const { photos, queued } = await uploadPhotos(stop.route_run_stop_id, [e.target.files[0]], "safety");
-                                                const key = queued ? `queued-safety-${Date.now()}` : photos[0]?.s3_key;
-                                                if (key) setLocalSafety(prev => ({ ...prev, safetyPhotoKey: key }));
-                                            } catch (e) { console.error(e); alert("Upload failed"); }
-                                        }
-                                    }}
-                                />
-                                <button
-                                    onClick={() => document.getElementById("safety-photo-upload-modal")?.click()}
-                                    style={{ width: "100%", padding: "1rem", background: localSafety.safetyPhotoKey ? "#c6f6d5" : "white", border: localSafety.safetyPhotoKey ? "1px solid #48bb78" : "1px dashed #cbd5e0", borderRadius: "8px", color: localSafety.safetyPhotoKey ? "#276749" : "#718096", fontWeight: "bold" }}
-                                >
-                                    {localSafety.safetyPhotoKey ? "✓ Photo Attached (Click to Replace)" : "📷 Add Safety Photo"}
-                                </button>
-                            </div>
-
-                            <textarea
-                                value={localSafety.notes || ""}
-                                onChange={(e) => setLocalSafety(prev => ({ ...prev, notes: e.target.value }))}
-                                style={{ width: "100%", padding: "1rem", minHeight: "100px", marginBottom: "1rem", borderRadius: "8px", border: "1px solid #cbd5e0", fontSize: "1rem" }}
-                                placeholder={
-                                    localSafety.hazardTypes?.length === 1 && localSafety.hazardTypes[0] === "other"
-                                        ? "Please describe the issue (Required)..."
-                                        : "Safety notes..."
-                                }
-                            />
-                        </div>
-
-                        {/* Footer / Actions */}
-                        <div style={{ padding: "1rem", borderTop: "1px solid #e2e8f0", background: "white", display: "flex", gap: "1rem" }}>
-                            {(() => {
-                                const hasHazards = localSafety.hazardTypes && localSafety.hazardTypes.length > 0;
-                                const isOtherOnly = localSafety.hazardTypes?.length === 1 && localSafety.hazardTypes[0] === "other";
-                                const hasNotes = !!(localSafety.notes && localSafety.notes.trim().length > 0);
-                                const isContentValid = hasHazards && (!isOtherOnly || hasNotes);
-                                const hasPhoto = !!localSafety.safetyPhotoKey;
-
-                                return (
-                                    <>
-                                        {/* Skip Button - Gated by Hazard AND Photo (AND Notes if Other only) */}
-                                        <button
-                                            onClick={() => {
-                                                onSetSafety?.({ ...localSafety, wantsToSkip: true, hasConcern: true });
-                                                onSkipStop?.();
-                                            }}
-                                            disabled={!(isContentValid && hasPhoto)}
-                                            style={{
-                                                flex: 1, padding: "1rem",
-                                                background: (isContentValid && hasPhoto) ? "#c53030" : "#fed7d7",
-                                                color: (isContentValid && hasPhoto) ? "white" : "#e53e3e",
-                                                borderRadius: "8px", border: "none", fontWeight: "bold",
-                                                cursor: (isContentValid && hasPhoto) ? "pointer" : "not-allowed"
-                                            }}
-                                        >
-                                            Skip Stop
-                                        </button>
-
-                                        {/* Save Hazards Button - Gated by Hazards (AND Notes if Other only) */}
-                                        <button
-                                            onClick={() => {
-                                                onSetSafety?.({ ...localSafety, hasConcern: true });
-                                                setIsReportSafetyOpen(false);
-                                            }}
-                                            disabled={!isContentValid}
-                                            style={{
-                                                flex: 1, padding: "1rem",
-                                                background: isContentValid ? "#ed8936" : "#fbd38d",
-                                                color: isContentValid ? "white" : "#7b341e",
-                                                borderRadius: "8px", border: "none", fontWeight: "bold",
-                                                cursor: isContentValid ? "pointer" : "not-allowed"
-                                            }}
-                                        >
-                                            Save Hazards
-                                        </button>
-                                    </>
-                                );
-                            })()}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Infra Modal */}
-            {isReportInfraOpen && (
-                <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: "1rem" }}>
-                    <div style={{ background: "white", width: "100%", maxWidth: "500px", maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden", borderRadius: "12px", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
-                        {/* Header */}
-                        <div style={{ padding: "1rem", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f7fafc" }}>
-                            <h3 style={{ margin: 0, color: "#2b6cb0" }}>Report Infrastructure</h3>
-                            <button
-                                onClick={() => setIsReportInfraOpen(false)}
-                                style={{ background: "none", border: "none", fontSize: "1.5rem", color: "#718096", cursor: "pointer", padding: "0 0.5rem" }}
-                            >
-                                ✕
-                            </button>
-                        </div>
-
-                        <div style={{ padding: "1.5rem", flex: 1, overflowY: "auto" }}>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "1.5rem" }}>
-                                {(Object.keys(INFRA_ISSUE_META) as InfraIssueKey[]).map((key) => {
-                                    const meta = INFRA_ISSUE_META[key];
-                                    const isSelected = selectedInfraKeys.includes(key);
-                                    return (
-                                        <label key={key} style={{
-                                            display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem",
-                                            background: isSelected ? "#ebf8ff" : "white",
-                                            border: isSelected ? "1px solid #90cdf4" : "1px solid #e2e8f0",
-                                            borderRadius: "8px", fontSize: "0.9rem", transition: "all 0.2s"
-                                        }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={isSelected}
-                                                onChange={(e) => {
-                                                    if (e.target.checked) setSelectedInfraKeys([...selectedInfraKeys, key]);
-                                                    else setSelectedInfraKeys(selectedInfraKeys.filter(k => k !== key));
-                                                }}
-                                                style={{ transform: "scale(1.2)" }}
-                                            />
-                                            {meta.label}
-                                        </label>
-                                    );
-                                })}
-                            </div>
-
-                            <textarea
-                                value={infraNotes}
-                                onChange={(e) => setInfraNotes(e.target.value)}
-                                style={{ width: "100%", padding: "1rem", minHeight: "100px", marginBottom: "1rem", borderRadius: "8px", border: "1px solid #cbd5e0", fontSize: "1rem" }}
-                                placeholder="Infra notes..."
-                            />
-
-                            {/* Infra Photo Upload */}
-                            <div style={{ marginBottom: "1.5rem" }}>
-                                <input
-                                    type="file" accept="image/*" id="infra-photo-upload-modal" style={{ display: "none" }}
-                                    onChange={async (e) => {
-                                        if (e.target.files && e.target.files[0]) {
-                                            try {
-                                                const { photos, queued } = await uploadPhotos(stop.route_run_stop_id, [e.target.files[0]], "infra");
-                                                const key = queued ? `queued-infra-${Date.now()}` : photos[0]?.s3_key;
-                                                if (key) setLocalInfraPhotoKey(key);
-                                            } catch (e) { console.error(e); alert("Upload failed"); }
-                                        }
-                                    }}
-                                />
-                                <button
-                                    onClick={() => document.getElementById("infra-photo-upload-modal")?.click()}
-                                    style={{ width: "100%", padding: "1rem", background: localInfraPhotoKey ? "#c6f6d5" : "white", border: "1px solid #cbd5e0", borderRadius: "8px", color: localInfraPhotoKey ? "#276749" : "#718096", fontWeight: "bold" }}
-                                >
-                                    {localInfraPhotoKey ? "✓ Infra Photo Attached" : "📷 Add Photo"}
-                                </button>
-                            </div>
-
-                            <button
-                                onClick={handleSaveInfra}
-                                style={{ width: "100%", padding: "1rem", background: "#3182ce", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", fontSize: "1.1rem" }}
-                            >
-                                Save Infrastructure
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Main Task Cards */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", marginBottom: "1rem" }}>
-                {/* Spot Check Toggle */}
-                <div style={{ width: "100%", marginBottom: "0.5rem" }}>
-                    <button
-                        onClick={() => {
-                            const next = !checklist.spotCheck;
-                            onSetChecklist('spotCheck', next);
-                            if (next) {
-                                // Clear cleaning tasks if spot check is enabled
-                                CHECKLIST_ITEMS.forEach(item => onSetChecklist(item.key, false));
-                                onSetChecklist('trashVolume', undefined as any);
-                            }
-                        }}
-                        style={{
-                            width: "100%",
-                            padding: "1rem",
-                            background: checklist.spotCheck ? "#4299e1" : "white",
-                            color: checklist.spotCheck ? "white" : "#2b6cb0",
-                            border: "2px solid #4299e1",
-                            borderRadius: "8px",
-                            fontWeight: "bold",
-                            fontSize: "1rem",
-                            display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem",
-                            cursor: "pointer",
-                            transition: "all 0.2s"
-                        }}
-                    >
-                        {checklist.spotCheck ? "✅ SPOT CHECK ENABLED" : "🔍 PERFORM SPOT CHECK"}
-                    </button>
-                    {checklist.spotCheck && (
-                        <div style={{ textAlign: "center", fontSize: "0.85rem", color: "#4299e1", marginTop: "0.25rem" }}>
-                            Cleaning tasks are disabled. Photo required.
-                        </div>
-                    )}
-                </div>
-
-                {/* Cleaning Tasks */}
-                <div className="card" style={{ flex: "1 1 300px", margin: 0, opacity: checklist.spotCheck ? 0.5 : 1, pointerEvents: checklist.spotCheck ? "none" : "auto" }}>
-                    <h3 style={{ marginTop: 0, fontSize: "1rem", color: "#4a5568" }}>CLEANING TASKS</h3>
-                    <div style={{ display: "grid", gap: "0.75rem" }}>
-                        {CHECKLIST_ITEMS.map((item) => (
-                            <label
-                                key={item.key}
-                                style={{
-                                    display: "flex", alignItems: "center", padding: "0.75rem",
-                                    background: checklist[item.key] ? "#f0fff4" : "white",
-                                    border: `1px solid ${checklist[item.key] ? "#48bb78" : "#e2e8f0"}`,
-                                    borderRadius: "8px", transition: "all 0.2s"
-                                }}
-                            >
-                                <input
-                                    type="checkbox"
-                                    checked={!!checklist[item.key]}
-                                    onChange={(e) => onSetChecklist(item.key, e.target.checked)}
-                                    style={{ width: "18px", height: "18px", marginRight: "0.75rem" }}
-                                />
-                                <span style={{ fontWeight: checklist[item.key] ? "bold" : "normal" }}>{item.label}</span>
-                            </label>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Trash Volume */}
-                <div className="card" style={{ flex: "1 1 300px", margin: 0, opacity: checklist.spotCheck ? 0.5 : 1, pointerEvents: checklist.spotCheck ? "none" : "auto" }}>
-                    <h3 style={{ marginTop: 0, fontSize: "1rem", color: "#4a5568" }}>TRASH VOLUME (Required)</h3>
-                    <div style={{ display: "flex", borderRadius: "8px", overflow: "hidden", border: "1px solid #cbd5e0", marginBottom: "1rem" }}>
-                        {[0, 1, 2, 3, 4].map(val => (
-                            <button
-                                key={val}
-                                onClick={() => onSetChecklist('trashVolume', val)}
-                                style={{
-                                    flex: 1, padding: "1rem 0",
-                                    background: checklist.trashVolume === val ? "#edf2f7" : "white",
-                                    fontWeight: "bold",
-                                    border: "none",
-                                    borderRight: val < 4 ? "1px solid #cbd5e0" : "none",
-                                    color: checklist.trashVolume === val ? "#2d3748" : "#718096",
-                                    boxShadow: checklist.trashVolume === val ? "inset 0 2px 4px rgba(0,0,0,0.06)" : "none"
-                                }}
-                            >
-                                {val}
-                            </button>
-                        ))}
-                    </div>
-                    <div style={{ textAlign: "center", color: "#718096", fontSize: "0.9rem" }}>
-                        {checklist.trashVolume !== undefined ? (
-                            <strong>
-                                {checklist.trashVolume} - {
-                                    ["Empty / Almost Empty", "Low", "Medium", "High", "Overflowing"][checklist.trashVolume]
-                                }
-                            </strong>
-                        ) : "Select volume"}
-                    </div>
-                </div>
-            </div>
-
-            {/* Photos & Finish Action Area */}
-            {/* Show any existing photos first */}
-            {
-                (existingPhotos.length > 0 || selectedFiles.length > 0) && (
-                    <div className="card" style={{ padding: "1rem", marginBottom: "1rem" }}>
-                        <h4 style={{ margin: "0 0 0.5rem 0", fontSize: "0.9rem", color: "#718096" }}>Attached Photos</h4>
-                        <div style={{ display: "flex", gap: "0.5rem", overflowX: "auto", paddingBottom: "0.5rem" }}>
-                            {existingPhotos.map(p => (
-                                <img key={p.id} src={p.url} style={{ height: "80px", borderRadius: "6px" }} onClick={() => setPreviewUrl(p.url)} alt="existing" />
-                            ))}
-                            {selectedFiles.map((f, i) => (
-                                <div key={i} style={{ position: "relative" }}>
-                                    <img src={URL.createObjectURL(f)} style={{ height: "80px", borderRadius: "6px", opacity: 0.7 }} alt="pending" />
-                                    <button onClick={() => handleRemoveSelectedFile(i)} style={{ position: "absolute", top: 0, right: 0, background: "rgba(0,0,0,0.5)", color: "white", border: "none", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
-                                </div>
-                            ))}
-                        </div>
-                        {selectedFiles.length > 0 && (
-                            <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem" }}>
-                                <button onClick={handleConfirmUpload} style={{ flex: 1, padding: "0.5rem", background: "#48bb78", color: "white", borderRadius: "6px", border: "none", fontWeight: "bold" }}>Upload Now</button>
-                                <button onClick={handleDiscardSelection} style={{ flex: 1, padding: "0.5rem", background: "#fff", border: "1px solid #fc8181", color: "#c53030", borderRadius: "6px" }}>Discard</button>
-                            </div>
-                        )}
-                    </div>
-                )
-            }
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                {/* Main DURING photo upload input (always enabled unless uploading) */}
-                <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    id="main-photo-upload"
-                    style={{ display: "none" }}
-                    onChange={handleFileSelect}
-                    disabled={isUploadingPhoto}
-                />
-                <button
-                    onClick={() => document.getElementById("main-photo-upload")?.click()}
-                    style={{
-                        padding: "1rem",
-                        background: "#3182ce",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "8px",
-                        fontSize: "1rem",
-                        fontWeight: "bold",
-                        display: "flex", justifyContent: "center", alignItems: "center", gap: "0.5rem",
-                        opacity: isUploadingPhoto ? 0.6 : 1,
-                        cursor: isUploadingPhoto ? "not-allowed" : "pointer"
-                    }}
-                    disabled={isUploadingPhoto}
-                >
-                    📸 Document Conditions (Optional)
-                </button>
-
-                {/* After photo is the final accountability gate before completion. */}
-                {(() => {
-                    // Not ready: cleaning or trash volume missing (AND not spot check)
-                    if (!((hasCleaning && hasTrashVolume) || checklist.spotCheck)) {
-                        return (
-                            <button
-                                disabled
-                                style={{
-                                    padding: "1rem",
-                                    background: "#cbd5e0",
-                                    color: "white",
-                                    border: "none",
-                                    borderRadius: "8px",
-                                    fontSize: "1rem",
-                                    fontWeight: "bold",
-                                    cursor: "not-allowed"
-                                }}
-                            >
-                                Finish
-                            </button>
-                        );
-                    }
-
-                    // Ready for after photo
-                    if (!hasAfterPhoto) {
-                        return (
-                            <>
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    id="after-photo-upload"
-                                    style={{ display: "none" }}
-                                    onChange={async (e) => {
-                                        if (!e.target.files || !e.target.files[0]) return;
-                                        setAfterPhotoTaken(true);
-                                        handleFileSelect(e);
-                                    }}
-                                    disabled={isUploadingPhoto}
-                                />
-                                <button
-                                    onClick={() => document.getElementById("after-photo-upload")?.click()}
-                                    disabled={isUploadingPhoto}
-                                    style={{
-                                        padding: "1rem",
-                                        background: "#2c5282",
-                                        color: "white",
-                                        border: "none",
-                                        borderRadius: "8px",
-                                        fontSize: "1rem",
-                                        fontWeight: "bold",
-                                        display: "flex",
-                                        justifyContent: "center",
-                                        alignItems: "center",
-                                        gap: "0.5rem",
-                                        cursor: "pointer",
-                                        opacity: isUploadingPhoto ? 0.6 : 1
-                                    }}
-                                >
-                                    📷 Take After Photo
-                                </button>
-                            </>
-                        );
-                    }
-
-                    // All requirements met → Finish enabled
-                    return (
-                        <button
-                            onClick={onCompleteStop}
-                            disabled={!canComplete}
-                            style={{
-                                padding: "1rem",
-                                background: "#2c5282",
-                                color: "white",
-                                border: "none",
-                                borderRadius: "8px",
-                                fontSize: "1rem",
-                                fontWeight: "bold",
-                                cursor: canComplete ? "pointer" : "not-allowed",
-                                opacity: canComplete ? 1 : 0.6
-                            }}
-                        >
-                            {isCompletingStop ? "FINISHING..." : "Finish"}
-                        </button>
-                    );
-                })()}
-            </div>
+            {renderProgressBar()}
 
             <ImagePreviewModal isOpen={!!previewUrl} imageUrl={previewUrl} onClose={() => setPreviewUrl(null)} />
 
+            <div className="card">
+
+                {/* SAFETY STEP */}
+                {currentStep === "safety" && (
+                    <div>
+                        <h3 style={{ marginTop: 0, color: "#c53030", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                            ⚠️ Safety Check
+                        </h3>
+                        <p style={{ fontSize: "1.1rem", marginBottom: "1.5rem" }}>Are there any safety concerns at this stop?</p>
+
+                        <div style={{ display: "flex", gap: "1rem", marginBottom: "2rem" }}>
+                            <button
+                                onClick={() => onSetSafety?.({ ...safety, hasConcern: true })}
+                                style={{
+                                    flex: 1,
+                                    padding: "1rem",
+                                    background: safety?.hasConcern === true ? "#fff5f5" : "white",
+                                    color: safety?.hasConcern === true ? "#c53030" : "#4a5568",
+                                    border: `2px solid ${safety?.hasConcern === true ? "#c53030" : "#e2e8f0"}`,
+                                    borderRadius: "8px",
+                                    fontWeight: "bold",
+                                    cursor: "pointer",
+                                }}
+                            >
+                                Yes, there is a concern
+                            </button>
+                            <button
+                                onClick={() => {
+                                    onSetSafety?.({
+                                        hasConcern: false,
+                                        hazardTypes: [],
+                                        notes: undefined,
+                                        wantsToSkip: false,
+                                        safetyPhotoKey: undefined,
+                                    });
+                                    onNextStep?.();
+                                }}
+                                style={{
+                                    flex: 1,
+                                    padding: "1rem",
+                                    background: "white",
+                                    color: "#2c7a7b",
+                                    border: "2px solid #e2e8f0",
+                                    borderRadius: "8px",
+                                    fontWeight: "bold",
+                                    cursor: "pointer",
+                                }}
+                            >
+                                No, it's safe
+                            </button>
+                        </div>
+
+                        {safety?.hasConcern && (
+                            <div style={{ animation: "fadeIn 0.3s ease-in-out" }}>
+                                <label style={{ display: "block", marginBottom: "0.75rem", fontWeight: "bold" }}>What are the hazards? (Select all that apply)</label>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "1.5rem" }}>
+                                    {[
+                                        { val: "encampment", label: "Encampment" },
+                                        { val: "fire", label: "Fire" },
+                                        { val: "dangerous_activity", label: "Dangerous Activity" },
+                                        { val: "active_drug_use", label: "Active Drug Use" },
+                                        { val: "violence", label: "Violence" },
+                                        { val: "biohazard", label: "Biohazard" },
+                                        { val: "traffic", label: "Traffic / Access" },
+                                        { val: "other", label: "Other" },
+                                    ].map((opt) => (
+                                        <label
+                                            key={opt.val}
+                                            style={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                padding: "0.75rem",
+                                                background: safety.hazardTypes?.includes(opt.val) ? "#fff5f5" : "white",
+                                                border: `1px solid ${safety.hazardTypes?.includes(opt.val) ? "#c53030" : "#e2e8f0"}`,
+                                                borderRadius: "6px",
+                                                cursor: "pointer",
+                                                fontWeight: safety.hazardTypes?.includes(opt.val) ? "bold" : "normal",
+                                                color: safety.hazardTypes?.includes(opt.val) ? "#c53030" : "#4a5568",
+                                            }}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={safety.hazardTypes?.includes(opt.val) || false}
+                                                onChange={(e) => {
+                                                    const current = safety.hazardTypes || [];
+                                                    const next = e.target.checked
+                                                        ? [...current, opt.val]
+                                                        : current.filter((h) => h !== opt.val);
+                                                    onSetSafety?.({ ...safety, hazardTypes: next });
+                                                }}
+                                                style={{ marginRight: "0.5rem" }}
+                                            />
+                                            {opt.label}
+                                        </label>
+                                    ))}
+                                </div>
+
+                                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "bold" }}>Safety Photo (Must Add Photo to Skip Stop):</label>
+                                <div style={{ marginBottom: "1.5rem" }}>
+                                    {safety.safetyPhotoKey ? (
+                                        <div style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "0.5rem", background: "#f7fafc", borderRadius: "6px" }}>
+                                            <span style={{ fontSize: "0.9rem", color: "#2f855a", fontWeight: "bold" }}>
+                                                ✓ Photo Attached {queuedSafetyCount > 0 ? "(Queued)" : ""}
+                                            </span>
+                                            <button
+                                                onClick={() => onSetSafety?.({ ...safety, safetyPhotoKey: undefined })}
+                                                style={{ color: "#c53030", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", fontSize: "0.85rem" }}
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                id="safety-photo-upload"
+                                                style={{ display: "none" }}
+                                                onChange={async (e) => {
+                                                    if (e.target.files && e.target.files[0]) {
+                                                        try {
+                                                            const { photos, queued } = await uploadPhotos(stop.route_run_stop_id, [e.target.files[0]], "safety");
+                                                            if (queued) {
+                                                                // Use a pseudo-key or similar to indicate persistence in UI, 
+                                                                // but mainly just set persistence. 
+                                                                // Actually uploading returns `{photos: [], queued: true}`.
+                                                                // We need to set safetyPhotoKey to valid string to allow skip.
+                                                                // Let's us a placeholder like "queued-safety-timestamp".
+                                                                const placeholder = `queued-safety-${Date.now()}`;
+                                                                onSetSafety?.({ ...safety, safetyPhotoKey: placeholder });
+                                                            } else if (photos.length > 0) {
+                                                                onSetSafety?.({ ...safety, safetyPhotoKey: photos[0].s3_key });
+                                                            }
+                                                        } catch (err: any) {
+                                                            alert("Failed to upload safety photo: " + err.message);
+                                                        }
+                                                    }
+                                                }}
+                                            />
+                                            <button
+                                                onClick={() => document.getElementById("safety-photo-upload")?.click()}
+                                                style={{
+                                                    padding: "0.5rem 1rem",
+                                                    background: "white",
+                                                    border: "1px solid #cbd5e0",
+                                                    borderRadius: "6px",
+                                                    cursor: "pointer",
+                                                    fontSize: "0.9rem",
+                                                    display: "flex", alignItems: "center", gap: "0.5rem"
+                                                }}
+                                            >
+                                                📷 Add Photo
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "bold" }}>Notes:</label>
+                                <textarea
+                                    value={safety.notes || ""}
+                                    onChange={(e) => onSetSafety?.({ ...safety, notes: e.target.value })}
+                                    style={{ width: "100%", padding: "0.75rem", minHeight: "80px", marginBottom: "1.5rem", borderRadius: "6px", border: "1px solid #cbd5e0" }}
+                                    placeholder="Describe the situation..."
+                                />
+
+                                <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                                    <button
+                                        onClick={() => {
+                                            if (safety.safetyPhotoKey) {
+                                                onSetSafety?.({
+                                                    ...safety,
+                                                    hasConcern: safety?.hasConcern ?? true,
+                                                    wantsToSkip: true
+                                                });
+                                                onSkipStop?.();
+                                            } else {
+                                                setShowSkipModal(true);
+                                            }
+                                        }}
+                                        disabled={!safety.hazardTypes || safety.hazardTypes.length === 0 || !safety.safetyPhotoKey || isSkipQueued}
+                                        style={{
+                                            padding: "1rem",
+                                            background: "#c53030",
+                                            color: "white",
+                                            border: "none",
+                                            borderRadius: "8px",
+                                            fontWeight: "bold",
+                                            cursor: (safety.hazardTypes?.length || 0) > 0 && safety.safetyPhotoKey ? "pointer" : "not-allowed",
+                                            opacity: (safety.hazardTypes?.length || 0) > 0 && safety.safetyPhotoKey && !isSkipQueued ? 1 : 0.5,
+                                        }}
+                                    >
+                                        {isSkipQueued ? "Skip Queued..." : "Skip Stop for Safety"}
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            onSetSafety?.({ ...safety, wantsToSkip: false });
+                                            onNextStep?.();
+                                        }}
+                                        disabled={!safety.hazardTypes || safety.hazardTypes.length === 0}
+                                        style={{
+                                            padding: "1rem",
+                                            background: "white",
+                                            color: "#2d3748",
+                                            border: "1px solid #cbd5e0",
+                                            borderRadius: "8px",
+                                            fontWeight: "bold",
+                                            cursor: (safety.hazardTypes?.length || 0) > 0 ? "pointer" : "not-allowed",
+                                            opacity: (safety.hazardTypes?.length || 0) > 0 ? 1 : 0.5,
+                                        }}
+                                    >
+                                        Log Hazard & Continue Cleaning
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* TASKS STEP */}
+                {currentStep === "tasks" && (
+                    <div>
+                        <h3 style={{ marginTop: 0, color: "#2c7a7b", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                            📋 Cleaning Tasks
+                        </h3>
+                        <p style={{ marginBottom: "1.5rem", color: "#718096" }}>Check off completed tasks:</p>
+
+                        <div style={{ display: "grid", gap: "1rem" }}>
+                            {CHECKLIST_ITEMS.map((item) => (
+                                <label
+                                    key={item.key}
+                                    style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        padding: "1rem",
+                                        background: checklist[item.key] ? "#ebf8ff" : "white",
+                                        border: `2px solid ${checklist[item.key] ? "#3182ce" : "#e2e8f0"}`,
+                                        borderRadius: "8px",
+                                        cursor: "pointer",
+                                        transition: "all 0.2s",
+                                    }}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={!!checklist[item.key]}
+                                        onChange={(e) => onSetChecklist(item.key, e.target.checked)}
+                                        style={{
+                                            width: "20px",
+                                            height: "20px",
+                                            marginRight: "1rem",
+                                            cursor: "pointer",
+                                        }}
+                                    />
+                                    <span style={{ fontSize: "1.1rem", fontWeight: checklist[item.key] ? "bold" : "normal" }}>
+                                        {item.label}
+                                    </span>
+                                </label>
+                            ))}
+                        </div>
+
+                        {/* Trash Volume Section */}
+                        <div style={{ marginTop: "1.5rem", padding: "1rem", background: "#fffaf0", borderRadius: "8px", border: "1px solid #ed8936" }}>
+                            <label style={{ display: "block", marginBottom: "0.75rem", fontWeight: "bold", color: "#9c4221" }}>
+                                Trash Volume (Required)
+                            </label>
+                            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                                {[
+                                    { val: 0, label: "0 - Empty / Almost Empty" },
+                                    { val: 1, label: "1 - Low" },
+                                    { val: 2, label: "2 - Medium" },
+                                    { val: 3, label: "3 - High" },
+                                    { val: 4, label: "4 - Overflowing" },
+                                ].map((opt) => (
+                                    <label key={opt.val} style={{ display: "flex", alignItems: "center", cursor: "pointer", padding: "0.25rem 0" }}>
+                                        <input
+                                            type="radio"
+                                            name="trashVolume"
+                                            value={opt.val}
+                                            checked={checklist.trashVolume === opt.val}
+                                            onChange={() => onSetChecklist('trashVolume', opt.val)}
+                                            style={{ marginRight: "0.75rem", width: "18px", height: "18px", accentColor: "#dd6b20" }}
+                                        />
+                                        <span style={{ fontSize: "1rem", color: "#2d3748" }}>{opt.label}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+
+                        {(() => {
+                            const anyCleaningTask =
+                                checklist.picked_up_litter ||
+                                checklist.emptied_trash ||
+                                checklist.washed_shelter ||
+                                checklist.washed_pad;
+
+                            const isTaskValid = anyCleaningTask && checklist.trashVolume !== undefined;
+
+                            return (
+                                <button
+                                    onClick={onNextStep}
+                                    disabled={!isTaskValid}
+                                    style={{
+                                        width: "100%",
+                                        marginTop: "2rem",
+                                        padding: "1rem",
+                                        background: isTaskValid ? "#3182ce" : "#cbd5e0",
+                                        color: "white",
+                                        border: "none",
+                                        borderRadius: "8px",
+                                        fontWeight: "bold",
+                                        cursor: isTaskValid ? "pointer" : "not-allowed",
+                                    }}
+                                >
+                                    Save Tasks & Continue
+                                </button>
+                            );
+                        })()}
+                    </div>
+                )}
+
+                {/* INFRA STEP */}
+                {currentStep === "infra" && (
+                    <div>
+                        <h3 style={{ marginTop: 0, color: "#2b6cb0", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                            🏗 Infrastructure
+                        </h3>
+                        <p style={{ marginBottom: "1.5rem" }}>Any infrastructure issues to report?</p>
+
+                        <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem" }}>
+                            <button
+                                onClick={() => {
+                                    // Just toggle the view state to show checkboxes, doesn't save yet
+                                    // We can use local state or just assume if they click yes they want to see options
+                                    // But to keep it simple, let's just show options always or toggle a "showOptions"
+                                    // Actually, let's just use the presence of keys to determine "Yes" visually,
+                                    // but we need a way to say "Yes" initially?
+                                    // The previous design had a Yes/No toggle. Let's keep that but drive it by local state?
+                                    // Or just show the options directly?
+                                    // Let's stick to the Yes/No toggle for clarity.
+                                    onSetInfra?.({ ...infra, hasIssues: true, issues: infra?.issues || [] });
+                                }}
+                                style={{
+                                    flex: 1,
+                                    padding: "0.75rem",
+                                    background: infra?.hasIssues === true ? "#ebf8ff" : "white",
+                                    color: infra?.hasIssues === true ? "#2b6cb0" : "#4a5568",
+                                    border: `2px solid ${infra?.hasIssues === true ? "#2b6cb0" : "#e2e8f0"}`,
+                                    borderRadius: "8px",
+                                    fontWeight: "bold",
+                                    cursor: "pointer",
+                                }}
+                            >
+                                Yes
+                            </button>
+                            <button
+                                onClick={() => {
+                                    // Clear issues and save immediately/continue
+                                    setSelectedInfraKeys([]);
+                                    setInfraNotes("");
+                                    onSetInfra?.({ hasIssues: false, issues: [] });
+                                    onNextStep?.();
+                                }}
+                                style={{
+                                    flex: 1,
+                                    padding: "0.75rem",
+                                    background: "white",
+                                    color: "#4a5568",
+                                    border: "2px solid #e2e8f0",
+                                    borderRadius: "8px",
+                                    fontWeight: "bold",
+                                    cursor: "pointer",
+                                }}
+                            >
+                                No
+                            </button>
+                        </div>
+
+                        {infra?.hasIssues && (
+                            <div>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "1.5rem" }}>
+                                    {(Object.keys(INFRA_ISSUE_META) as InfraIssueKey[]).map((key) => {
+                                        const meta = INFRA_ISSUE_META[key];
+                                        const isSelected = selectedInfraKeys.includes(key);
+                                        return (
+                                            <label key={key} style={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: "0.5rem",
+                                                padding: "0.5rem",
+                                                background: isSelected ? "#ebf8ff" : "white",
+                                                border: isSelected ? "1px solid #90cdf4" : "1px solid #e2e8f0",
+                                                borderRadius: "6px",
+                                                fontSize: "0.9rem",
+                                                cursor: "pointer"
+                                            }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setSelectedInfraKeys([...selectedInfraKeys, key]);
+                                                        } else {
+                                                            setSelectedInfraKeys(selectedInfraKeys.filter(k => k !== key));
+                                                        }
+                                                    }}
+                                                />
+                                                {meta.label}
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "bold" }}>Notes:</label>
+                                <textarea
+                                    value={infraNotes}
+                                    onChange={(e) => setInfraNotes(e.target.value)}
+                                    style={{ width: "100%", padding: "0.75rem", minHeight: "80px", borderRadius: "6px", border: "1px solid #cbd5e0" }}
+                                    placeholder="Details about the issue..."
+                                />
+
+                                <button
+                                    onClick={handleSaveInfra}
+                                    style={{
+                                        width: "100%",
+                                        marginTop: "1.5rem",
+                                        padding: "1rem",
+                                        background: "#3182ce",
+                                        color: "white",
+                                        border: "none",
+                                        borderRadius: "8px",
+                                        fontWeight: "bold",
+                                        cursor: "pointer",
+                                    }}
+                                >
+                                    Save Infrastructure & Continue
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* PHOTO STEP */}
+                {
+                    currentStep === "photo" && (
+                        <div>
+                            <h3 style={{ marginTop: 0, color: "#805ad5", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                📸 Stop Photos
+                            </h3>
+                            <p style={{ marginBottom: "1.5rem", color: "#4a5568" }}>
+                                Take after photo of the stop.
+                            </p>
+
+                            {/* Existing Photos Grid */}
+                            {existingPhotos.length > 0 && (
+                                <div style={{ marginBottom: "2rem" }}>
+                                    <h4 style={{ fontSize: "0.9rem", color: "#718096", marginBottom: "0.5rem" }}>Uploaded Photos</h4>
+                                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(80px, 1fr))", gap: "0.5rem" }}>
+                                        {existingPhotos.map(p => (
+                                            <div
+                                                key={p.id}
+                                                onClick={() => setPreviewUrl(p.url)}
+                                                style={{ aspectRatio: "1", background: "#edf2f7", borderRadius: "8px", overflow: "hidden", cursor: "pointer", position: "relative" }}
+                                            >
+                                                <img
+                                                    src={p.url}
+                                                    alt={`Photo ${p.id}`}
+                                                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Pending Uploads Preview */}
+                            {selectedFiles.length > 0 && (
+                                <div style={{ marginBottom: "2rem", background: "#f0fff4", padding: "1rem", borderRadius: "8px", border: "1px solid #9ae6b4" }}>
+                                    <h4 style={{ fontSize: "0.9rem", color: "#2f855a", marginBottom: "0.5rem", marginTop: 0 }}>Ready to Upload ({selectedFiles.length})</h4>
+                                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(80px, 1fr))", gap: "0.5rem", marginBottom: "1rem" }}>
+                                        {selectedFiles.map((file, idx) => (
+                                            <div
+                                                key={idx}
+                                                style={{ aspectRatio: "1", background: "black", borderRadius: "8px", overflow: "hidden", position: "relative" }}
+                                            >
+                                                <img
+                                                    src={URL.createObjectURL(file)}
+                                                    alt="preview"
+                                                    style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.8 }}
+                                                    onClick={() => setPreviewUrl(URL.createObjectURL(file))}
+                                                />
+                                                <button
+                                                    onClick={() => handleRemoveSelectedFile(idx)}
+                                                    style={{
+                                                        position: "absolute", top: "2px", right: "2px",
+                                                        background: "rgba(0,0,0,0.5)", color: "white",
+                                                        border: "none", borderRadius: "50%", width: "20px", height: "20px",
+                                                        display: "flex", alignItems: "center", justifyContent: "center",
+                                                        cursor: "pointer", fontSize: "12px"
+                                                    }}
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div style={{ display: "flex", gap: "0.5rem" }}>
+                                        <button
+                                            onClick={handleConfirmUpload}
+                                            style={{
+                                                flex: 1,
+                                                padding: "0.75rem",
+                                                background: "#48bb78",
+                                                color: "white",
+                                                border: "none",
+                                                borderRadius: "6px",
+                                                fontWeight: "bold",
+                                                cursor: "pointer",
+                                            }}
+                                        >
+                                            Upload & Save
+                                        </button>
+                                        <button
+                                            onClick={handleDiscardSelection}
+                                            style={{
+                                                padding: "0.75rem",
+                                                background: "white",
+                                                color: "#e53e3e",
+                                                border: "1px solid #fc8181",
+                                                borderRadius: "6px",
+                                                cursor: "pointer",
+                                            }}
+                                        >
+                                            Discard
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Add Photo Button */}
+                            {selectedFiles.length === 0 && (
+                                <div style={{ marginBottom: "2rem", textAlign: "center" }}>
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        multiple
+                                        onChange={handleFileSelect}
+                                        id="photo-upload"
+                                        style={{ display: "none" }}
+                                        disabled={isUploadingPhoto}
+                                    />
+                                    <label
+                                        htmlFor="photo-upload"
+                                        style={{
+                                            display: "block",
+                                            padding: "2rem",
+                                            border: "2px dashed #cbd5e0",
+                                            borderRadius: "12px",
+                                            background: "#f7fafc",
+                                            cursor: "pointer",
+                                            color: "#4a5568",
+                                            fontWeight: "bold",
+                                        }}
+                                    >
+                                        {isUploadingPhoto ? "Uploading..." : "📷 Add Photos"}
+                                    </label>
+                                </div>
+                            )}
+
+                            {(() => {
+                                const hasAnyPhoto = attachedPhotoKeys.length > 0 || existingPhotos.length > 0 || queuedUploadCount > 0;
+                                const hasPendingUploads = selectedFiles.length > 0;
+                                const canComplete = hasAnyPhoto && !hasPendingUploads && !isCompletingStop;
+
+                                return (
+                                    <button
+                                        onClick={onCompleteStop}
+                                        disabled={!canComplete}
+                                        style={{
+                                            width: "100%",
+                                            padding: "1.25rem",
+                                            background: canComplete ? "#805ad5" : "#cbd5e0",
+                                            color: "white",
+                                            border: "none",
+                                            borderRadius: "8px",
+                                            fontSize: "1.1rem",
+                                            fontWeight: "bold",
+                                            cursor: canComplete ? "pointer" : "not-allowed",
+                                        }}
+                                    >
+                                        {hasPendingUploads ? "Upload photos first" : isCompletingStop ? "Completing..." : "Complete Stop"}
+                                    </button>
+                                );
+                            })()}
+                        </div>
+                    )
+                }
+            </div>
+
+            {/* SKIP MODAL */}
             {
                 showSkipModal && (
-                    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "1rem" }}>
+                    <div style={{
+                        position: "fixed",
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: "rgba(0,0,0,0.5)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        zIndex: 1000,
+                        padding: "1rem"
+                    }}>
                         <div style={{ background: "white", padding: "1.5rem", borderRadius: "12px", width: "100%", maxWidth: "400px" }}>
-                            <h3>Confirm Skip?</h3>
-                            <div style={{ display: "flex", gap: "1rem", marginTop: "1rem" }}>
-                                <button onClick={() => setShowSkipModal(false)} style={{ flex: 1, padding: "0.75rem", background: "white", border: "1px solid #cbd5e0", borderRadius: "8px" }}>Cancel</button>
-                                <button onClick={() => onSkipStop?.()} style={{ flex: 1, padding: "0.75rem", background: "#c53030", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold" }}>Skip</button>
+                            <h3 style={{ marginTop: 0, color: "#c53030" }}>Confirm Skip</h3>
+                            <p>You are about to skip this stop due to: <strong>{safety?.hazardTypes?.join(", ") || "Safety Concern"}</strong></p>
+
+                            <div style={{ marginBottom: "1.5rem" }}>
+                                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "bold" }}>Photo Required:</label>
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment"
+                                    id="skip-photo-upload"
+                                    style={{ display: "none" }}
+                                    disabled={isUploadingPhoto}
+                                    onChange={async (e) => {
+                                        const f = e.target.files?.[0];
+                                        if (!f) return;
+                                        try {
+                                            const { photos, queued } = await uploadPhotos(stop.route_run_stop_id, [f], "safety");
+                                            if (queued) {
+                                                const placeholder = `queued-safety-${Date.now()}`;
+                                                onSetSafety?.({ ...(safety || { hasConcern: true, hazardTypes: [] }), safetyPhotoKey: placeholder });
+                                            } else if (photos?.[0]?.s3_key) {
+                                                onSetSafety?.({ ...(safety || { hasConcern: true, hazardTypes: [] }), safetyPhotoKey: photos[0].s3_key });
+                                            }
+                                        } catch (err: any) {
+                                            alert("Failed to upload safety photo: " + (err?.message || "Unknown error"));
+                                        } finally {
+                                            e.target.value = "";
+                                        }
+                                    }}
+                                />
+                                <label
+                                    htmlFor="skip-photo-upload"
+                                    style={{
+                                        display: "block",
+                                        padding: "1rem",
+                                        border: "2px dashed #cbd5e0",
+                                        borderRadius: "8px",
+                                        background: "#f7fafc",
+                                        cursor: "pointer",
+                                        textAlign: "center",
+                                        color: safety?.safetyPhotoKey ? "#48bb78" : "#4a5568",
+                                        fontWeight: "bold",
+                                    }}
+                                >
+                                    {isUploadingPhoto ? "Uploading..." : safety?.safetyPhotoKey ? "✅ Photo Attached" : "📷 Take Photo"}
+                                </label>
+                            </div>
+
+                            <div style={{ display: "flex", gap: "1rem" }}>
+                                <button
+                                    onClick={() => setShowSkipModal(false)}
+                                    style={{
+                                        flex: 1,
+                                        padding: "1rem",
+                                        background: "white",
+                                        color: "#4a5568",
+                                        border: "1px solid #cbd5e0",
+                                        borderRadius: "8px",
+                                        fontWeight: "bold",
+                                        cursor: "pointer",
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        onSetSafety?.({
+                                            hasConcern: safety?.hasConcern ?? null,
+                                            ...safety,
+                                            wantsToSkip: true
+                                        });
+                                        onSkipStop?.();
+                                    }}
+                                    disabled={!safety?.safetyPhotoKey || isCompletingStop || isSkipQueued}
+                                    style={{
+                                        flex: 1,
+                                        padding: "1rem",
+                                        background: safety?.safetyPhotoKey ? "#c53030" : "#cbd5e0",
+                                        color: "white",
+                                        border: "none",
+                                        borderRadius: "8px",
+                                        fontWeight: "bold",
+                                        cursor: safety?.safetyPhotoKey ? "pointer" : "not-allowed",
+                                    }}
+                                >
+                                    {isCompletingStop ? "Skipping..." : isSkipQueued ? "Skip Queued..." : "Confirm Skip"}
+                                </button>
                             </div>
                         </div>
                     </div>
                 )
             }
-        </UlLayout >
+        </UlLayout>
     );
 }

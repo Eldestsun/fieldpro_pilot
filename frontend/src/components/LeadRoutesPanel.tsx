@@ -8,6 +8,7 @@ import { OpsTable, OpsTableRow, OpsTableCell } from "./ui/OpsTable";
 import { OpsBadge } from "./ui/OpsBadge";
 import { OpsButton } from "./ui/OpsButton";
 import { LeadRouteDetail } from "./LeadRouteDetail";
+import { LeadCompletedRouteDetail } from "./LeadCompletedRouteDetail";
 import { RouteCreatePanel } from "./RouteCreatePanel";
 
 export function LeadRoutesPanel() {
@@ -38,18 +39,12 @@ export function LeadRoutesPanel() {
     fetchRuns();
   }, [getAccessToken]);
 
-  // Unified detail view for both active and completed
-  const selectedRunId = selectedActiveRunId || selectedCompletedRunId;
-  if (selectedRunId) {
-    return (
-      <LeadRouteDetail
-        id={selectedRunId}
-        onBack={() => {
-          setSelectedActiveRunId(null);
-          setSelectedCompletedRunId(null);
-        }}
-      />
-    );
+  if (selectedActiveRunId) {
+    return <LeadRouteDetail id={selectedActiveRunId} onBack={() => setSelectedActiveRunId(null)} />;
+  }
+
+  if (selectedCompletedRunId) {
+    return <LeadCompletedRouteDetail id={selectedCompletedRunId} onBack={() => setSelectedCompletedRunId(null)} />;
   }
 
   const isCompletedStatus = (s?: string) => {
@@ -86,14 +81,10 @@ export function LeadRoutesPanel() {
               <OpsTableCell style={{ fontFamily: "monospace", color: "#718096" }}>#{run.id}</OpsTableCell>
               <OpsTableCell>{run.pool_label || run.route_pool_id}</OpsTableCell>
               <OpsTableCell>
-                {run.status === "in_progress" && run.completed_stops > 0 ? (
-                  <OpsBadge variant="warning" value="Partially completed" />
-                ) : (
-                  <OpsBadge
-                    variant={run.status === "in_progress" ? "status" : "neutral"}
-                    value={(run.status || "unknown").replaceAll("_", " ")}
-                  />
-                )}
+                <OpsBadge
+                  variant={run.status === "in_progress" ? "status" : "neutral"}
+                  value={(run.status || "unknown").replaceAll("_", " ")}
+                />
               </OpsTableCell>
               <OpsTableCell>{run.stop_count}</OpsTableCell>
               <OpsTableCell>{new Date(run.run_date).toLocaleDateString()}</OpsTableCell>

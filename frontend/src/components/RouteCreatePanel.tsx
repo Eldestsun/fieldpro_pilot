@@ -45,30 +45,11 @@ export function RouteCreatePanel({ isOpen, onClose, hook }: RouteCreatePanelProp
                 }}
                 onClick={(e) => e.stopPropagation()}
             >
-                <header style={{ marginBottom: "2rem", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div>
-                        <h2 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700 }}>Create Route</h2>
-                        <p style={{ margin: "0.5rem 0 0", color: "#718096", fontSize: "0.9375rem" }}>
-                            Configure and preview a new route run.
-                        </p>
-                    </div>
-                    <button
-                        onClick={onClose}
-                        style={{
-                            background: "none",
-                            border: "none",
-                            fontSize: "1.5rem",
-                            color: "#a0aec0",
-                            cursor: "pointer",
-                            padding: "0.25rem",
-                            lineHeight: 1,
-                            marginTop: "-0.5rem",
-                            marginRight: "-0.5rem"
-                        }}
-                        aria-label="Close"
-                    >
-                        ✕
-                    </button>
+                <header style={{ marginBottom: "2rem" }}>
+                    <h2 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700 }}>Create Route</h2>
+                    <p style={{ margin: "0.5rem 0 0", color: "#718096", fontSize: "0.9375rem" }}>
+                        Configure and preview a new route run.
+                    </p>
                 </header>
 
                 {hook.error && (

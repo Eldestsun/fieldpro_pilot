@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
-import { getPoolsScoped, createAdminPool, updateAdminPool, type Pool } from "../../api/routeRuns";
+import { getPoolsScoped, createAdminPool, disableAdminPool, type Pool } from "../../api/routeRuns";
 import { OpsLayout } from "../ui/OpsLayout";
 import { OpsCard } from "../ui/OpsCard";
 import { OpsTable, OpsTableRow, OpsTableCell } from "../ui/OpsTable";
@@ -51,17 +51,14 @@ export function AdminPoolsPanel({ scope = "admin" }: AdminPoolsPanelProps) {
     }
   };
 
-  const handleToggleActive = async (pool: Pool) => {
-    const newActiveState = !pool.active;
-    const action = newActiveState ? "enable" : "disable";
-    if (!confirm(`Are you sure you want to ${action} this pool?`)) return;
-
+  const handleDisable = async (id: string) => {
+    if (!confirm("Are you sure you want to disable this pool?")) return;
     try {
       const token = await getAccessToken();
-      await updateAdminPool(token, pool.id, { active: newActiveState });
-      fetchPools(); // Re-fetch on success (no optimistic update)
+      await disableAdminPool(token, id);
+      fetchPools();
     } catch (err: any) {
-      alert(err.message || `Failed to ${action} pool`);
+      alert(err.message || "Failed to disable pool");
     }
   };
 
@@ -108,19 +105,12 @@ export function AdminPoolsPanel({ scope = "admin" }: AdminPoolsPanelProps) {
               <OpsTableCell style={{ fontFamily: "monospace", color: "#718096" }}>{pool.id}</OpsTableCell>
               <OpsTableCell style={{ fontWeight: 600 }}>{pool.name}</OpsTableCell>
               <OpsTableCell>
-                <OpsBadge
-                  variant={pool.active ? "success" : "neutral"}
-                  value={pool.active ? "Active" : "Inactive"}
-                />
+                <OpsBadge variant="success" value="Active" />
               </OpsTableCell>
               {!isReadOnly && (
                 <OpsTableCell>
-                  <OpsButton
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleToggleActive(pool)}
-                  >
-                    {pool.active ? "Disable" : "Enable"}
+                  <OpsButton variant="outline" size="sm" onClick={() => handleDisable(pool.id)}>
+                    Disable
                   </OpsButton>
                 </OpsTableCell>
               )}

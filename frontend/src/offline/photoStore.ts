@@ -15,17 +15,10 @@ const DB_NAME = "fieldpro-offline";
 const STORE_NAME = "photos";
 const DB_VERSION = 2;
 
-let dbInstance: IDBDatabase | null = null;
-
 function openDB(): Promise<IDBDatabase> {
-    if (dbInstance) return Promise.resolve(dbInstance);
-
     return new Promise((resolve, reject) => {
         const req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onerror = () => {
-            console.error("[photoStore] open error", req.error);
-            reject(req.error);
-        };
+        req.onerror = () => console.error("[photoStore] open error", req.error);
         req.onupgradeneeded = (e) => {
             const db = (e.target as IDBOpenDBRequest).result;
             if (!db.objectStoreNames.contains(STORE_NAME)) {
@@ -36,25 +29,9 @@ function openDB(): Promise<IDBDatabase> {
                 db.createObjectStore("stopDrafts", { keyPath: "id" });
             }
         };
-        req.onsuccess = () => {
-            dbInstance = req.result;
-            dbInstance.onversionchange = () => {
-                dbInstance?.close();
-                dbInstance = null;
-            };
-            dbInstance.onclose = () => {
-                dbInstance = null;
-            };
-            resolve(dbInstance);
-        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
     });
-}
-
-export function closePhotoDB() {
-    if (dbInstance) {
-        dbInstance.close();
-        dbInstance = null;
-    }
 }
 
 export async function putPhoto(params: {
