@@ -1,0 +1,39 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Frontend (Vite)",
+      "runtimeExecutable": "/opt/homebrew/bin/node",
+      "runtimeArgs": ["/Users/adamyu/Documents/Projects/fieldpro_pilot/frontend/node_modules/vite/bin/vite.js", "/Users/adamyu/Documents/Projects/fieldpro_pilot/frontend"],
+      "port": 5173
+    },
+    {
+      "name": "Backend (Express)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "backend", "run", "dev"],
+      "port": 4000,
+      "autoPort": false
+    },
+    {
+      "name": "PostgreSQL (Docker)",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "postgres"],
+      "port": 5432,
+      "autoPort": false
+    },
+    {
+      "name": "MinIO Object Store (Docker)",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "minio"],
+      "port": 9000,
+      "autoPort": false
+    },
+    {
+      "name": "MinIO Console (Docker)",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "minio"],
+      "port": 9001,
+      "autoPort": false
+    }
+  ]
+}
