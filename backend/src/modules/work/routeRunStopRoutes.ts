@@ -73,9 +73,11 @@ routeRunStopRoutes.post(
             const severity = severity_legacy ?? safety?.severity;
             const safety_photo_key = safety_photo_key_legacy ?? safety?.safety_photo_key;
 
-            // DEV ONLY: Assume user_id = 123 for now
-            // [LEGACY/DEV-ONLY] Hardcoded legacy ID for development.
-            const user_id = 123;
+            // LEGACY: user_id is a transit-adapter field with no FK and no canonical significance.
+            // core.visits.captured_by_oid carries the real identity (already wired via auth context).
+            // This field will be removed when clean_logs is deprecated post-Tier-2.
+            const LEGACY_TRANSIT_USER_ID = 0;
+            const user_id = LEGACY_TRANSIT_USER_ID;
 
             // 1. Validate safety photo in DB (Mandatory for skip)
             const { countStopPhotosByRouteRunStop } = await import("../../domains/routeRunStop/stopPhotosService");
@@ -215,9 +217,11 @@ routeRunStopRoutes.post(
                 spotCheck, // optional boolean
             } = req.body;
 
-            // DEV ONLY: Assume user_id = 123 for now
-            // [LEGACY/DEV-ONLY] Hardcoded legacy ID for development. In production, rely on OID.
-            const user_id = 123;
+            // LEGACY: user_id is a transit-adapter field with no FK and no canonical significance.
+            // core.visits.captured_by_oid carries the real identity (already wired via auth context).
+            // This field will be removed when clean_logs is deprecated post-Tier-2.
+            const LEGACY_TRANSIT_USER_ID = 0;
+            const user_id = LEGACY_TRANSIT_USER_ID;
 
             // Validate photo_keys (Required for completion)
             // Check legacy photo_keys OR new stop_photos

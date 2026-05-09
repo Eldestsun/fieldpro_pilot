@@ -17,7 +17,10 @@ import { startRouteRunStopInternal } from "../../domains/routeRun/operations/sta
 export const routeRunRoutes = Router();
 
 const MAX_OSRM_STOPS = 25;
-const PILOT_DEV_UL_USER_ID = 123;
+// LEGACY: integer user_id on route_runs has no FK and no canonical significance.
+// The canonical UL identity is assigned_user_oid (already wired from req.body.ul_id).
+// This constant will be removed when the legacy user_id column is deprecated.
+const LEGACY_TRANSIT_USER_ID = 0;
 
 // Lead-only hub
 routeRunRoutes.get("/lead/hub", requireAuth, requireAnyRole(["Lead"]), (_req, res) => {
