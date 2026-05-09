@@ -248,7 +248,7 @@ routeRunRoutes.post(
     async (req: any, res: Response) => {
         const client = await pool.connect();
         try {
-            const { stop_ids, base_id, route_pool_id, pool_id, run_date, ul_id, user_id } = req.body;
+            const { stop_ids, base_id, route_pool_id, pool_id, run_date, ul_id } = req.body;
 
             // Enterprise Identity: Creator
             const createdByOid = req.user?.oid;
@@ -323,8 +323,7 @@ routeRunRoutes.post(
                 // Assign explicit OIDs
                 assigned_user_oid: assignedUserOid,
                 created_by_oid: createdByOid,
-                // Pass legacy/dev ID only if explicitly provided
-                user_id: user_id,
+                user_id: LEGACY_TRANSIT_USER_ID,
                 route_pool_id: targetPoolId,
                 base_id: resolvedBaseId,
                 run_date,
