@@ -37,6 +37,8 @@ uploads/
 
 # Local dumps / scratch / exports
 pg_state.sql
+db_dumps/
+SELECT.sql
 *.csv
 *.jpg
 *.jpeg
