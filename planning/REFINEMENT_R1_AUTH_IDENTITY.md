@@ -2,7 +2,7 @@
 
 > **Goal**: Replace the `user_id = 123` and `PILOT_DEV_UL_USER_ID = 123` hardcoded stubs with explicit named constants and, where OID is already available, wire it correctly — acknowledging that `user_id` is a legacy transit field and canonical identity is already correct.
 >
-> **Status**: 🔴 Not started
+> **Status**: 🟢 Done
 > **Depends on**: Nothing (unblocked)
 > **Blocks**: R7 (historical backfill should reflect correct identity on new writes first)
 
@@ -137,12 +137,12 @@ If `ul_id` is already wired in the handler (check line ~321), no change needed �
 
 R1 is complete when ALL of the following are true, **and a changelog entry has been written**:
 
-- [ ] No `user_id = 123` or `PILOT_DEV_UL_USER_ID = 123` literals remain in any backend file
-- [ ] Both stubs replaced with `LEGACY_TRANSIT_USER_ID = 0` + explanatory comment
-- [ ] `route_runs.assigned_user_oid` is non-null for routes created by an authenticated Lead
-- [ ] `core.visits.captured_by_oid` is unaffected (still correct)
-- [ ] Stop completion and route creation work end-to-end
-- [ ] Changelog entry written to `docs/changelog/YYYY-MM-DD-r1-auth-identity.md`
+- [x] No `user_id = 123` or `PILOT_DEV_UL_USER_ID = 123` literals remain in any backend file
+- [x] Both stubs replaced with `LEGACY_TRANSIT_USER_ID = 0` + explanatory comment
+- [x] `route_runs.assigned_user_oid` is non-null for routes created by an authenticated Lead
+- [x] `core.visits.captured_by_oid` is unaffected (still correct)
+- [x] Stop completion and route creation work end-to-end
+- [x] Changelog entry written to `docs/changelog/2026-05-08-r1-auth-identity.md`
 
 ---
 

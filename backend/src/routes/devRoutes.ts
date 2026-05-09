@@ -29,10 +29,10 @@ devRoutes.post("/dev/generate-route-run", async (req: Request, res: Response) =>
 
         // 2. Select candidate stops
         const stopsQuery = `
-      SELECT "STOP_ID", lon, lat
+      SELECT stop_id, lon, lat
       FROM stops
       WHERE pool_id = $1
-      ORDER BY "STOP_ID"::text ASC
+      ORDER BY stop_id::text ASC
       LIMIT $2
     `;
         const stopsRes = await client.query(stopsQuery, [pool_id, max_stops]);
@@ -46,7 +46,7 @@ devRoutes.post("/dev/generate-route-run", async (req: Request, res: Response) =>
         const stops: OsrmStop[] = stopsRes.rows.map((r: any) => ({
             lon: r.lon,
             lat: r.lat,
-            stop_id: r.STOP_ID,
+            stop_id: r.stop_id,
         }));
 
         // 3. Create Route Run using helper

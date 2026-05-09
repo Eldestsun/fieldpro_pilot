@@ -45,7 +45,7 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
         const query = `
             WITH base AS (
                 SELECT
-                    "STOP_ID" AS stop_id,
+                    stop_id,
                     is_hotspot
                 FROM stops
                 WHERE pool_id IS NOT NULL

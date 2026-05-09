@@ -34,15 +34,15 @@ export async function loadRouteRunById(id: number | string) {
       rrs.updated_at         AS route_run_stop_updated_at,
       rrs.trash_volume,
       COALESCE(rrs.asset_id, s.asset_id) AS asset_id,
-      s."STOP_ID",
-      s."STOP_ID"            AS stop_number,
-      s."TRF_DISTRICT_CODE",
-      s."BAY_CODE",
-      s."BEARING_CODE",
-      s."ON_STREET_NAME",
-      s."INTERSECTION_LOC",
-      s."HASTUS_CROSS_STREET_NAME",
-      s."NUM_SHELTERS",
+      s.stop_id,
+      s.stop_id              AS stop_number,
+      s.trf_district_code,
+      s.bay_code,
+      s.bearing_code,
+      s.on_street_name,
+      s.intersection_loc,
+      s.hastus_cross_street_name,
+      s.num_shelters,
       s.is_hotspot,
       s.compactor,
       s.has_trash,
@@ -59,7 +59,7 @@ export async function loadRouteRunById(id: number | string) {
     LEFT JOIN identity_directory id_dir ON id_dir.oid = rr.assigned_user_oid
     LEFT JOIN identity_directory creator ON creator.oid = rr.created_by_oid
     JOIN route_run_stops rrs ON rrs.route_run_id = rr.id
-    JOIN stops s ON s."STOP_ID" = rrs.stop_id
+    JOIN stops s ON s.stop_id = rrs.stop_id
     LEFT JOIN clean_logs cl ON cl.route_run_stop_id = rrs.id
     WHERE rr.id = $1
     ORDER BY rrs.sequence;
@@ -136,7 +136,7 @@ export async function loadRouteRunById(id: number | string) {
         updated_at: first.route_run_updated_at,
         stops: result.rows.map((r: any) => ({
             route_run_stop_id: r.route_run_stop_id,
-            stop_id: r.STOP_ID,
+            stop_id: r.stop_id,
             asset_id: r.asset_id,
             stopNumber: r.stop_number,
             sequence: r.sequence,
@@ -146,13 +146,13 @@ export async function loadRouteRunById(id: number | string) {
             planned_duration_s: r.planned_duration_s,
             trash_volume: r.trash_volume,
             location: { lon: r.lon, lat: r.lat },
-            on_street_name: r.ON_STREET_NAME,
-            cross_street: r.HASTUS_CROSS_STREET_NAME,
-            intersection_loc: r.INTERSECTION_LOC,
-            bearing_code: r.BEARING_CODE,
-            trf_district_code: r.TRF_DISTRICT_CODE,
-            bay_code: r.BAY_CODE,
-            num_shelters: r.NUM_SHELTERS,
+            on_street_name: r.on_street_name,
+            cross_street: r.hastus_cross_street_name,
+            intersection_loc: r.intersection_loc,
+            bearing_code: r.bearing_code,
+            trf_district_code: r.trf_district_code,
+            bay_code: r.bay_code,
+            num_shelters: r.num_shelters,
             is_hotspot: r.is_hotspot,
             compactor: r.compactor,
             has_trash: r.has_trash,

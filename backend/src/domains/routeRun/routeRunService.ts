@@ -28,17 +28,17 @@ export async function getCandidateStopsForPoolWithRisk(
   const RAW_LIMIT = 200;
 
   const query = `
-    SELECT 
-      s."STOP_ID", 
-      s.lon, 
+    SELECT
+      s.stop_id,
+      s.lon,
       s.lat,
-      s."ON_STREET_NAME",
-      s."BEARING_CODE",
+      s.on_street_name,
+      s.bearing_code,
       COALESCE(r.combined_risk_score, 0) as combined_risk_score,
       COALESCE(r.hotspot_weight, 0) as hotspot_weight,
       COALESCE(r.l3_urgency_weight, 0) as l3_urgency_weight
     FROM public.stops s
-    LEFT JOIN public.stop_risk_snapshot r ON r.stop_id = s."STOP_ID"
+    LEFT JOIN public.stop_risk_snapshot r ON r.stop_id = s.stop_id
     WHERE s.pool_id = $1
     order by combined_risk_score desc
     LIMIT $2
@@ -46,14 +46,14 @@ export async function getCandidateStopsForPoolWithRisk(
 
   const res = await client.query(query, [poolId, RAW_LIMIT]);
   let candidates: CandidateStop[] = res.rows.map((r: any) => ({
-    stop_id: r.STOP_ID,
+    stop_id: r.stop_id,
     lon: r.lon,
     lat: r.lat,
     combined_risk_score: Number(r.combined_risk_score),
     hotspot_weight: Number(r.hotspot_weight),
     l3_urgency_weight: Number(r.l3_urgency_weight),
-    on_street_name: r.ON_STREET_NAME,
-    bearing_code: r.BEARING_CODE,
+    on_street_name: r.on_street_name,
+    bearing_code: r.bearing_code,
   }));
 
   // 2. Fetch Overrides
@@ -87,22 +87,22 @@ export async function getCandidateStopsForPoolWithRisk(
     // BUT user requirements say "forceIncludeBonus = max_combined_risk_score... + 1" for sorting later.
     // Here we just need the stop data (coords).
     const missingQuery = `
-      SELECT "STOP_ID", lon, lat, "ON_STREET_NAME", "BEARING_CODE"
-      FROM stops 
-      WHERE "STOP_ID" = ANY($1::text[]) AND pool_id = $2
+      SELECT stop_id, lon, lat, on_street_name, bearing_code
+      FROM stops
+      WHERE stop_id = ANY($1::text[]) AND pool_id = $2
     `;
     const missingRes = await client.query(missingQuery, [missingIncludeIds, poolId]);
 
     for (const row of missingRes.rows) {
       candidates.push({
-        stop_id: row.STOP_ID,
+        stop_id: row.stop_id,
         lon: row.lon,
         lat: row.lat,
         combined_risk_score: 0, // Defaults
         hotspot_weight: 0,
         l3_urgency_weight: 0,
-        on_street_name: row.ON_STREET_NAME,
-        bearing_code: row.BEARING_CODE,
+        on_street_name: row.on_street_name,
+        bearing_code: row.bearing_code,
       });
     }
   }
@@ -360,13 +360,13 @@ export async function createRouteRun(
     if (stopIds.length > 0) {
       const distinctStopIds = Array.from(new Set(stopIds));
       const assetRes = await client.query(
-        `SELECT "STOP_ID", asset_id FROM public.stops WHERE "STOP_ID" = ANY($1::text[])`,
+        `SELECT stop_id, asset_id FROM public.stops WHERE stop_id = ANY($1::text[])`,
         [distinctStopIds]
       );
 
       for (const r of assetRes.rows) {
         if (r.asset_id) {
-          assetIdMap.set(r.STOP_ID, r.asset_id);
+          assetIdMap.set(r.stop_id, r.asset_id);
         }
       }
 

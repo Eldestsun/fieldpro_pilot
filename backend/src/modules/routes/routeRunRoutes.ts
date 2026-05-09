@@ -129,9 +129,9 @@ routeRunRoutes.post("/routes/plan", async (req: Request, res: Response) => {
 
         // 1) Look up lon/lat for the requested stops
         const query = `
-      SELECT "STOP_ID", lon, lat
+      SELECT stop_id, lon, lat
       FROM stops
-      WHERE "STOP_ID" = ANY($1::text[])
+      WHERE stop_id = ANY($1::text[])
     `;
         const result = await pool.query(query, [stop_ids]);
 
@@ -145,7 +145,7 @@ routeRunRoutes.post("/routes/plan", async (req: Request, res: Response) => {
         const stops: OsrmStop[] = result.rows.map((r: any) => ({
             lon: r.lon,
             lat: r.lat,
-            stop_id: r.STOP_ID,
+            stop_id: r.stop_id,
         }));
 
         // 2) Ask OSRM for an optimized trip
@@ -175,9 +175,9 @@ routeRunRoutes.post("/route-runs/preview", async (req: Request, res: Response) =
         // Option A: Explicit stop_ids provided
         if (Array.isArray(stop_ids) && stop_ids.length >= 2) {
             const query = `
-        SELECT "STOP_ID", lon, lat, "ON_STREET_NAME", "BEARING_CODE"
+        SELECT stop_id, lon, lat, on_street_name, bearing_code
         FROM stops
-        WHERE "STOP_ID" = ANY($1::text[])
+        WHERE stop_id = ANY($1::text[])
       `;
             const result = await pool.query(query, [stop_ids]);
 
@@ -190,9 +190,9 @@ routeRunRoutes.post("/route-runs/preview", async (req: Request, res: Response) =
             stopsToPlan = result.rows.map((r: any) => ({
                 lon: r.lon,
                 lat: r.lat,
-                stop_id: r.STOP_ID,
-                on_street_name: r.ON_STREET_NAME,
-                bearing_code: r.BEARING_CODE,
+                stop_id: r.stop_id,
+                on_street_name: r.on_street_name,
+                bearing_code: r.bearing_code,
             }));
         }
         // Option B: pool_id provided -> fetch with risk logic
@@ -289,9 +289,9 @@ routeRunRoutes.post(
             // Option A: Explicit stop_ids
             if (Array.isArray(stop_ids) && stop_ids.length >= 2) {
                 const query = `
-        SELECT "STOP_ID", lon, lat, "ON_STREET_NAME", "BEARING_CODE"
+        SELECT stop_id, lon, lat, on_street_name, bearing_code
         FROM stops
-        WHERE "STOP_ID" = ANY($1::text[])
+        WHERE stop_id = ANY($1::text[])
       `;
                 const result = await client.query(query, [stop_ids]);
                 if (result.rows.length < 2) {
@@ -303,9 +303,9 @@ routeRunRoutes.post(
                 stopsToPlan = result.rows.map((r: any) => ({
                     lon: r.lon,
                     lat: r.lat,
-                    stop_id: r.STOP_ID,
-                    on_street_name: r.ON_STREET_NAME,
-                    bearing_code: r.BEARING_CODE,
+                    stop_id: r.stop_id,
+                    on_street_name: r.on_street_name,
+                    bearing_code: r.bearing_code,
                 }));
 
                 // Apply truncation for explicit list

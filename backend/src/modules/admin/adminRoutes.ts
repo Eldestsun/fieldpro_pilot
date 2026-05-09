@@ -220,12 +220,12 @@ adminRoutes.get("/admin/clean-logs", async (req: Request, res: Response) => {
     const query = `
             SELECT 
                 cl.*,
-                s."ON_STREET_NAME", s.pool_id,
+                s.on_street_name, s.pool_id,
                 rr.run_date, rr.route_pool_id
             FROM clean_logs cl
             LEFT JOIN route_run_stops rrs ON cl.route_run_stop_id = rrs.id
             LEFT JOIN route_runs rr ON rrs.route_run_id = rr.id
-            LEFT JOIN stops s ON cl.stop_id = s."STOP_ID"
+            LEFT JOIN stops s ON cl.stop_id = s.stop_id
             ${whereClause}
             ORDER BY cl.cleaned_at DESC, cl.id DESC
             LIMIT $${idx++} OFFSET $${idx++}
@@ -237,7 +237,7 @@ adminRoutes.get("/admin/clean-logs", async (req: Request, res: Response) => {
             FROM clean_logs cl
             LEFT JOIN route_run_stops rrs ON cl.route_run_stop_id = rrs.id
             LEFT JOIN route_runs rr ON rrs.route_run_id = rr.id
-            LEFT JOIN stops s ON cl.stop_id = s."STOP_ID"
+            LEFT JOIN stops s ON cl.stop_id = s.stop_id
             ${whereClause}
         `;
 

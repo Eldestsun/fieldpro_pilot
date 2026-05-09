@@ -1,9 +1,11 @@
 import { Pool } from "pg";
 
-export const pool = new Pool({
-  host: "localhost",     // ← CORRECT for backend running on your Mac
-  port: 5432,
-  user: "fieldpro",
-  password: "fieldpro_pass",
-  database: "fieldpro_db",
-});
+export const pool = process.env.DATABASE_URL
+  ? new Pool({ connectionString: process.env.DATABASE_URL })
+  : new Pool({
+      host:     process.env.PGHOST     ?? "localhost",
+      port:     Number(process.env.PGPORT ?? 5432),
+      user:     process.env.PGUSER     ?? "fieldpro",
+      password: process.env.PGPASSWORD ?? "fieldpro_pass",
+      database: process.env.PGDATABASE ?? "fieldpro_db",
+    });

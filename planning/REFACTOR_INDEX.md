@@ -13,9 +13,9 @@
 | 1 | Canonical Completeness | — (unblocked) | 3, 4, 6 | 🔴 Not started |
 | 2 | Intelligence Migration | Tier 1 done + Tier 4 stops-columns done | — | ⛔ Blocked |
 | 3 | Reconnect Control Center | — (unblocked) | 1, 4, 6 | 🟢 Done |
-| 4 | Schema Cleanup | — (unblocked) | 1, 3, 6 | 🔴 Not started |
+| 4 | Schema Cleanup | — (unblocked) | 1, 3, 6 | 🟢 Done |
 | 5 | Assignment Layer | Tier 1 must be stable | 3, 4, 6 | ⛔ Blocked |
-| 6 | Infrastructure | — (unblocked) | 1, 3, 4, 5 | 🔴 Not started |
+| 6 | Infrastructure | — (unblocked) | 1, 3, 4, 5 | 🟡 In progress |
 
 ---
 

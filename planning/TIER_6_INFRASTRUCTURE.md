@@ -2,7 +2,7 @@
 
 > **Goal**: Give the codebase a migration runner, integration test coverage for canonical write paths, production Dockerfiles, and a documented CI setup — so the refactor can be verified automatically and the application can be deployed outside of local dev.
 >
-> **Status**: 🔴 Not started
+> **Status**: 🟡 In progress — Sub-tasks A and D complete; B and C pending
 > **Depends on**: Nothing (unblocked)
 > **Runs alongside**: Every other tier — write tests as each tier completes, not all at the end
 
@@ -21,7 +21,7 @@ The sub-tasks below can be started in any order. None depend on each other.
 
 ---
 
-## Sub-task A — Migration Runner
+## Sub-task A — Migration Runner 🟢 Done
 
 ### Why
 
@@ -57,9 +57,11 @@ Add to `backend/package.json` scripts:
 ```
 
 ### Done criteria
-- `npm run migrate` in `backend/` applies all pending migrations in filename order
-- Re-running is idempotent (already-applied migrations are skipped)
-- Failed migrations roll back cleanly and report the filename that failed
+- [x] `npm run migrate` in `backend/` applies all pending migrations in filename order
+- [x] Re-running is idempotent (already-applied migrations are skipped)
+- [x] Failed migrations roll back cleanly and report the filename that failed
+
+**Verified 2026-05-08.** 43 existing migrations stamped as pre-runner baseline. Runner confirmed all-skip on re-run. Changelog: `docs/changelog/2026-05-08-tier-6a-migration-runner.md`
 
 ---
 
@@ -187,7 +189,7 @@ The `nginx.conf` must handle SPA routing (`try_files $uri /index.html`) and prox
 
 ---
 
-## Sub-task D — Remove Hardcoded Localhost
+## Sub-task D — Remove Hardcoded Localhost 🟢 Done
 
 ### Why
 
@@ -202,9 +204,11 @@ The `nginx.conf` must handle SPA routing (`try_files $uri /index.html`) and prox
 | `backend/.env.example` (new) | Document all required env vars |
 
 ### Done criteria
-- No `localhost` hardcodes remain in backend source
-- All service addresses come from environment variables
-- `.env.example` documents `DATABASE_URL`, `OSRM_URL`, `PORT`, `AZURE_*`, `MINIO_*`
+- [x] No `localhost` hardcodes remain in backend source
+- [x] All service addresses come from environment variables
+- [x] `.env.example` documents `DATABASE_URL`, `OSRM_BASE_URL`, `PORT`, `AZURE_*`, `MINIO_*`
+
+**Verified 2026-05-08.** `db.ts` converted to `PG*` / `DATABASE_URL` env vars with local-dev fallbacks. `osrmClient.ts` was already env-var-backed. `.env.example` rewritten with full var inventory. Changelog: `docs/changelog/2026-05-08-tier-6d-remove-hardcoded-localhost.md`
 
 ---
 
@@ -212,12 +216,12 @@ The `nginx.conf` must handle SPA routing (`try_files $uri /index.html`) and prox
 
 Tier 6 is complete when ALL of the following are true, **and a changelog entry has been written to `docs/changelog/`**:
 
-- [ ] Sub-task A: `npm run migrate` applies all pending migrations idempotently
+- [x] Sub-task A: `npm run migrate` applies all pending migrations idempotently
 - [ ] Sub-task B: `npm test` runs and all canonical write path tests pass
 - [ ] Sub-task B: Tier 1 and Tier 5 canonical paths each have at least one test
 - [ ] Sub-task C: `docker compose up --build` starts the full stack
-- [ ] Sub-task D: No hardcoded `localhost` in backend source
-- [ ] Sub-task D: `.env.example` documents all required env vars
+- [x] Sub-task D: No hardcoded `localhost` in backend source
+- [x] Sub-task D: `.env.example` documents all required env vars
 - [ ] Changelog entry written to `docs/changelog/YYYY-MM-DD-tier-6-infrastructure.md`
 
 ---
