@@ -20,7 +20,7 @@ These are two parallel workstreams. Several refinement items can begin before al
 
 | ID | Name | Depends On | Parallel With | Status |
 |----|------|-----------|---------------|--------|
-| R1 | Auth Identity Cleanup | — (unblocked) | R3, R4, R10 | 🔴 Not started |
+| R1 | Auth Identity Cleanup | — (unblocked) | R3, R4, R10 | 🟢 Done |
 | R2 | Arrival Observations — Real Prior State | Tier 1 done | R1, R3, R4 | ⛔ Blocked by Tier 1 |
 | R3 | Frontend Router | — (unblocked) | R1, R2, R4, R10 | 🔴 Not started |
 | R4 | Offline UX — Worker Feedback Layer | — (unblocked) | R1, R2, R3 | 🔴 Not started |
@@ -62,6 +62,8 @@ Tier 4B ──► R10 (drop surveillance tables, then rebuild correctly)
 **File**: `planning/REFINEMENT_R1_AUTH_IDENTITY.md`
 
 Replace `user_id = 123` and `PILOT_DEV_UL_USER_ID = 123` stubs in backend write paths with the real OID from the authenticated request context. OID is already available on `req.user.oid` after `requireAuth` middleware. This is a targeted 3-file backend pass.
+
+Status: Complete — LEGACY_TRANSIT_USER_ID = 0 replacing all stubs. Changelog written 2026-05-08.
 
 ---
 
