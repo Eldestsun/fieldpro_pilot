@@ -41,11 +41,8 @@ export function TodayRouteView() {
         infraState,
         setSafetyForStop,
         setInfraForStop,
-        stepState,
-        handleNextStep,
         uploadPhotos,
         fetchPhotos,
-        setStepForStop,
     } = useTodayRoute();
 
 
@@ -179,10 +176,6 @@ export function TodayRouteView() {
                 onSetSafety={(data) => setSafetyForStop(stop.route_run_stop_id, data)}
                 onSetInfra={(data) => setInfraForStop(stop.route_run_stop_id, data)}
                 onSkipStop={() => handleSkipStop(stop.route_run_stop_id)}
-                currentStep={stepState[stop.route_run_stop_id]}
-                onNextStep={() => handleNextStep(stop.route_run_stop_id)}
-                onSetStep={(step) => setStepForStop(stop.route_run_stop_id, step)}
-
                 uploadPhotos={uploadPhotos}
                 fetchPhotos={fetchPhotos}
                 routeRunId={routeRun.id}

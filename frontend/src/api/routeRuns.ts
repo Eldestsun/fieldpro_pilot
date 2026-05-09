@@ -39,6 +39,7 @@ export interface ChecklistState {
     washed_pad: boolean;
     washed_can: boolean;
     trashVolume?: number;
+    spotCheck?: boolean;
 }
 
 export const EMPTY_CHECKLIST: ChecklistState = {
@@ -48,6 +49,7 @@ export const EMPTY_CHECKLIST: ChecklistState = {
     washed_pad: false,
     washed_can: false,
     trashVolume: undefined,
+    spotCheck: undefined,
 };
 
 export async function getTodayRoute(token: string): Promise<RouteRun | null> {
@@ -160,6 +162,7 @@ export interface CompleteStopPayload {
     infraIssues?: InfraIssuePayload[];
     safety?: SafetyPayload;
     trashVolume?: number;
+    spotCheck?: boolean;
 }
 
 export async function completeStop(

@@ -19,9 +19,10 @@ import {
     getStopPhotos as apiGetStopPhotos,
     type PhotoDto,
 } from "../api/routeRuns";
-import { enqueueAction, type OfflineAction, setRequiresAuth, getHasQueuedUploadForStop } from "../offline/offlineQueue";
+import { enqueueAction, type OfflineAction, setRequiresAuth, getHasQueuedUploadForStop, type ExecutionMode } from "../offline/offlineQueue";
 import { putPhoto } from "../offline/photoStore";
 
+import { useOfflineMode } from "../utils/offlineMode";
 
 
 export interface SafetyState {
@@ -39,10 +40,17 @@ export interface InfraState {
     notes?: string;
 }
 
-export type WizardStep = "safety" | "tasks" | "infra" | "photo";
+// WizardStep removed - unified UI no longer uses step-based wizard
 
 export function useTodayRoute() {
     const { getAccessToken, account } = useAuth();
+    const { offlineMode } = useOfflineMode();
+
+    // Feature flag for OTEM (Offline-Tolerant Execution Mode)
+    const ENABLE_OTEM = import.meta.env.VITE_ENABLE_OTEM === 'true';
+
+    // Execution mode resolution: OFFLINE_TOLERANT when offlineMode is active, otherwise LIVE
+    const executionMode: ExecutionMode = (ENABLE_OTEM && offlineMode) ? 'OFFLINE_TOLERANT' : 'LIVE';
     const tenantId = account?.tenantId;
     const claims = account?.idTokenClaims as any;
     const oid = claims?.oid || account?.localAccountId;
@@ -72,8 +80,7 @@ export function useTodayRoute() {
     const [safetyState, setSafetyState] = useState<Record<number, SafetyState>>({});
     const [infraState, setInfraState] = useState<Record<number, InfraState>>({});
 
-    // Wizard Step State: { [stopId]: WizardStep }
-    const [stepState, setStepState] = useState<Record<number, WizardStep>>({});
+    // Wizard state removed - unified UI uses modals instead of steps
 
     const isNetworkFailure = (err: unknown) => {
         if (!navigator.onLine) return true;
@@ -97,8 +104,14 @@ export function useTodayRoute() {
     }, [getAccessToken]);
 
     useEffect(() => {
+        if (!account) {
+            setLoading(false);
+            setRouteRun(null);
+            setError(null);
+            return;
+        }
         fetchRoute();
-    }, [fetchRoute]);
+    }, [fetchRoute, account]);
 
     const handleStartRoute = async () => {
         if (!routeRun) return;
@@ -130,42 +143,53 @@ export function useTodayRoute() {
 
     const handleStartStop = async (stopId: number) => {
         setIsStartingStop(true);
+
+        // OTEM: Deterministic execution gate
+        if (executionMode === 'OFFLINE_TOLERANT') {
+            // Offline mode: Enqueue authoritative intent (no API call)
+            if (!routeRun) {
+                setIsStartingStop(false);
+                return;
+            }
+
+            const action: OfflineAction = {
+                id: crypto.randomUUID(),
+                type: "START_STOP",
+                executionMode: 'OFFLINE_TOLERANT',
+                routeRunId: String(routeRun.id),
+                routeRunStopId: String(stopId),
+                createdAt: new Date().toISOString(),
+                status: "pending",
+                payload: {}
+            } as any;
+            enqueueAction(tenantId, oid, action);
+
+            // Optimistic Update
+            setRouteRun(prev => {
+                if (!prev) return null;
+                return {
+                    ...prev,
+                    stops: prev.stops.map(s => {
+                        if (s.route_run_stop_id === stopId && s.status !== "done" && s.status !== "skipped") {
+                            return { ...s, status: "in_progress" };
+                        }
+                        return s;
+                    })
+                };
+            });
+            setHasStartedThisStop(true);
+            setIsStartingStop(false);
+            return;
+        }
+
+        // LIVE mode: Direct API call (no fallback)
         try {
             const token = await getAccessToken();
             const updatedRun = await startRouteRunStop(token, stopId);
             setRouteRun(updatedRun);
             setHasStartedThisStop(true);
         } catch (err: any) {
-            if (isNetworkFailure(err)) {
-                if (!routeRun) return;
-                // Offline fallback
-                const action: OfflineAction = {
-                    id: crypto.randomUUID(),
-                    type: "START_STOP",
-                    routeRunId: String(routeRun.id),
-                    routeRunStopId: String(stopId),
-                    createdAt: new Date().toISOString(),
-                    status: "pending",
-                    payload: {}
-                } as any;
-                enqueueAction(tenantId, oid, action);
-
-                // Optimistic Update
-                setRouteRun(prev => {
-                    if (!prev) return null;
-                    return {
-                        ...prev,
-                        stops: prev.stops.map(s => {
-                            if (s.route_run_stop_id === stopId && s.status !== "done" && s.status !== "skipped") {
-                                return { ...s, status: "in_progress" };
-                            }
-                            return s;
-                        })
-                    };
-                });
-                setHasStartedThisStop(true);
-                return;
-            }
+            // In LIVE mode, errors are thrown to UI (no auto-queue)
             alert("Error starting stop: " + err.message);
         } finally {
             setIsStartingStop(false);
@@ -174,86 +198,90 @@ export function useTodayRoute() {
 
     const handleSkipStop = async (stopId: number) => {
         setIsCompletingStop(true);
+
+        const safety = safetyState[stopId];
+        const photoKeysForStop = photoKeysMap[stopId] || [];
+
+        if (!safety?.hasConcern) {
+            alert("No safety concern reported.");
+            setIsCompletingStop(false);
+            return;
+        }
+
+        if (!safety.hazardTypes || safety.hazardTypes.length === 0) {
+            alert("Please select at least one hazard.");
+            setIsCompletingStop(false);
+            return;
+        }
+
+        // Check for photo (Online OR Queued)
+        if (!safety.safetyPhotoKey) {
+            const hasQueued = routeRun && getHasQueuedUploadForStop(tenantId, oid, routeRun.id, stopId, "safety");
+            if (!hasQueued) {
+                alert("A safety photo is required to skip a stop.");
+                setIsCompletingStop(false);
+                return;
+            }
+        }
+
+        const payload = {
+            hazard_types: safety.hazardTypes || [],
+            severity: safety.severity,
+            notes: safety.notes,
+            safety_photo_key: safety.safetyPhotoKey,
+            photo_keys: photoKeysForStop,
+        };
+
+        // OTEM: Deterministic execution gate
+        if (executionMode === 'OFFLINE_TOLERANT') {
+            // Offline mode: Enqueue authoritative intent (no API call)
+            if (!routeRun) {
+                setIsCompletingStop(false);
+                return;
+            }
+
+            const action: OfflineAction = {
+                id: crypto.randomUUID(),
+                type: "SKIP_STOP_WITH_HAZARD",
+                executionMode: 'OFFLINE_TOLERANT',
+                routeRunId: String(routeRun.id),
+                routeRunStopId: String(stopId),
+                createdAt: new Date().toISOString(),
+                status: "pending",
+                payload: payload
+            } as any;
+
+            enqueueAction(tenantId, oid, action);
+
+            // Optimistic Update
+            setRouteRun(prev => {
+                if (!prev) return null;
+                return {
+                    ...prev,
+                    stops: prev.stops.map(s => {
+                        if (s.route_run_stop_id === stopId) {
+                            return { ...s, status: "skipped" };
+                        }
+                        return s;
+                    })
+                };
+            });
+
+            cleanupStopState(stopId);
+            setIsCompletingStop(false);
+            return;
+        }
+
+        // LIVE mode: Direct API call (no fallback)
         try {
-            const token = await getAccessToken();
-            const safety = safetyState[stopId];
-            const photoKeysForStop = photoKeysMap[stopId] || [];
-
-            if (!safety?.hasConcern) {
-                alert("No safety concern reported.");
-                setIsCompletingStop(false);
-                return;
-            }
-
-            if (!safety.hazardTypes || safety.hazardTypes.length === 0) {
-                alert("Please select at least one hazard.");
-                setIsCompletingStop(false);
-                return;
-            }
-
-            // Check for photo (Online OR Queued)
-            // Note: DB-based safety photos use `stopPhotos` usually, but we check presence via key logic or store
-            // The requirement says: safety photo exists OR getHasQueuedUploadForStop(... kind="safety")
-            if (!safety.safetyPhotoKey) {
-                const hasQueued = routeRun && getHasQueuedUploadForStop(tenantId, oid, routeRun.id, stopId, "safety");
-                if (!hasQueued) {
-                    alert("A safety photo is required to skip a stop.");
-                    setIsCompletingStop(false);
-                    return;
-                }
-            }
-
             const { skipRouteRunStopWithHazard } = await import("../api/routeRuns");
-            const payload = {
-                hazard_types: safety.hazardTypes || [], // Now array
-                severity: safety.severity,
-                notes: safety.notes,
-                safety_photo_key: safety.safetyPhotoKey,
-                photo_keys: photoKeysForStop,
-            };
-
+            const token = await getAccessToken();
             const updatedRun = await skipRouteRunStopWithHazard(token, stopId, payload);
 
             setRouteRun(updatedRun);
             cleanupStopState(stopId);
         } catch (err: any) {
-            if (isNetworkFailure(err)) {
-                if (!routeRun) return;
-                const safety = safetyState[stopId];
-
-                const action: OfflineAction = {
-                    id: crypto.randomUUID(),
-                    type: "SKIP_STOP_WITH_HAZARD",
-                    routeRunId: String(routeRun.id),
-                    routeRunStopId: String(stopId),
-                    createdAt: new Date().toISOString(),
-                    status: "pending",
-                    payload: {
-                        hazard_types: safety?.hazardTypes || [],
-                        severity: safety?.severity,
-                        notes: safety?.notes,
-                        safety_photo_key: safety?.safetyPhotoKey,
-                        photo_keys: photoKeysMap[stopId] || [],
-                    }
-                } as any;
-
-                enqueueAction(tenantId, oid, action);
-
-                setRouteRun(prev => {
-                    if (!prev) return null;
-                    return {
-                        ...prev,
-                        stops: prev.stops.map(s => {
-                            if (s.route_run_stop_id === stopId) {
-                                return { ...s, status: "skipped" };
-                            }
-                            return s;
-                        })
-                    };
-                });
-                cleanupStopState(stopId);
-                return;
-            }
+            // In LIVE mode, errors are thrown to UI (no auto-queue)
             alert("Error skipping stop: " + err.message);
         } finally {
             setIsCompletingStop(false);
@@ -271,119 +299,104 @@ export function useTodayRoute() {
 
     const handleCompleteStop = async (stopId: number) => {
         setIsCompletingStop(true);
-        try {
-            const token = await getAccessToken();
-            const safety = safetyState[stopId];
-            const infra = infraState[stopId];
 
-            //Check if user wants to skip
-            if (safety?.hasConcern && safety.wantsToSkip) {
-                // Delegate to skip handler
-                // We need to release the lock here because handleSkipStop will take it
+        const safety = safetyState[stopId];
+        const infra = infraState[stopId];
+
+        //Check if user wants to skip
+        if (safety?.hasConcern && safety.wantsToSkip) {
+            // Delegate to skip handler
+            setIsCompletingStop(false);
+            await handleSkipStop(stopId);
+            return;
+        }
+
+        const id = Number(stopId);
+        const checklist = checklistState[id] ?? EMPTY_CHECKLIST;
+
+        // Map infra issues
+        const infraIssues =
+            infra?.hasIssues && infra.issues.length > 0
+                ? infra.issues
+                : [];
+
+        // Persist to local infraState for read-only view
+        setInfraState((prev) => ({
+            ...prev,
+            [id]: {
+                hasIssues: infraIssues.length > 0,
+                issues: infraIssues,
+                notes: infra?.notes,
+            },
+        }));
+
+        const payload: CompleteStopPayload = {
+            picked_up_litter: checklist.picked_up_litter,
+            emptied_trash: checklist.emptied_trash,
+            washed_shelter: checklist.washed_shelter,
+            washed_pad: checklist.washed_pad,
+            washed_can: checklist.washed_can,
+            photo_keys: photoKeysMap[stopId] || [],
+            infraIssues: infraIssues,
+            trashVolume: checklist.trashVolume,
+            safety: safetyState[stopId]?.hasConcern ? {
+                hazard_types: safetyState[stopId]?.hazardTypes || [],
+                severity: 1,
+                notes: safetyState[stopId]?.notes || "",
+                safety_photo_key: safetyState[stopId]?.safetyPhotoKey,
+            } : undefined,
+            spotCheck: checklist.spotCheck,
+        };
+
+        // OTEM: Deterministic execution gate
+        if (executionMode === 'OFFLINE_TOLERANT') {
+            // Offline mode: Enqueue authoritative intent (no API call)
+            if (!routeRun) {
                 setIsCompletingStop(false);
-                await handleSkipStop(stopId);
                 return;
             }
 
-            const id = Number(stopId);
-            const checklist = checklistState[id] ?? EMPTY_CHECKLIST;
+            const action: OfflineAction = {
+                id: crypto.randomUUID(),
+                type: "COMPLETE_STOP",
+                executionMode: 'OFFLINE_TOLERANT',
+                routeRunId: String(routeRun.id),
+                routeRunStopId: String(stopId),
+                createdAt: new Date().toISOString(),
+                status: "pending",
+                payload: payload
+            } as any;
 
-            // Map infra issues
-            const infraIssues =
-                infra?.hasIssues && infra.issues.length > 0
-                    ? infra.issues
-                    : [];
+            enqueueAction(tenantId, oid, action);
 
-            // Persist to local infraState for read-only view
-            setInfraState((prev) => ({
-                ...prev,
-                [id]: {
-                    hasIssues: infraIssues.length > 0,
-                    issues: infraIssues,
-                    notes: infra?.notes,
-                },
-            }));
+            // Optimistic Update
+            setRouteRun(prev => {
+                if (!prev) return null;
+                return {
+                    ...prev,
+                    stops: prev.stops.map(s => {
+                        if (s.route_run_stop_id === stopId) {
+                            return { ...s, status: "done" };
+                        }
+                        return s;
+                    })
+                };
+            });
 
-            // Moved payload definition up to be accessible in catch block
-            const payload: CompleteStopPayload = {
-                duration_minutes: 10,
-                picked_up_litter: checklist.picked_up_litter,
-                emptied_trash: checklist.emptied_trash,
-                washed_shelter: checklist.washed_shelter,
-                washed_pad: checklist.washed_pad,
-                washed_can: checklist.washed_can,
-                photo_keys: photoKeysMap[stopId] || [],
-                infraIssues: infraIssues,
-                trashVolume: checklist.trashVolume,
-                safety: safetyState[stopId]?.hasConcern ? {
-                    hazard_types: safetyState[stopId]?.hazardTypes || [],
-                    severity: 1,
-                    notes: safetyState[stopId]?.notes || "",
-                    safety_photo_key: safetyState[stopId]?.safetyPhotoKey,
-                } : undefined,
-            };
+            cleanupStopState(stopId);
+            setIsCompletingStop(false);
+            return;
+        }
 
+        // LIVE mode: Direct API call (no fallback)
+        try {
+            const token = await getAccessToken();
             const updatedRun = await completeStop(token, stopId, payload);
 
             setRouteRun(updatedRun);
             cleanupStopState(stopId);
         } catch (err: any) {
-            if (isNetworkFailure(err)) {
-                if (!routeRun) return;
-
-                // Reconstruct payload for offline action since 'payload' from try block is not accessible
-                const id = Number(stopId);
-                const checklist = checklistState[id] ?? EMPTY_CHECKLIST;
-                const infra = infraState[stopId];
-                const infraIssues = infra?.hasIssues && infra.issues.length > 0 ? infra.issues : [];
-
-                const offlinePayload: CompleteStopPayload = {
-                    duration_minutes: 10,
-                    picked_up_litter: checklist.picked_up_litter,
-                    emptied_trash: checklist.emptied_trash,
-                    washed_shelter: checklist.washed_shelter,
-                    washed_pad: checklist.washed_pad,
-                    washed_can: checklist.washed_can,
-                    photo_keys: photoKeysMap[stopId] || [],
-                    infraIssues: infraIssues,
-                    trashVolume: checklist.trashVolume,
-                    safety: safetyState[stopId]?.hasConcern ? {
-                        hazard_types: safetyState[stopId]?.hazardTypes || [],
-                        severity: 1,
-                        notes: safetyState[stopId]?.notes || "",
-                        safety_photo_key: safetyState[stopId]?.safetyPhotoKey,
-                    } : undefined,
-                };
-
-                const action: OfflineAction = {
-                    id: crypto.randomUUID(),
-                    type: "COMPLETE_STOP",
-                    routeRunId: String(routeRun.id),
-                    routeRunStopId: String(stopId),
-                    createdAt: new Date().toISOString(),
-                    status: "pending",
-                    payload: offlinePayload
-                } as any;
-
-                enqueueAction(tenantId, oid, action);
-
-                // Optimistic Update
-                setRouteRun(prev => {
-                    if (!prev) return null;
-                    return {
-                        ...prev,
-                        stops: prev.stops.map(s => {
-                            if (s.route_run_stop_id === stopId) {
-                                return { ...s, status: "done" };
-                            }
-                            return s;
-                        })
-                    };
-                });
-
-                cleanupStopState(stopId);
-                return;
-            }
+            // In LIVE mode, errors are thrown to UI (no auto-queue)
             alert("Error completing stop: " + err.message);
         } finally {
             setIsCompletingStop(false);
@@ -547,20 +560,7 @@ export function useTodayRoute() {
     };
 
 
-    const handleNextStep = (stopId: number) => {
-        setStepState((prev) => {
-            const current = prev[stopId] || "safety";
-            let next: WizardStep = current;
-            if (current === "safety") next = "tasks";
-            else if (current === "tasks") next = "infra";
-            else if (current === "infra") next = "photo";
-            return { ...prev, [stopId]: next };
-        });
-    };
-
-    const setStepForStop = (stopId: number, step: WizardStep) => {
-        setStepState(prev => ({ ...prev, [stopId]: step }));
-    };
+    // handleNextStep and setStepForStop removed - unified UI no longer uses wizard steps
 
     const resetStopView = () => {
         setSelectedStopId(null);
@@ -663,6 +663,16 @@ export function useTodayRoute() {
         try {
             const token = await getAccessToken();
             const photos = await apiUploadStopPhotos(token, routeRun.id, stopId, files, kind);
+
+            // Sync with photoKeysMap so handleCompleteStop can find them
+            const newKeys = photos.map(p => p.s3_key);
+            setPhotoKeysMap(prev => {
+                const existing = prev[stopId] || [];
+                // Avoid duplicates
+                const set = new Set([...existing, ...newKeys]);
+                return { ...prev, [stopId]: Array.from(set) };
+            });
+
             return { photos, queued: false };
         } catch (err: any) {
             if (isNetworkFailure(err)) {
@@ -711,16 +721,12 @@ export function useTodayRoute() {
         setChecklistForStop,
         setSafetyForStop,
         setInfraForStop,
-        stepState,
-        handleNextStep,
         resetStopView,
         sortedStops,
         stats,
         summary,
         uploadPhotos,
         fetchPhotos,
-        setStepForStop,
     };
 
 }
-

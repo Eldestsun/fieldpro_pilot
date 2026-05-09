@@ -1,11 +1,14 @@
 
 export type OfflineActionStatus = "pending" | "running" | "done" | "failed" | "conflict";
+export type ExecutionMode = "LIVE" | "OFFLINE_TOLERANT";
+
 import { isAuthError, isNetworkError, parseApiErrorCode } from "../api/routeRuns";
 import { clearTodayRouteCache } from "./todayRouteCache";
 
 export interface OfflineAction {
     id: string;
     type: string;
+    executionMode?: ExecutionMode; // NEW: Tracks whether this was queued intentionally (OFFLINE_TOLERANT) or as fallback
     routeRunId: string;
     routeRunStopId?: string;
     createdAt: string;
@@ -329,9 +332,32 @@ export async function runReplay(
     }
 
     const pending = getPendingActions(tenantId, oid);
+
+    // OTEM: Deterministic replay ordering
+    // Enforce dependency order: UPLOAD_STOP_PHOTOS → START_STOP → SKIP_STOP → COMPLETE_STOP
+    const actionOrder: Record<string, number> = {
+        'UPLOAD_STOP_PHOTOS': 1,
+        'START_STOP': 2,
+        'SKIP_STOP_WITH_HAZARD': 3,
+        'COMPLETE_STOP': 4,
+    };
+
+    const sortedPending = pending.sort((a, b) => {
+        const orderA = actionOrder[a.type] || 99;
+        const orderB = actionOrder[b.type] || 99;
+
+        // First, sort by action type (dependency order)
+        if (orderA !== orderB) {
+            return orderA - orderB;
+        }
+
+        // Within same type, FIFO by createdAt
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    });
+
     let anyCompleteStopSucceeded = false;
 
-    for (const action of pending) {
+    for (const action of sortedPending) {
         const executor = executorMap[action.type];
         if (!executor) {
             // No executor registered for this action type yet

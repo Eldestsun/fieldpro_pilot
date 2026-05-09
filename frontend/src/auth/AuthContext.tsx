@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, useCallback, useEffect } from "react";
+import { createContext, useContext, useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { useMsal } from "@azure/msal-react";
 import type { AccountInfo, AuthenticationResult } from "@azure/msal-browser";
 import { clearOfflineStateForUser } from "../offline/offlineQueue";
@@ -28,6 +28,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { instance, accounts } = useMsal();
   const [me, setMe] = useState<Me>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const inflightToken = useRef<{ accountId: string; promise: Promise<string> } | null>(null);
 
   const account = (accounts && accounts[0]) || null;
   const isSignedIn = !!account;
@@ -40,12 +41,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (!acc) throw new Error("No signed-in account found for token acquisition.");
 
-    const res: AuthenticationResult = await instance.acquireTokenSilent({
-      account: acc,
-      scopes: apiScopes,
-    });
+    const accountId = acc.homeAccountId || acc.localAccountId || "unknown";
 
-    return res.accessToken;
+    if (inflightToken.current && inflightToken.current.accountId === accountId) {
+      return inflightToken.current.promise;
+    }
+
+    const scopes = apiScopes;
+
+    const promise = (async () => {
+      try {
+        const res: AuthenticationResult = await instance.acquireTokenSilent({
+          account: acc,
+          scopes,
+          redirectUri: `${window.location.origin}/auth-silent.html`,
+        });
+        return res.accessToken;
+      } catch (err: any) {
+        const code = (err && (err.errorCode || err.name || err.message)) || "";
+        const interactionRequired = /interaction_required|consent_required|login_required/i.test(code);
+        if (!interactionRequired) {
+          throw err;
+        }
+        const res = await instance.acquireTokenPopup({
+          scopes: [...basicScopes, ...apiScopes],
+        });
+        if (res.account) {
+          instance.setActiveAccount(res.account);
+        }
+        return res.accessToken;
+      } finally {
+        if (inflightToken.current?.accountId === accountId) {
+          inflightToken.current = null;
+        }
+      }
+    })();
+
+    inflightToken.current = { accountId, promise };
+    return promise;
   }, [account, instance]);
 
   const fetchMe = useCallback(async () => {
@@ -117,6 +150,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
-  return ctx;
+  if (ctx) return ctx;
+
+  console.error("AuthContext missing. Ensure components render inside <AuthProvider>.");
+  const missing: AuthCtx = {
+    account: null,
+    isSignedIn: false,
+    signIn: async () => { throw new Error("Auth context unavailable"); },
+    signOut: async () => { throw new Error("Auth context unavailable"); },
+    getAccessToken: async () => { throw new Error("Auth context unavailable"); },
+    me: null,
+    refreshMe: async () => { /* no-op */ },
+    isLoading: false,
+  };
+  return missing;
 }

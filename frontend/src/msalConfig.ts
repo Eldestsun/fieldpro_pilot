@@ -12,6 +12,7 @@ export const msalConfig: Configuration = {
     clientId,
     authority: `https://login.microsoftonline.com/${tenant}`, // Entra tenant authority
     redirectUri,
+    navigateToLoginRequestUrl: false,
   },
   cache: {
     cacheLocation: "localStorage", // keeps tokens after refresh
