@@ -21,10 +21,10 @@ These are two parallel workstreams. Several refinement items can begin before al
 | ID | Name | Depends On | Parallel With | Status |
 |----|------|-----------|---------------|--------|
 | R1 | Auth Identity Cleanup | — (unblocked) | R3, R4, R10 | 🟢 Done |
-| R2 | Arrival Observations — Real Prior State | Tier 1 done | R1, R3, R4 | 🟡 Unblocked |
-| R3 | Frontend Router | — (unblocked) | R1, R2, R4, R10 | 🔴 Not started |
+| R2 | Arrival Observations — Real Prior State | Tier 1 done | R1, R3, R4 | 🟠 In Review |
+| R3 | Frontend Router | — (unblocked) | R1, R2, R4, R10 | 🟢 Done |
 | R4 | Offline UX — Worker Feedback Layer | — (unblocked) | R1, R2, R3 | 🟢 Done |
-| R5 | Enterprise UI/UX Rebuild | R3 done | R6 | 🔴 Not started |
+| R5 | Enterprise UI/UX Rebuild | R3 done | R6 | 🟡 Unblocked |
 | R6 | Control Center — Live Updates | Tier 3 done | R5 | 🟡 Unblocked |
 | R7 | Historical Backfill Framework (Scale Asset) | Tier 1 done | R6, R8 | 🔴 Not started — low priority, post-pilot |
 | R8 | CI Pipeline | Tier 6 Sub-task C done | R7 | ⛔ Blocked by Tier 6C |
@@ -78,6 +78,8 @@ Status: Complete — LEGACY_TRANSIT_USER_ID = 0 replacing all stubs. Changelog w
 **File**: `planning/REFINEMENT_R3_FRONTEND_ROUTER.md`
 
 Replace `App.tsx`'s flat view-switch state machine with `react-router-dom` v6. Enables deeplinking, browser back/forward, shareable URLs, and a scalable navigation foundation for the UI rebuild. Must precede the enterprise UI rebuild.
+
+Status: Complete — react-router-dom v7 installed, BrowserRouter wrapping App, full Routes/Route declarations, RequireRole + DefaultRedirect components. Changelog written 2026-05-10.
 
 ---
 

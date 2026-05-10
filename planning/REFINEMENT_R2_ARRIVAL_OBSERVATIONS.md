@@ -2,9 +2,15 @@
 
 > **Goal**: Replace the hardcoded pessimistic dirty state in `arrivalObservations()` with a lookup of the most recent canonical observations for the stop, so workers arrive seeing the stop's last known condition.
 >
-> **Status**: ⛔ Blocked by Tier 1
-> **Depends on**: Tier 1 done (`core.observations` must be reliably populated before a prior-state lookup is meaningful)
+> **Status**: 🟠 In Review — Path B implemented, unreachable until Tier 5 passes stopId from route handler
+> **Depends on**: Tier 1 done ✅; Tier 5 (to wire stopId through the route handler and activate the lookup)
 > **Blocks**: Nothing
+>
+> **What is done**: `arrivalObservations()` is async, queries `core.observations` via Path B (`transit_stop_assets` — 1 adapter hop). `clean_logs` bridge removed. `emitObservationsForStop()` accepts `stopId?: string`.
+>
+> **What is NOT done**: The route handler (`routeRunStopRoutes.ts`) does not pass `stopId` yet — that wire is part of Tier 5. Until then the `stopId` branch is never entered and the function falls back to dirty defaults. The done criterion ("prior completed visit shows clean, not dirty") cannot be verified end-to-end.
+>
+> **R2 goes to 🟢 Done as part of Tier 5**, when `routeRunStopRoutes.ts` passes `stopId` to `emitObservationsForStop`.
 
 ---
 

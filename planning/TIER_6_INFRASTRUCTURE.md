@@ -63,6 +63,8 @@ Add to `backend/package.json` scripts:
 
 **Verified 2026-05-08.** 43 existing migrations stamped as pre-runner baseline. Runner confirmed all-skip on re-run. Changelog: `docs/changelog/2026-05-08-tier-6a-migration-runner.md`
 
+**Pending — observed_at rename (2026-05-10):** `ALTER TABLE core.observations RENAME COLUMN created_at TO observed_at` was applied ad hoc (outside the runner) as part of R2 / pre-Tier-2 cleanup. A formal migration file must be added to `backend/migrations/` so the runner can stamp it on other environments. Add as `backend/migrations/20260510_rename_observations_created_at_to_observed_at.sql` before Tier 2 ships.
+
 ---
 
 ## Sub-task B — Integration Tests for Canonical Write Paths
