@@ -119,6 +119,10 @@ export function OfflineSyncManager() {
             },
         };
 
+        const onAfterReplay = () => {
+            window.dispatchEvent(new Event('baseline:after-replay'));
+        };
+
         const attemptReplay = () => {
             // Basic online check
             if (typeof navigator !== "undefined" && !navigator.onLine) return;
@@ -126,7 +130,7 @@ export function OfflineSyncManager() {
             if (isReplayingRef.current) return;
             isReplayingRef.current = true;
 
-            runReplay(tenantId, oid, executors)
+            runReplay(tenantId, oid, executors, onAfterReplay)
                 .finally(() => {
                     isReplayingRef.current = false;
                 });

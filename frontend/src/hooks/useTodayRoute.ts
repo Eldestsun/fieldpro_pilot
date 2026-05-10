@@ -4,8 +4,6 @@ import {
     getTodayRoute,
     startRoute,
     finishRoute,
-    startRouteRunStop,
-    completeStop,
     getUploadUrl,
     uploadFile,
     updateHotspot,
@@ -46,11 +44,7 @@ export function useTodayRoute() {
     const { getAccessToken, account } = useAuth();
     const { offlineMode } = useOfflineMode();
 
-    // Feature flag for OTEM (Offline-Tolerant Execution Mode)
-    const ENABLE_OTEM = import.meta.env.VITE_ENABLE_OTEM === 'true';
-
-    // Execution mode resolution: OFFLINE_TOLERANT when offlineMode is active, otherwise LIVE
-    const executionMode: ExecutionMode = (ENABLE_OTEM && offlineMode) ? 'OFFLINE_TOLERANT' : 'LIVE';
+    const executionMode: ExecutionMode = offlineMode ? 'OFFLINE_TOLERANT' : 'LIVE';
     const tenantId = account?.tenantId;
     const claims = account?.idTokenClaims as any;
     const oid = claims?.oid || account?.localAccountId;
@@ -111,6 +105,8 @@ export function useTodayRoute() {
             return;
         }
         fetchRoute();
+        window.addEventListener('baseline:after-replay', fetchRoute);
+        return () => window.removeEventListener('baseline:after-replay', fetchRoute);
     }, [fetchRoute, account]);
 
     const handleStartRoute = async () => {
@@ -143,57 +139,37 @@ export function useTodayRoute() {
 
     const handleStartStop = async (stopId: number) => {
         setIsStartingStop(true);
-
-        // OTEM: Deterministic execution gate
-        if (executionMode === 'OFFLINE_TOLERANT') {
-            // Offline mode: Enqueue authoritative intent (no API call)
-            if (!routeRun) {
-                setIsStartingStop(false);
-                return;
-            }
-
-            const action: OfflineAction = {
-                id: crypto.randomUUID(),
-                type: "START_STOP",
-                executionMode: 'OFFLINE_TOLERANT',
-                routeRunId: String(routeRun.id),
-                routeRunStopId: String(stopId),
-                createdAt: new Date().toISOString(),
-                status: "pending",
-                payload: {}
-            } as any;
-            enqueueAction(tenantId, oid, action);
-
-            // Optimistic Update
-            setRouteRun(prev => {
-                if (!prev) return null;
-                return {
-                    ...prev,
-                    stops: prev.stops.map(s => {
-                        if (s.route_run_stop_id === stopId && s.status !== "done" && s.status !== "skipped") {
-                            return { ...s, status: "in_progress" };
-                        }
-                        return s;
-                    })
-                };
-            });
-            setHasStartedThisStop(true);
+        if (!routeRun) {
             setIsStartingStop(false);
             return;
         }
 
-        // LIVE mode: Direct API call (no fallback)
-        try {
-            const token = await getAccessToken();
-            const updatedRun = await startRouteRunStop(token, stopId);
-            setRouteRun(updatedRun);
-            setHasStartedThisStop(true);
-        } catch (err: any) {
-            // In LIVE mode, errors are thrown to UI (no auto-queue)
-            alert("Error starting stop: " + err.message);
-        } finally {
-            setIsStartingStop(false);
-        }
+        const action: OfflineAction = {
+            id: crypto.randomUUID(),
+            type: "START_STOP",
+            executionMode,
+            routeRunId: String(routeRun.id),
+            routeRunStopId: String(stopId),
+            createdAt: new Date().toISOString(),
+            status: "pending",
+            payload: {}
+        } as any;
+        enqueueAction(tenantId, oid, action);
+
+        setRouteRun(prev => {
+            if (!prev) return null;
+            return {
+                ...prev,
+                stops: prev.stops.map(s => {
+                    if (s.route_run_stop_id === stopId && s.status !== "done" && s.status !== "skipped") {
+                        return { ...s, status: "in_progress" };
+                    }
+                    return s;
+                })
+            };
+        });
+        setHasStartedThisStop(true);
+        setIsStartingStop(false);
     };
 
     const handleSkipStop = async (stopId: number) => {
@@ -203,25 +179,30 @@ export function useTodayRoute() {
         const photoKeysForStop = photoKeysMap[stopId] || [];
 
         if (!safety?.hasConcern) {
-            alert("No safety concern reported.");
+            console.warn("[handleSkipStop] No safety concern reported for stop", stopId);
             setIsCompletingStop(false);
             return;
         }
 
         if (!safety.hazardTypes || safety.hazardTypes.length === 0) {
-            alert("Please select at least one hazard.");
+            console.warn("[handleSkipStop] No hazard types selected for stop", stopId);
             setIsCompletingStop(false);
             return;
         }
 
-        // Check for photo (Online OR Queued)
+        // Check for photo (uploaded or queued)
         if (!safety.safetyPhotoKey) {
             const hasQueued = routeRun && getHasQueuedUploadForStop(tenantId, oid, routeRun.id, stopId, "safety");
             if (!hasQueued) {
-                alert("A safety photo is required to skip a stop.");
+                console.warn("[handleSkipStop] Safety photo required to skip stop", stopId);
                 setIsCompletingStop(false);
                 return;
             }
+        }
+
+        if (!routeRun) {
+            setIsCompletingStop(false);
+            return;
         }
 
         const payload = {
@@ -232,60 +213,34 @@ export function useTodayRoute() {
             photo_keys: photoKeysForStop,
         };
 
-        // OTEM: Deterministic execution gate
-        if (executionMode === 'OFFLINE_TOLERANT') {
-            // Offline mode: Enqueue authoritative intent (no API call)
-            if (!routeRun) {
-                setIsCompletingStop(false);
-                return;
-            }
+        const action: OfflineAction = {
+            id: crypto.randomUUID(),
+            type: "SKIP_STOP_WITH_HAZARD",
+            executionMode,
+            routeRunId: String(routeRun.id),
+            routeRunStopId: String(stopId),
+            createdAt: new Date().toISOString(),
+            status: "pending",
+            payload
+        } as any;
 
-            const action: OfflineAction = {
-                id: crypto.randomUUID(),
-                type: "SKIP_STOP_WITH_HAZARD",
-                executionMode: 'OFFLINE_TOLERANT',
-                routeRunId: String(routeRun.id),
-                routeRunStopId: String(stopId),
-                createdAt: new Date().toISOString(),
-                status: "pending",
-                payload: payload
-            } as any;
+        enqueueAction(tenantId, oid, action);
 
-            enqueueAction(tenantId, oid, action);
+        setRouteRun(prev => {
+            if (!prev) return null;
+            return {
+                ...prev,
+                stops: prev.stops.map(s => {
+                    if (s.route_run_stop_id === stopId) {
+                        return { ...s, status: "skipped" };
+                    }
+                    return s;
+                })
+            };
+        });
 
-            // Optimistic Update
-            setRouteRun(prev => {
-                if (!prev) return null;
-                return {
-                    ...prev,
-                    stops: prev.stops.map(s => {
-                        if (s.route_run_stop_id === stopId) {
-                            return { ...s, status: "skipped" };
-                        }
-                        return s;
-                    })
-                };
-            });
-
-            cleanupStopState(stopId);
-            setIsCompletingStop(false);
-            return;
-        }
-
-        // LIVE mode: Direct API call (no fallback)
-        try {
-            const { skipRouteRunStopWithHazard } = await import("../api/routeRuns");
-            const token = await getAccessToken();
-            const updatedRun = await skipRouteRunStopWithHazard(token, stopId, payload);
-
-            setRouteRun(updatedRun);
-            cleanupStopState(stopId);
-        } catch (err: any) {
-            // In LIVE mode, errors are thrown to UI (no auto-queue)
-            alert("Error skipping stop: " + err.message);
-        } finally {
-            setIsCompletingStop(false);
-        }
+        cleanupStopState(stopId);
+        setIsCompletingStop(false);
     };
 
     const cleanupStopState = (stopId: number) => {
@@ -348,59 +303,39 @@ export function useTodayRoute() {
             spotCheck: checklist.spotCheck,
         };
 
-        // OTEM: Deterministic execution gate
-        if (executionMode === 'OFFLINE_TOLERANT') {
-            // Offline mode: Enqueue authoritative intent (no API call)
-            if (!routeRun) {
-                setIsCompletingStop(false);
-                return;
-            }
-
-            const action: OfflineAction = {
-                id: crypto.randomUUID(),
-                type: "COMPLETE_STOP",
-                executionMode: 'OFFLINE_TOLERANT',
-                routeRunId: String(routeRun.id),
-                routeRunStopId: String(stopId),
-                createdAt: new Date().toISOString(),
-                status: "pending",
-                payload: payload
-            } as any;
-
-            enqueueAction(tenantId, oid, action);
-
-            // Optimistic Update
-            setRouteRun(prev => {
-                if (!prev) return null;
-                return {
-                    ...prev,
-                    stops: prev.stops.map(s => {
-                        if (s.route_run_stop_id === stopId) {
-                            return { ...s, status: "done" };
-                        }
-                        return s;
-                    })
-                };
-            });
-
-            cleanupStopState(stopId);
+        if (!routeRun) {
             setIsCompletingStop(false);
             return;
         }
 
-        // LIVE mode: Direct API call (no fallback)
-        try {
-            const token = await getAccessToken();
-            const updatedRun = await completeStop(token, stopId, payload);
+        const action: OfflineAction = {
+            id: crypto.randomUUID(),
+            type: "COMPLETE_STOP",
+            executionMode,
+            routeRunId: String(routeRun.id),
+            routeRunStopId: String(stopId),
+            createdAt: new Date().toISOString(),
+            status: "pending",
+            payload
+        } as any;
 
-            setRouteRun(updatedRun);
-            cleanupStopState(stopId);
-        } catch (err: any) {
-            // In LIVE mode, errors are thrown to UI (no auto-queue)
-            alert("Error completing stop: " + err.message);
-        } finally {
-            setIsCompletingStop(false);
-        }
+        enqueueAction(tenantId, oid, action);
+
+        setRouteRun(prev => {
+            if (!prev) return null;
+            return {
+                ...prev,
+                stops: prev.stops.map(s => {
+                    if (s.route_run_stop_id === stopId) {
+                        return { ...s, status: "done" };
+                    }
+                    return s;
+                })
+            };
+        });
+
+        cleanupStopState(stopId);
+        setIsCompletingStop(false);
     };
 
     const queueStopPhotosUpload = async (routeRunStopId: number, files: File[], kind: string = "completion") => {
