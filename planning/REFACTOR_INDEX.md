@@ -113,7 +113,7 @@ Can proceed in parallel with Tiers 1, 3, and 4.
 ---
 
 ### Tier 7 — Row Level Security & Tenant Isolation
-**File**: `planning/TIER_7_ROW_LEVEL_SECURITY_TENANT_ISOLATION.md`
+**File**: `planning/TIER_7_ROW_LEVEL_SECURITY_&_TENANT_ISOLATION.MD`
 
 Enforce org-level data isolation at the DB layer using Postgres Row Level Security. Policies on all five canonical tables filter every query by `app.current_org_id` session variable, set via a `withOrgContext()` wrapper in `db.ts`. A bad query missing a WHERE clause cannot leak cross-tenant data. Includes a verification script that proves cross-tenant isolation. Must wait until Tier 1 write paths are stable — RLS applied to an incomplete write path creates silent data gaps.
 
@@ -122,7 +122,7 @@ Enforce org-level data isolation at the DB layer using Postgres Row Level Securi
 ---
 
 ### Tier 8 — Asset Type Abstraction
-**File**: `planning/TIER_8_ASSET_TYPE_ABSTRACTION.md`
+**File**: `planning/TIER_8_ASSET_TYPE_ABSTRACTION`
 
 Abstract the stop-centric data model to support multiple asset types (stops, restrooms, shelters, facilities). Enables BASELINE to operate across asset classes without schema duplication. Should run on an RLS-enforced schema (Tier 7 done).
 

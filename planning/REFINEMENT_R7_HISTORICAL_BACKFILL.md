@@ -1,25 +1,22 @@
-# R7 — Historical Backfill
+# R7 — Historical Backfill Framework (Scale Asset)
 
-> **Goal**: Write a one-time migration script that populates `core.visits`, `core.observations`, and `core.evidence` from existing transit table records, so the canonical layer has historical data from day one rather than starting empty.
+> **Goal**: Provide a configurable, org-agnostic backfill framework that future customer organizations can use to import existing operational history (paper logs, legacy CMMS exports, spreadsheets) into the canonical layer. Not needed for the KCM pilot — KCM's canonical layer will be populated organically through shadow-mode UL usage. Built as a scale and sales asset.
 >
-> **Status**: ⛔ Blocked
-> **Depends on**: R1 done (correct OID resolution) + Tier 1 done (canonical write paths verified)
-> **Blocks**: Nothing
+> **Status**: 🔴 Not started — low priority, not a pilot prerequisite
+> **Depends on**: Tier 1 done (canonical write paths must be stable before a backfill framework targets them)
+> **Blocks**: Nothing — pilot proceeds without this
 
 ---
 
 ## Context
 
-The canonical tables will be fully populated for new stops after Tier 1. But every route completion, observation, and photo taken before Tier 1 shipped exists only in transit tables:
-- `clean_logs` — stop completion records
-- `hazards` — safety observations from skips and completions
-- `infrastructure_issues` — infra observations
-- `trash_volume_logs` — volume observations
-- `stop_photos` — photo evidence
+The KCM pilot does not require historical data backfill. KCM has no paper collection data to import, and the dev database contains only local test data with no production value. The canonical layer will be populated organically as ULs use the application in shadow mode — condition intelligence accumulates from real field visits.
 
-A risk map built the day after Tier 1 ships would show every stop as having no history. The `stop_effort_history` table (R10) would also start empty. A demo or pilot pitch showing a "blank slate" canonical layer would undermine confidence in the platform.
+However, future customer organizations onboarding to BASELINE may have years of operational history in paper logs, spreadsheets, or legacy CMMS exports. The ability to import that history — so their risk maps and condition timelines are meaningful from day one — is a meaningful sales differentiator.
 
-The backfill runs once, after Tier 1 is verified and R1 is done (so OIDs are resolvable). It is not a live write path — it is a migration script.
+R7 is therefore scoped as a configurable backfill framework: a source-adapter pattern that accepts organization-specific input formats and maps them to canonical inserts. The framework is org-agnostic — it is not wired to KCM's clean_logs or any transit-specific schema. Each new customer would implement a thin adapter for their source format.
+
+Priority: Build after pilot is in flight. Do not block any pilot work on this.
 
 ---
 
@@ -27,89 +24,52 @@ The backfill runs once, after Tier 1 is verified and R1 is done (so OIDs are res
 
 | File | Change |
 |------|--------|
-| `backend/scripts/backfill_canonical.ts` (new) | One-time migration script |
+| `backend/scripts/backfill/` (new directory) | Backfill framework |
+| `backend/scripts/backfill/runner.ts` | Core runner — reads adapter, batches inserts, dry-run support |
+| `backend/scripts/backfill/adapters/csv_adapter.ts` | Reference adapter for CSV input |
+| `backend/scripts/backfill/adapters/README.md` | How to write a new source adapter |
 
-No production code changes. Script only.
-
----
-
-## Backfill Mapping
-
-### `clean_logs` → `core.visits`
-
-Each `clean_logs` row represents a completed stop. Map to a visit:
-
-```sql
-INSERT INTO core.visits (
-  client_visit_id,
-  route_run_stop_id,
-  started_at,
-  ended_at,
-  outcome,
-  captured_by_oid,
-  org_id
-)
-SELECT
-  -- Deterministic UUIDv5 from clean_log id to avoid duplicates
-  uuid_generate_v5('6ba7b810-9dad-11d1-80b4-00c04fd430c8', 'backfill:clean_log:' || cl.id::text),
-  cl.route_run_stop_id,
-  cl.created_at,   -- started_at approximation
-  cl.updated_at,   -- ended_at approximation
-  'completed',
-  id.oid,          -- resolved via identity_directory on user_id
-  $1               -- org_id from environment
-FROM clean_logs cl
-LEFT JOIN identity_directory id ON id.id = cl.user_id
-WHERE cl.route_run_stop_id IS NOT NULL
-ON CONFLICT (client_visit_id) DO NOTHING
-```
-
-### `hazards` + `infrastructure_issues` + `trash_volume_logs` → `core.observations`
-
-Each of these maps to an observation type and links to a backfilled visit:
-
-```sql
--- Hazard observations
-INSERT INTO core.observations (visit_id, observation_type, observed_value, observed_at)
-SELECT
-  v.id,
-  'hazard_present',
-  h.severity::text,
-  h.reported_at
-FROM hazards h
-JOIN core.visits v ON v.route_run_stop_id = h.route_run_stop_id
-  AND v.outcome = 'completed'
-WHERE h.route_run_stop_id IS NOT NULL
-ON CONFLICT DO NOTHING
-```
-
-Repeat for `infrastructure_issues` → `infra_condition` and `trash_volume_logs` → `trash_volume`.
-
-### `stop_photos` → `core.evidence`
-
-```sql
-INSERT INTO core.evidence (visit_id, kind, storage_key, captured_by_oid)
-SELECT
-  v.id,
-  sp.kind,
-  sp.storage_key,
-  id.oid
-FROM stop_photos sp
-JOIN core.visits v ON v.route_run_stop_id = sp.route_run_stop_id
-LEFT JOIN identity_directory id ON id.id = sp.user_id
-WHERE sp.route_run_stop_id IS NOT NULL
-ON CONFLICT DO NOTHING
-```
+No production code changes. Scripts only. Transit tables untouched.
 
 ---
 
-## Script Safety Rules
+## Framework Design
 
-1. **Idempotent** — all inserts use `ON CONFLICT DO NOTHING`. Running the script twice produces the same result.
-2. **Dry-run mode** — script accepts a `--dry-run` flag that logs what would be inserted without writing.
-3. **Batched** — process in chunks of 500 rows to avoid long-running transactions.
-4. **Logged** — print row counts for each table before and after.
-5. **Never deletes** — the script only inserts. It does not modify or delete transit table records.
+### Source Adapter Interface
+Each adapter implements:
+- `rows(): AsyncIterable<BackfillRow>` — yields normalized rows from the source
+- `sourceDescription: string` — logged at runtime for audit trail
+
+### BackfillRow shape
+
+```typescript
+interface BackfillRow {
+  stop_id: string
+  occurred_at: Date
+  outcome: 'completed' | 'skipped'
+  observations: Array<{
+    type: string
+    value: string
+  }>
+  evidence_keys?: string[]
+  org_id: number
+}
+```
+
+### Runner behavior
+- Accepts an adapter instance and an org_id
+- Supports --dry-run flag (logs what would be inserted, writes nothing)
+- Processes in batches of 500
+- All inserts use ON CONFLICT DO NOTHING (idempotent)
+- Deterministic client_visit_id via UUIDv5 keyed on
+  'backfill:{source}:{stop_id}:{occurred_at}'
+- Logs row counts before and after each table
+
+### What it does NOT do
+- Does not read clean_logs, hazards, or any KCM-specific transit table
+- Does not resolve user_id to OID (backfilled visits use a
+  backfill_import sentinel for captured_by_oid)
+- Does not modify or delete source data
 
 ---
 
@@ -117,15 +77,14 @@ ON CONFLICT DO NOTHING
 
 R7 is complete when ALL of the following are true, **and a changelog entry has been written**:
 
-- [ ] `backfill_canonical.ts` script exists and runs with `--dry-run` flag
-- [ ] Dry run output shows expected row counts for visits, observations, evidence
-- [ ] Full run completes without errors
-- [ ] `SELECT COUNT(*) FROM core.visits` increases by the number of historical clean_log records
-- [ ] `SELECT COUNT(*) FROM core.observations` increases by historical hazard + infra + trash records
-- [ ] `SELECT COUNT(*) FROM core.evidence` increases by historical stop_photos records
-- [ ] Running the script a second time produces no new rows (idempotent)
-- [ ] Transit tables are unmodified
-- [ ] Changelog entry written to `docs/changelog/YYYY-MM-DD-r7-historical-backfill.md`
+- [ ] `backend/scripts/backfill/runner.ts` exists with dry-run support
+- [ ] `csv_adapter.ts` reference implementation exists and is documented
+- [ ] `adapters/README.md` explains how to write a new adapter
+- [ ] Runner tested against a sample CSV with --dry-run flag
+- [ ] Full run with sample CSV populates core.visits and core.observations correctly
+- [ ] Running twice produces no new rows (idempotent)
+- [ ] No transit tables touched
+- [ ] Changelog entry written
 
 ---
 
@@ -133,13 +92,26 @@ R7 is complete when ALL of the following are true, **and a changelog entry has b
 
 ```
 Ops task. Read CLAUDE.md, then planning/REFINEMENT_R7_HISTORICAL_BACKFILL.md.
-Write backend/scripts/backfill_canonical.ts:
-  a one-time migration script that populates core.visits, core.observations,
-  and core.evidence from clean_logs, hazards, infrastructure_issues,
-  trash_volume_logs, and stop_photos.
-The full mapping is in the file.
-Use ON CONFLICT DO NOTHING throughout. Support a --dry-run flag.
-Process in chunks of 500. Log row counts before and after.
-Do not modify any transit table records.
-Do not touch any production service code.
+
+Build a configurable, org-agnostic backfill framework under
+backend/scripts/backfill/:
+
+  - runner.ts: accepts an adapter instance and an org_id. Reads rows from
+    the adapter, batches inserts (500/batch) into core.visits,
+    core.observations, and core.evidence. Supports --dry-run.
+    Uses deterministic UUIDv5 client_visit_id keyed on
+    'backfill:{source}:{stop_id}:{occurred_at}'. All inserts
+    ON CONFLICT DO NOTHING. Logs row counts before and after.
+
+  - adapters/csv_adapter.ts: reference adapter that reads a CSV file
+    and yields BackfillRow objects.
+
+  - adapters/README.md: documents the adapter contract
+    (rows() AsyncIterable + sourceDescription string) and explains how
+    to write a new adapter for a different source format.
+
+Do NOT read clean_logs, hazards, or any KCM-specific transit table.
+Do NOT resolve user_id to OID — use the 'backfill_import' sentinel for
+captured_by_oid. Do NOT modify or delete source data. Do NOT touch any
+production service code.
 ```

@@ -26,7 +26,7 @@ These are two parallel workstreams. Several refinement items can begin before al
 | R4 | Offline UX — Worker Feedback Layer | — (unblocked) | R1, R2, R3 | 🔴 Not started |
 | R5 | Enterprise UI/UX Rebuild | R3 done | R6 | 🔴 Not started |
 | R6 | Control Center — Live Updates | Tier 3 done | R5 | 🔴 Not started |
-| R7 | Historical Backfill | R1 done + Tier 1 done | R6, R8 | ⛔ Blocked |
+| R7 | Historical Backfill Framework (Scale Asset) | Tier 1 done | R6, R8 | ⛔ Blocked by Tier 1 — low priority, post-pilot |
 | R8 | CI Pipeline | Tier 6 Sub-task C done | R7 | 🔴 Not started |
 | R9 | Frontend Tests | R5 stable | — | ⛔ Blocked by R5 |
 | R10 | Stop Effort History (replace workforce_metrics) | Tier 4 Sub-task B done | R1, R3 | 🔴 Not started |
@@ -47,7 +47,7 @@ R3 ──► R5 (router must be in place before full UI rebuild)
 
 Tier 3 ──► R6 (Control Center must be mounted before live updates make sense)
 
-R1 + Tier 1 ──► R7 (historical backfill needs correct identity + canonical tables)
+Tier 1 ──► R7  (low priority — post-pilot scale asset)
 
 Tier 6C ──► R8 (CI needs Dockerfiles to exist first)
 
@@ -102,10 +102,10 @@ Once Control Center is mounted (Tier 3), it loads data once on mount and goes st
 
 ---
 
-### R7 — Historical Backfill
+### R7 — Historical Backfill Framework (Scale Asset)
 **File**: `planning/REFINEMENT_R7_HISTORICAL_BACKFILL.md`
 
-Historical route completions exist in transit tables (`clean_logs`, `stop_photos`, `hazards`, etc.) but none of it is in `core.observations` or `core.visits`. A one-time migration script backfills canonical state from existing transit records, so risk maps and condition history are meaningful from day one of any demo or pitch rather than starting from an empty slate.
+A configurable, org-agnostic backfill framework for future customer organizations that have existing operational history to import. KCM pilot does not use this — KCM has no paper data and the canonical layer will fill organically through shadow-mode UL usage. Built as a scale and sales asset. Dependency on R1 removed. Low priority — do not start until pilot is in flight.
 
 ---
 
