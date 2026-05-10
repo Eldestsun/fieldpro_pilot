@@ -125,9 +125,19 @@ function arrivalObservationDefaults(): ObservationInsert[] {
 }
 
 // Looks up the most recent observation of each arrival type at this stop.
-// Bridge: core.observations → core.visits → clean_logs → route_run_stops → filter on stop_id.
-// clean_logs is used as the bridge because core.visits has no route_run_stop_id column yet
-// (pending Tier 5 assignment layer). Once Tier 5 writes that column, this join can be simplified.
+//
+// Path B (1 adapter hop — tolerated as a vertical identifier translation):
+//   core.observations.asset_id → transit_stop_assets.asset_id WHERE stop_id = $1
+// core.observations.asset_id is fully populated (100% of rows). transit_stop_assets
+// translates the transit stop_id to a canonical asset_id at the boundary — one hop,
+// not embedded adapter logic.
+//
+// Path F (fully canonical) activates in Tier 8: asset_id will be passed directly by
+// the caller, and transit_stop_assets is no longer referenced at all.
+//
+// Do NOT use clean_logs as the bridge (Path A — 3 adapter hops, deprecated by Tier 2).
+// See planning/architecture/ADAPTER_BOUNDARY.md for the full join map.
+//
 // Falls back to dirty defaults for any type with no prior history.
 async function arrivalObservations(
     stopId: string,
@@ -139,13 +149,10 @@ async function arrivalObservations(
             o.observation_type,
             o.payload
         FROM core.observations o
-        JOIN core.visits v ON v.id = o.visit_id
-        JOIN clean_logs cl ON cl.visit_id = v.id
-        JOIN route_run_stops rrs ON rrs.id = cl.route_run_stop_id
-        WHERE rrs.stop_id = $1
+        JOIN transit_stop_assets tsa ON tsa.asset_id = o.asset_id
+        WHERE tsa.stop_id = $1
           AND o.observation_type = ANY($2)
-          AND v.ended_at IS NOT NULL
-        ORDER BY o.observation_type, v.ended_at DESC, o.id DESC
+        ORDER BY o.observation_type, o.created_at DESC
         `,
         [stopId, ARRIVAL_OBSERVATION_TYPES]
     );

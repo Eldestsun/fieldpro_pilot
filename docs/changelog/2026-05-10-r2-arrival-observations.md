@@ -5,7 +5,8 @@
 - Added `stopId?: string` parameter to `emitObservationsForStop()` — when provided, the real prior state lookup runs; when absent, the function falls back to dirty defaults (safe backward-compatible behaviour for callers that don't yet pass stopId)
 - Extracted `arrivalObservationDefaults()` as the explicit fallback — called when stopId is unavailable or when no prior visit exists for the stop
 - Added `ARRIVAL_OBSERVATION_TYPES` constant covering: `ground_condition`, `trash_can_condition`, `shelter_condition`, `pad_condition`
-- SQL join path: `core.observations → core.visits → clean_logs → route_run_stops` — `clean_logs` is used as the bridge because `core.visits` has no `route_run_stop_id` column yet (pending Tier 5); `ORDER BY v.ended_at DESC, o.id DESC` ensures the most recent visit and the final (post-clean) observation within that visit is selected
+- SQL join path: **Path B** — `core.observations.asset_id → transit_stop_assets.asset_id WHERE stop_id = $1`. `core.observations.asset_id` is populated on 100% of rows; `transit_stop_assets` translates the transit `stop_id` to a canonical `asset_id` at the boundary (1 adapter hop, tolerated as a vertical identifier translation). `ORDER BY o.observation_type, o.created_at DESC` selects the most recent observation per type.
+- **Correction** (same session): initial commit used Path A (`clean_logs` bridge, 3 adapter hops — `core.observations → core.visits → clean_logs → route_run_stops`). Replaced with Path B after `ADAPTER_BOUNDARY.md` audit confirmed `core.observations.asset_id` is fully populated and `transit_stop_assets` is available, making Path A unnecessary. Do not revert to Path A. See `planning/architecture/ADAPTER_BOUNDARY.md` for the full join map.
 
 ## Why
 - Workers always arrived at stops showing maximally-dirty state regardless of actual condition history
