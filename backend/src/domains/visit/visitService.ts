@@ -136,19 +136,21 @@ export async function ensureVisitForRouteRunStop(client: PoolClient, params: Ens
  */
 export async function closeVisitForRouteRunStop(
   client: PoolClient,
-  params: { routeRunStopId: number; endedAt?: Date }
+  params: { routeRunStopId: number; outcome: string; reasonCode?: string; endedAt?: Date }
 ): Promise<number | null> {
   const visitClientId = deriveClientVisitId(params.routeRunStopId);
 
   const res = await client.query(
     `
     UPDATE core.visits
-    SET ended_at = COALESCE(ended_at, COALESCE($2, NOW()))
+    SET ended_at    = COALESCE(ended_at, COALESCE($2, NOW())),
+        outcome     = COALESCE(outcome, $3),
+        reason_code = COALESCE(reason_code, $4)
     WHERE client_visit_id = $1
       AND ended_at IS NULL
     RETURNING id
     `,
-    [visitClientId, params.endedAt ?? null]
+    [visitClientId, params.endedAt ?? null, params.outcome, params.reasonCode ?? null]
   );
 
   if (res.rows.length) return res.rows[0].id;

@@ -25,6 +25,7 @@ export type StopUiPayload = {
     emptied_trash?: boolean;
     washed_shelter?: boolean;
     washed_pad?: boolean;
+    washed_can?: boolean;
 
     trash_volume?: 0 | 1 | 2 | 3 | 4;
 
@@ -64,8 +65,9 @@ export async function emitObservationsForStop(params: {
     locationId: number;
     actorOid: string;
     uiPayload?: StopUiPayload;
+    client?: PoolClient;
 }): Promise<void> {
-    const { phase, visitId, orgId, assetId, locationId, actorOid, uiPayload } = params;
+    const { phase, visitId, orgId, assetId, locationId, actorOid, uiPayload, client: passedClient } = params;
 
     let observations: ObservationInsert[] = [];
 
@@ -76,11 +78,15 @@ export async function emitObservationsForStop(params: {
     }
 
     if (observations.length > 0) {
-        const client = await pool.connect();
-        try {
-            await insertObservations(client, { orgId, visitId, locationId, assetId, actorOid }, observations);
-        } finally {
-            client.release();
+        if (passedClient) {
+            await insertObservations(passedClient, { orgId, visitId, locationId, assetId, actorOid }, observations);
+        } else {
+            const ownClient = await pool.connect();
+            try {
+                await insertObservations(ownClient, { orgId, visitId, locationId, assetId, actorOid }, observations);
+            } finally {
+                ownClient.release();
+            }
         }
     }
 }
@@ -138,6 +144,10 @@ function submitObservations(ui: StopUiPayload): ObservationInsert[] {
     if (ui.washed_pad) {
         obs.push({ observation_type: "pad_condition", payload: { state: "dirty" } });
         obs.push({ observation_type: "pad_condition", payload: { state: "clean" } });
+    }
+
+    if (typeof ui.washed_can === 'boolean') {
+        obs.push({ observation_type: "washed_can", payload: { value: ui.washed_can } });
     }
 
     // Trash volume
@@ -264,15 +274,15 @@ async function insertObservations(
 }
 
 export async function emitSpotCheckObservation(params: {
-    pool: any;
+    client: PoolClient;
     visitId: number;
     orgId: number;
     locationId: number;
     assetId: number;
     actorOid: string;
 }) {
-    const { pool, visitId, orgId, locationId, assetId, actorOid } = params;
-    await pool.query(
+    const { client, visitId, orgId, locationId, assetId, actorOid } = params;
+    await client.query(
         `
     INSERT INTO core.observations (
       org_id,

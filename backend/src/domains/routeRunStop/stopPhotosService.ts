@@ -1,6 +1,6 @@
 
 import { PoolClient } from "pg";
-import { ensureVisitForRouteRunStop } from "../../domains/visit/visitService";
+import { deriveClientVisitId } from "../../domains/visit/visitService";
 
 export interface StopPhoto {
     id: string;
@@ -25,7 +25,7 @@ export async function createStopPhotos(
 
     if (s3Keys.length === 0) return;
 
-    // 1. Fetch asset_id (needed for consistency)
+    // Fetch asset_id (needed for stop_photos consistency)
     const lookupRes = await client.query(
         `SELECT asset_id FROM route_run_stops WHERE id = $1`,
         [routeRunStopId]
@@ -35,22 +35,40 @@ export async function createStopPhotos(
         assetId = lookupRes.rows[0].asset_id;
     }
 
-    // 2. Ensure visit exists
-    const visitId = await ensureVisitForRouteRunStop(client, {
-        routeRunStopId: Number(routeRunStopId),
-        actorOid: userOid,
-        visitType: "service",
-    });
-
-    const query = `
-    INSERT INTO stop_photos (
-      visit_id, route_run_stop_id, asset_id, s3_key, kind, created_by_oid, captured_at
-    )
-    VALUES ($1, $2, $3, $4, $5, $6, NOW())
-  `;
+    const clientVisitId = deriveClientVisitId(routeRunStopId);
 
     for (const key of s3Keys) {
-        await client.query(query, [visitId, routeRunStopId, assetId, key, kind, userOid]);
+        // Existing transit write (additive discipline — do not remove)
+        const photoRes = await client.query(
+            `INSERT INTO stop_photos (visit_id, route_run_stop_id, asset_id, s3_key, kind, created_by_oid, captured_at)
+             SELECT id, $2, $3, $4, $5, $6, NOW()
+             FROM core.visits
+             WHERE client_visit_id = $1
+             LIMIT 1`,
+            [clientVisitId, routeRunStopId, assetId, key, kind, userOid]
+        );
+
+        if (photoRes.rowCount === 0) {
+            console.warn(
+                `[createStopPhotos] No visit found for routeRunStopId=${routeRunStopId} — stop_photos row skipped for key=${key}`
+            );
+        }
+
+        // Canonical evidence write
+        const evidenceRes = await client.query(
+            `INSERT INTO core.evidence (org_id, visit_id, observation_id, kind, storage_key, captured_by_oid)
+             SELECT v.org_id, v.id, NULL, $1, $2, $3
+             FROM core.visits v
+             WHERE v.client_visit_id = $4
+             LIMIT 1`,
+            [kind, key, userOid, clientVisitId]
+        );
+
+        if (evidenceRes.rowCount === 0) {
+            console.warn(
+                `[createStopPhotos] No visit found for routeRunStopId=${routeRunStopId} — evidence row skipped for key=${key}`
+            );
+        }
     }
 }
 
@@ -94,7 +112,6 @@ export async function listStopPhotosByRouteRunStop(
 
     const res = await client.query(query, params);
 
-    // Map to include signed URLs
     const photos: StopPhoto[] = await Promise.all(
         res.rows.map(async (row: any) => {
             let url = "";

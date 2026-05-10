@@ -12,6 +12,7 @@ const CHECKLIST_ITEMS: { key: keyof ChecklistState; label: string }[] = [
     { key: 'emptied_trash', label: 'Emptied trash' },
     { key: 'washed_shelter', label: 'Washed shelter' },
     { key: 'washed_pad', label: 'Washed pad' },
+    { key: 'washed_can', label: 'Washed can' },
 ];
 
 // 1. Define Infra Meta
@@ -813,7 +814,8 @@ export function StopDetail({
         checklist.picked_up_litter ||
         checklist.emptied_trash ||
         checklist.washed_shelter ||
-        checklist.washed_pad;
+        checklist.washed_pad ||
+        checklist.washed_can;
     const hasCleaning = anyCleaningTask;
     const hasTrashVolume = checklist.trashVolume !== undefined;
     const hasAfterPhoto = afterPhotoTaken;

@@ -10,6 +10,7 @@ import {
     closeVisitForRouteRunStop,
     getVisitContext,
 } from "../../domains/visit/visitService";
+import { loadRouteRunById } from "../../domains/routeRun/loaders/loadRouteRunById";
 import { startRouteRunStopInternal } from "../../domains/routeRun/operations/startRouteRunStop";
 
 export const routeRunStopRoutes = Router();
@@ -138,16 +139,17 @@ routeRunStopRoutes.post(
             `;
             const updateRes = await client.query(updateQuery, [hazard.id, id]);
 
-            // Ensure visit exists (idempotent)
+            // Ensure visit exists (idempotent — no-op if already created at stop-start)
             const visitId = await ensureVisitForRouteRunStop(client, {
                 routeRunStopId: Number(id),
-                actorOid: req.user?.oid || "unknown", // Safe access
+                actorOid: req.user?.oid || "unknown",
                 visitType: "service",
             });
 
-            // Close visit (idempotent)
             await closeVisitForRouteRunStop(client, {
                 routeRunStopId: Number(id),
+                outcome: 'skipped',
+                reasonCode: hazard_types?.[0],
             });
 
             await client.query("COMMIT");
@@ -173,7 +175,6 @@ routeRunStopRoutes.post(
             });
 
             // 4. Reload Route Run (and check for completion first)
-            const { loadRouteRunById } = await import("../../domains/routeRun/loaders/loadRouteRunById");
             const { checkAndCompleteRouteRun } = await import("../../domains/routeRun/routeRunService");
             await checkAndCompleteRouteRun(client, lookupRes.rows[0].route_run_id);
 
@@ -264,8 +265,9 @@ routeRunStopRoutes.post(
 
 
 
-            // Start transaction for complete + hazard
+            // Single atomic transaction: hazard write + all stop completion writes
             const client = await pool.connect();
+            let result: { cleanLogId: number; routeRunId: number } | null = null;
             try {
                 await client.query("BEGIN");
 
@@ -282,30 +284,35 @@ routeRunStopRoutes.post(
                         actorOid: req.user?.oid || "unknown",
                     });
 
-                    // Link the hazard to the route_run_stop for visibility in route_run_stops
                     await client.query(
-                        `UPDATE route_run_stops
-                         SET hazard_id = $1,
-    updated_at = NOW()
-                         WHERE id = $2`,
+                        `UPDATE route_run_stops SET hazard_id = $1, updated_at = NOW() WHERE id = $2`,
                         [hazard.id, route_run_stop_id]
                     );
                 }
 
-                // 2. IMPORTANT: Do NOT create hazards from the Cleaning flow.
-                // Hazards must only be recorded via the explicit `safety` object (Safety step) or skip-with-hazard.
-                // We ignore any legacy/accidental `hazards` payload to prevent duplicates and semantic drift.
-                // (Optional: keep this console to help catch FE regressions during pilot.)
                 if (req.body.hazards) {
                     console.warn(
                         "Ignoring `hazards` payload on complete-stop; hazards must come from `safety` step only.",
                         { route_run_stop_id }
                     );
-                    console.warn(
-                        "If hazards are being selected in the Cleaning step UI, the frontend must send them under `safety.hazard_types` (Safety step), not `hazards[]`.",
-                        { route_run_stop_id }
-                    );
                 }
+
+                // 2. All stop completion writes inside the same transaction
+                result = await completeStop(client, route_run_stop_id, {
+                    user_id,
+                    duration_minutes,
+                    picked_up_litter,
+                    emptied_trash,
+                    washed_shelter,
+                    washed_pad,
+                    washed_can,
+                    photo_keys,
+                    infraIssues,
+                    trashVolume,
+                    actorOid: req.user?.oid || "unknown",
+                    safety,
+                    spotCheck: isSpotCheck,
+                });
 
                 await client.query("COMMIT");
             } catch (err) {
@@ -315,30 +322,16 @@ routeRunStopRoutes.post(
                 client.release();
             }
 
-            const result = await completeStop(route_run_stop_id, {
-                user_id,
-                duration_minutes,
-                picked_up_litter,
-                emptied_trash,
-                washed_shelter,
-                washed_pad,
-                washed_can,
-                photo_keys,
-                infraIssues,
-                trashVolume,
-                actorOid: req.user?.oid || "unknown", // Pass actorOid, fallback for safety
-                safety, // Pass safety object for observation mapping
-                spotCheck: isSpotCheck,
-            });
-
             if (!result) {
                 return res.status(404).json({ error: "ROUTE_NOT_FOUND", message: "Route run stop not found" });
             }
 
+            const routeRun = await loadRouteRunById(result.routeRunId);
+
             return res.json({
                 ok: true,
                 clean_log_id: result.cleanLogId,
-                route_run: result.routeRun,
+                route_run: routeRun,
             });
         } catch (err: any) {
             if (err.code === "ALREADY_COMPLETE") {

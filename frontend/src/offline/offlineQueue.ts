@@ -334,10 +334,10 @@ export async function runReplay(
     const pending = getPendingActions(tenantId, oid);
 
     // OTEM: Deterministic replay ordering
-    // Enforce dependency order: UPLOAD_STOP_PHOTOS → START_STOP → SKIP_STOP → COMPLETE_STOP
+    // Enforce dependency order: START_STOP → UPLOAD_STOP_PHOTOS → SKIP_STOP → COMPLETE_STOP
     const actionOrder: Record<string, number> = {
-        'UPLOAD_STOP_PHOTOS': 1,
-        'START_STOP': 2,
+        'START_STOP': 1,
+        'UPLOAD_STOP_PHOTOS': 2,
         'SKIP_STOP_WITH_HAZARD': 3,
         'COMPLETE_STOP': 4,
     };
