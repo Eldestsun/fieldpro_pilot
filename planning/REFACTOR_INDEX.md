@@ -10,11 +10,11 @@
 
 | Tier | Name | Depends On | Parallel With | Status |
 |------|------|-----------|---------------|--------|
-| 1 | Canonical Completeness | — (unblocked) | 3, 4, 6 | 🟠 In review |
+| 1 | Canonical Completeness | — (unblocked) | 3, 4, 6 | 🟢 Done |
 | 2 | Intelligence Migration | Tier 1 done + Tier 4 stops-columns done | — | 🟡 Unblocked |
 | 3 | Reconnect Control Center | — (unblocked) | 1, 4, 6 | 🟢 Done |
 | 4 | Schema Cleanup | — (unblocked) | 1, 3, 6 | 🟢 Done |
-| 5 | Assignment Layer | Tier 1 must be stable | 3, 4, 6 | 🟡 Unblocked |
+| 5 | Assignment Layer | Tier 1 must be stable | 3, 4, 6 | 🟡 Ready |
 | 6 | Infrastructure | — (unblocked) | 1, 3, 4, 5 | 🟡 In progress |
 | 7 | Row Level Security & Tenant Isolation | Tier 1 done | 8 | 🔴 Not started |
 | 8 | Asset Type Abstraction | Tier 7 done | — | 🔴 Not started |

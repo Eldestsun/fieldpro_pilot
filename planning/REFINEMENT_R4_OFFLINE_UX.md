@@ -1,7 +1,7 @@
 R4 — Offline-First Hardening (Expanded)
 Original scope: Queue visibility UI
 Expanded scope: Make the app genuinely offline-first — queue-first actions, Service Worker app shell cache, route data cache, then visibility UI on top
-Status: 🔴 Not started
+Status: 🟢 Done — all 5 sub-tasks complete 2026-05-10
 Depends on: Nothing (unblocked)
 Blocks: Tier 1 final sign-off (offline replay done-criteria)
 

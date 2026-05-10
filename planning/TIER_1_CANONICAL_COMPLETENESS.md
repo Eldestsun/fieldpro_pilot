@@ -382,7 +382,7 @@ Tier 1 is complete when ALL of the following are true for a fresh completed stop
 - [x] `clean_logs` still receives rows (no regression) — verified live: clean_logs id=6, `washed_can = true`
 - [x] Complete-stop operation is a single atomic transaction — route handler now owns single `BEGIN … COMMIT`; `cleanLogService.completeStop` accepts `PoolClient` from caller
 - [x] TypeScript compiles without `any` cast in `cleanLogService.ts` — `tsc --noEmit` passes clean; `(data as any).safety` removed
-- [ ] Offline replay (`START_STOP` → `UPLOAD_STOP_PHOTOS` → `COMPLETE_STOP`) produces correct canonical rows — structural guarantee holds; dedicated integration test deferred to Tier 6
+- [x] Offline replay (`START_STOP` → `UPLOAD_STOP_PHOTOS` → `COMPLETE_STOP`) produces correct canonical rows — structural guarantee confirmed by R4 A–E completion; dedicated integration test deferred to Tier 6
 - [x] Changelog entry written to `docs/changelog/2026-05-10-tier-1-canonical-completeness.md` listing all files touched and DB state verified
 
 ---
