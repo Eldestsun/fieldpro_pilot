@@ -160,9 +160,13 @@ export function StopDetail({
         setIsReportInfraOpen(false);
         // Reset after-photo taken state
         setAfterPhotoTaken(false);
+        setShowResumeBanner(false);
         // (Safety and Infra state are managed by parent via onSetSafety/onSetInfra)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [stop.route_run_stop_id]);
+
+    // Resume banner state — shown when draft is restored on mount
+    const [showResumeBanner, setShowResumeBanner] = useState(false);
 
     // Multi-photo State
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -217,6 +221,12 @@ export function StopDetail({
                 if (stop.route_run_stop_id !== stopIdAtRequestTime) return;
                 if (!draft) return;
 
+                // Only restore drafts less than 24 hours old
+                const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+                const isFresh = draft.updatedAt &&
+                    (Date.now() - new Date(draft.updatedAt).getTime()) < TWENTY_FOUR_HOURS_MS;
+                if (!isFresh) return;
+
                 if (draft.checklist) {
                     Object.entries(draft.checklist).forEach(([k, v]) => {
                         onSetChecklist(k as keyof ChecklistState, v as any);
@@ -238,6 +248,8 @@ export function StopDetail({
                 if (draft.stepKey && onSetStep) {
                     onSetStep(draft.stepKey as WizardStep);
                 }
+
+                setShowResumeBanner(true);
             })
             .catch(console.error);
 
@@ -789,6 +801,14 @@ export function StopDetail({
     void _attachedPhotoKeys;
 
 
+    const handleDismissResumeBanner = () => {
+        setShowResumeBanner(false);
+        if (!account?.tenantId || !stop.route_run_stop_id) return;
+        const oid = account?.idTokenClaims?.oid || account?.localAccountId;
+        clearStopDraft({ tenantId: account.tenantId, oid, routeRunStopId: stop.route_run_stop_id })
+            .catch(console.error);
+    };
+
     const handleSaveInfra = () => {
         const issues: InfraIssuePayload[] = selectedInfraKeys.map(key => {
             const meta = INFRA_ISSUE_META[key];
@@ -846,6 +866,23 @@ export function StopDetail({
             </div>
 
             <h2 style={{ marginTop: 0, marginBottom: "0.5rem", textAlign: "center" }}>{locationString}</h2>
+
+            {showResumeBanner && (
+                <div style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "0.65rem 1rem", marginBottom: "0.75rem",
+                    background: "#ebf8ff", border: "1px solid #90cdf4", borderRadius: "8px",
+                    fontSize: "0.875rem", color: "#2b6cb0",
+                }}>
+                    <span>↩ Resume from where you left off</span>
+                    <button
+                        onClick={handleDismissResumeBanner}
+                        style={{ background: "none", border: "none", color: "#2b6cb0", cursor: "pointer", fontWeight: "bold", fontSize: "1rem", padding: "0 0.25rem" }}
+                    >
+                        ✕
+                    </button>
+                </div>
+            )}
 
             {(stop as any).syncState === "queued" && (
                 <div style={{ color: '#ff9800', fontSize: '0.85rem', marginBottom: '8px', textAlign: 'center' }}>

@@ -21,6 +21,7 @@ import { enqueueAction, type OfflineAction, setRequiresAuth, getHasQueuedUploadF
 import { putPhoto } from "../offline/photoStore";
 
 import { useOfflineMode } from "../utils/offlineMode";
+import { saveTodayRouteCache, loadTodayRouteCache } from "../offline/todayRouteCache";
 
 
 export interface SafetyState {
@@ -90,12 +91,23 @@ export function useTodayRoute() {
             const token = await getAccessToken();
             const data = await getTodayRoute(token);
             setRouteRun(data);
+            saveTodayRouteCache(tenantId, oid, data);
         } catch (err: any) {
-            setError(err.message);
+            if (isNetworkFailure(err)) {
+                const cached = loadTodayRouteCache<RouteRun>(tenantId, oid);
+                if (cached) {
+                    setRouteRun(cached);
+                    setError(null);
+                } else {
+                    setError(err.message);
+                }
+            } else {
+                setError(err.message);
+            }
         } finally {
             setLoading(false);
         }
-    }, [getAccessToken]);
+    }, [getAccessToken, tenantId, oid]);
 
     useEffect(() => {
         if (!account) {
