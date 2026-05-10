@@ -13,9 +13,9 @@
 | File | Change |
 |------|--------|
 | `backend/src/domains/visit/visitService.ts` | Add `outcome` + `reason_code` params to `closeVisitForRouteRunStop`; fix visit creation to be a no-op if already created on stop-start |
-| `backend/src/domains/routeRunStop/cleanLogService.ts` | Write `outcome='completed'` on visit close; fix safety cast; move observation emit inside transaction |
+| `backend/src/domains/routeRunStop/cleanLogService.ts` | Write `outcome='completed'` on visit close; fix safety cast; move observation emit inside transaction; add `washed_can` to the `uiPayload` passed to `emitObservationsForStop` |
 | `backend/src/modules/work/routeRunStopRoutes.ts` | Write `outcome='skipped'` + `reason_code` on skip path; fix two-transaction problem on complete |
-| `backend/src/domains/observation/observationService.ts` | Add `washed_can` observation branch; rename `pool: any` to `pool: PoolClient` in `emitSpotCheckObservation` |
+| `backend/src/domains/observation/observationService.ts` | Add `washed_can` observation branch; add `washed_can?: boolean` to the `StopUiPayload` type; rename `pool: any` to `pool: PoolClient` in `emitSpotCheckObservation` |
 | `backend/src/domains/routeRunStop/stopPhotosService.ts` | Write to `core.evidence` alongside `stop_photos`; remove pre-create-visit call from photo upload |
 
 ---
@@ -67,31 +67,44 @@ No reason code written.
 
 ### After
 
-`closeVisitForRouteRunStop(routeRunStopId, client, outcome: string, reasonCode?: string)`
+Extend the existing signature to accept `outcome` and `reasonCode`:
 
-SQL inside function:
+```typescript
+closeVisitForRouteRunStop(
+  client: PoolClient,
+  params: { routeRunStopId: number; outcome: string; reasonCode?: string; endedAt?: Date }
+): Promise<number | null>
+```
+
+SQL inside function (preserves existing `client_visit_id` join — `core.visits` has no `route_run_stop_id` column; visits are linked to stops via `client_visit_id`, a UUIDv5 derived from the route_run_stop_id by `deriveClientVisitId()`):
 ```sql
 UPDATE core.visits
-SET ended_at = NOW(), outcome = $2, reason_code = $3
-WHERE id = (
-  SELECT id FROM core.visits
-  WHERE route_run_stop_id = $1
-  ORDER BY started_at DESC LIMIT 1
-)
+SET ended_at   = COALESCE(ended_at, COALESCE($2, NOW())),
+    outcome    = COALESCE(outcome, $3),
+    reason_code = COALESCE(reason_code, $4)
+WHERE client_visit_id = $1
+  AND ended_at IS NULL
+RETURNING id
+```
+
+Parameter binding inside the function:
+```typescript
+const visitClientId = deriveClientVisitId(params.routeRunStopId);
+await client.query(sql, [visitClientId, params.endedAt ?? null, params.outcome, params.reasonCode ?? null]);
 ```
 
 `cleanLogService.ts` calls:
-```
-await closeVisitForRouteRunStop(routeRunStopId, client, 'completed')
+```typescript
+await closeVisitForRouteRunStop(client, { routeRunStopId, outcome: 'completed' })
 ```
 
 `routeRunStopRoutes.ts` skip handler calls:
-```
-await closeVisitForRouteRunStop(routeRunStopId, client, 'skipped', hazardType)
+```typescript
+await closeVisitForRouteRunStop(client, { routeRunStopId, outcome: 'skipped', reasonCode: hazardType })
 ```
 
 ### Done criteria
-- `SELECT outcome, reason_code FROM core.visits WHERE route_run_stop_id = :id` returns non-null `outcome` for completed and skipped stops.
+- `SELECT outcome, reason_code FROM core.visits WHERE client_visit_id = deriveClientVisitId(:routeRunStopId)` returns non-null `outcome` for completed and skipped stops.
 - Existing `clean_logs` write is untouched — both writes occur.
 
 ---
@@ -102,32 +115,74 @@ await closeVisitForRouteRunStop(routeRunStopId, client, 'skipped', hazardType)
 
 `washed_can` is a boolean field captured at stop completion but never written to `core.observations`. Only `clean_logs` records it. Intelligence cannot derive a canonical "can was washed" signal from `core.observations`.
 
-### File touched
-- `observationService.ts`
+The fix has **three** parts — all required for the value to reach the observation branch at all:
+
+1. Add `washed_can?: boolean` to the `StopUiPayload` type in `observationService.ts`
+2. Add a `washed_can` branch to `submitObservations()` in `observationService.ts`
+3. Propagate `washed_can` from the route-handler request body into the `uiPayload` built in `cleanLogService.ts` (currently only `washed_shelter` and `washed_pad` are propagated; `washed_can` is silently dropped)
+
+### Files touched
+- `observationService.ts` (type + branch)
+- `cleanLogService.ts` (uiPayload mapping)
 
 ### Before
 
-`submitObservations()` maps `checklist.clean`, `trashVolume`, `safety`, `infra` to observation pairs. `washed_can` is absent.
+`StopUiPayload` declares `picked_up_litter`, `emptied_trash`, `washed_shelter`, `washed_pad` — no `washed_can`.
 
-### After
+`submitObservations()` maps `picked_up_litter`, `emptied_trash`, `washed_shelter`, `washed_pad`, `trash_volume`, safety, and infra to observation pairs. `washed_can` is absent.
 
-Add branch in `submitObservations()`:
+`cleanLogService.completeStop` builds `uiPayload` from `data.picked_up_litter`, `data.emptied_trash`, `data.washed_shelter`, `data.washed_pad`, `data.trashVolume`, etc. — `data.washed_can` is not mapped in.
+
+### After — Part 1: extend the type
+
+In `observationService.ts`:
+```typescript
+export type StopUiPayload = {
+    // ... existing fields ...
+    picked_up_litter?: boolean;
+    emptied_trash?: boolean;
+    washed_shelter?: boolean;
+    washed_pad?: boolean;
+    washed_can?: boolean;   // NEW
+    // ... rest unchanged ...
+};
+```
+
+### After — Part 2: add the branch
+
+In `submitObservations()` — push a single observation matching the `ObservationInsert` shape used by the existing branches (`{ observation_type, payload }`). Note that `core.observations` has **no** `observed_value` column; the value lives in `payload jsonb`:
 
 ```typescript
-if (payload.checklist?.washed_can === true || payload.checklist?.washed_can === false) {
-  observations.push({
-    visit_id: visitId,
-    asset_id: assetId,
+if (typeof ui.washed_can === 'boolean') {
+  obs.push({
     observation_type: 'washed_can',
-    observed_value: payload.checklist.washed_can ? 'true' : 'false',
-    observed_at: now,
-  })
+    payload: { value: ui.washed_can }
+  });
 }
 ```
 
+The existing `insertObservations()` helper already supplies `org_id`, `visit_id`, `location_id`, `asset_id`, and `created_by_oid` from the surrounding context — no change needed there.
+
+### After — Part 3: propagate in `cleanLogService.ts`
+
+Where the `uiPayload` is constructed before the `emitObservationsForStop` call, add the field:
+
+```typescript
+const uiPayload: StopUiPayload = {
+    picked_up_litter: data.picked_up_litter,
+    emptied_trash:    data.emptied_trash,
+    washed_shelter:   data.washed_shelter,
+    washed_pad:       data.washed_pad,
+    washed_can:       data.washed_can,   // NEW
+    trash_volume:     data.trashVolume as any,
+    // ... rest unchanged ...
+};
+```
+
 ### Done criteria
-- After completing a stop with `washed_can: true`, `SELECT * FROM core.observations WHERE observation_type = 'washed_can' AND visit_id = :id` returns one row with `observed_value = 'true'`.
+- After completing a stop with `washed_can: true`, `SELECT observation_type, payload FROM core.observations WHERE observation_type = 'washed_can' AND visit_id = :visitId` returns one row with `payload = {"value": true}`.
 - Existing `clean_logs.washed_can` write is untouched.
+- `StopUiPayload.washed_can` is typed as `boolean | undefined` and is no longer dropped on the path from the route handler to the observation emitter.
 
 ---
 
@@ -152,25 +207,26 @@ if (payload.checklist?.washed_can === true || payload.checklist?.washed_can === 
 `createStopPhotos()`:
 1. **Remove** call to `ensureVisitForRouteRunStop()`. (Visit creation now happens at stop-start — see Change 4. Photo upload must not create a visit.)
 2. Write to `stop_photos` (unchanged — additive discipline).
-3. **Add** write to `core.evidence` for each photo:
+3. **Add** write to `core.evidence` for each photo. Note the schema realities: `core.evidence.org_id` is `NOT NULL` (no default), and `core.visits` has **no** `route_run_stop_id` column — the stop link is via `client_visit_id` (UUIDv5 derived by `deriveClientVisitId(routeRunStopId)`):
 
 ```sql
 INSERT INTO core.evidence
-  (visit_id, observation_id, kind, storage_key, captured_by_oid)
+  (org_id, visit_id, observation_id, kind, storage_key, captured_by_oid)
 SELECT
+  v.org_id,
   v.id,
   NULL,
   $1,  -- kind ('completion' | 'safety' etc.)
   $2,  -- storage_key (the S3/blob path)
   $3   -- captured_by_oid (from auth context — currently the OID stub)
 FROM core.visits v
-WHERE v.route_run_stop_id = $4
-ORDER BY v.started_at DESC
+WHERE v.client_visit_id = $4   -- bind: deriveClientVisitId(routeRunStopId)
 LIMIT 1
-ON CONFLICT DO NOTHING
 ```
 
-If no visit row exists for the stop yet (edge case: photo uploaded before stop-start replay in offline scenario), log a warning and skip the evidence write — do not fail the photo upload.
+`core.evidence` has no unique constraint covering `(visit_id, storage_key)`, so an `ON CONFLICT` clause is not applicable. Idempotency on retry must be handled by the caller (e.g. by checking storage_key before insert) or accepted as duplicate-tolerant.
+
+If no visit row exists for the stop yet (edge case: photo uploaded before stop-start replay in offline scenario), the INSERT writes 0 rows. Log a warning and continue — do not fail the photo upload.
 
 ### Done criteria
 - After completing a stop with photos, `SELECT * FROM core.evidence WHERE visit_id = :id` returns rows equal to the number of photos uploaded.
@@ -210,8 +266,8 @@ Photo upload handler: no `ensureVisitForRouteRunStop` call (removed per Change 3
 `ensureVisitForRouteRunStop()` already uses UUIDv5 idempotency — calling it twice for the same stop is safe.
 
 ### Done criteria
-- After calling `START_STOP`, `SELECT * FROM core.visits WHERE route_run_stop_id = :id` returns one row with `started_at` set.
-- Photo upload for the same stop does NOT create a second visit row.
+- After calling `START_STOP`, `SELECT * FROM core.visits WHERE client_visit_id = deriveClientVisitId(:routeRunStopId)` returns one row with `started_at` set.
+- Photo upload for the same stop does NOT create a second visit row (`ensureVisitForRouteRunStop` is idempotent on `client_visit_id`, but the photo path should not call it at all post-fix).
 - Offline replay of `START_STOP` followed by `COMPLETE_STOP` produces exactly one visit row.
 
 ---

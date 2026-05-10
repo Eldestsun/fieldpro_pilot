@@ -2,7 +2,7 @@
 
 > Orchestration layer for the canonical-model migration.
 > Each tier has its own handoff file. This document tracks ordering, dependencies, and current status.
-> Last updated: 2026-05-08
+> Last updated: 2026-05-09
 
 ---
 
@@ -16,6 +16,8 @@
 | 4 | Schema Cleanup | — (unblocked) | 1, 3, 6 | 🟢 Done |
 | 5 | Assignment Layer | Tier 1 must be stable | 3, 4, 6 | ⛔ Blocked |
 | 6 | Infrastructure | — (unblocked) | 1, 3, 4, 5 | 🟡 In progress |
+| 7 | Row Level Security & Tenant Isolation | Tier 1 done | 8 | 🔴 Not started |
+| 8 | Asset Type Abstraction | Tier 7 done | — | 🔴 Not started |
 
 ---
 
@@ -30,6 +32,12 @@ Tier 4 ──┐ stops-columns sub-task
 Tier 1 ───┴──► Tier 2 (needs both: complete observations + lowercase stop columns)
           │
 Tier 1 ───┴──► Tier 5 (after Tier 1 is stable; feeds Tier 2 completeness, doesn't block it)
+          │
+Tier 1 ───┴──► Tier 7 (RLS applied after canonical write paths are stable)
+                │
+                └──► Tier 8 (asset abstraction runs on RLS-enforced schema)
+
+Tier 7 — Blocks: Scale (no second agency before RLS verified)
 ```
 
 **Tier 2 has two hard prerequisites:**
@@ -101,6 +109,22 @@ Load-bearing. Must wait until Tier 1 is confirmed stable — specifically, visit
 Add integration tests for the canonical write paths introduced in Tier 1. Create a migration runner script. Document Docker/CI setup gaps. After Tier 6, the canonical write paths have test coverage and the build pipeline is documented.
 
 Can proceed in parallel with Tiers 1, 3, and 4.
+
+---
+
+### Tier 7 — Row Level Security & Tenant Isolation
+**File**: `planning/TIER_7_ROW_LEVEL_SECURITY_TENANT_ISOLATION.md`
+
+Enforce org-level data isolation at the DB layer using Postgres Row Level Security. Policies on all five canonical tables filter every query by `app.current_org_id` session variable, set via a `withOrgContext()` wrapper in `db.ts`. A bad query missing a WHERE clause cannot leak cross-tenant data. Includes a verification script that proves cross-tenant isolation. Must wait until Tier 1 write paths are stable — RLS applied to an incomplete write path creates silent data gaps.
+
+**Hard dependency note**: `withOrgContext()` requires org_id to be resolved from the authenticated user's Entra tenant ID. This resolution chain must be confirmed working before RLS is enforced — a missing `app.current_org_id` will cause all queries to fail silently or error.
+
+---
+
+### Tier 8 — Asset Type Abstraction
+**File**: `planning/TIER_8_ASSET_TYPE_ABSTRACTION.md`
+
+Abstract the stop-centric data model to support multiple asset types (stops, restrooms, shelters, facilities). Enables BASELINE to operate across asset classes without schema duplication. Should run on an RLS-enforced schema (Tier 7 done).
 
 ---
 

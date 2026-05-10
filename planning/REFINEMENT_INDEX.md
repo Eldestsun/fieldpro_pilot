@@ -3,7 +3,7 @@
 > Orchestration layer for the product refinement track.
 > Runs alongside and after the DB Refactor (Tiers 1–6).
 > Each item has its own handoff file. This document tracks ordering, dependencies, and status.
-> Last updated: 2026-05-08
+> Last updated: 2026-05-09
 
 ---
 
@@ -29,7 +29,7 @@ These are two parallel workstreams. Several refinement items can begin before al
 | R7 | Historical Backfill | R1 done + Tier 1 done | R6, R8 | ⛔ Blocked |
 | R8 | CI Pipeline | Tier 6 Sub-task C done | R7 | 🔴 Not started |
 | R9 | Frontend Tests | R5 stable | — | ⛔ Blocked by R5 |
-| R10 | Stop Effort History (replace workforce_metrics) | Tier 4 Sub-task B done | R1, R3 | ⛔ Blocked by Tier 4 |
+| R10 | Stop Effort History (replace workforce_metrics) | Tier 4 Sub-task B done | R1, R3 | 🔴 Not started |
 
 ---
 
@@ -127,6 +127,8 @@ Add component tests (Vitest + Testing Library) for the UL stop wizard, offline q
 **File**: `planning/REFINEMENT_R10_STOP_EFFORT_HISTORY.md`
 
 Replace the dropped `workforce_metrics` and `stop_scoring_history` tables with correctly designed stop-level effort and condition history tables. Worker-safe by structure (no `user_id`). Keyed by `stop_id` and `visit_id`. Feeds route planning intelligence and stop assignment decisions. Runs after Tier 4 Sub-task B drops the surveillance tables.
+
+Status: Unblocked — Tier 4B complete as of 2026-05-08. stop_effort_history and stop_condition_history tables exist, empty, ready for write path wiring.
 
 ---
 
