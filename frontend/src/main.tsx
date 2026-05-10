@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { PublicClientApplication } from "@azure/msal-browser";
 import { MsalProvider } from "@azure/msal-react";
+import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { msalConfig } from "./msalConfig";
 import { AuthProvider } from "./auth/AuthContext";
@@ -46,7 +47,9 @@ root.render(
   <ErrorBoundary>
     <MsalProvider instance={pca}>
       <AuthProvider>
-        <App />
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
       </AuthProvider>
     </MsalProvider>
   </ErrorBoundary>

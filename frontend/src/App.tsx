@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import type { ComponentType, ReactNode } from "react";
+import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext";
-import type { ComponentType } from "react";
 import { OpsButton } from "./components/ui/OpsButton";
 import * as TodayRouteViewMod from "./components/TodayRouteView";
 import * as LeadRoutesPanelMod from "./components/LeadRoutesPanel";
+import * as LeadRouteDetailMod from "./components/LeadRouteDetail";
 import * as AdminDashboardMod from "./components/admin/AdminDashboard";
 import * as AdminPoolsPanelMod from "./components/admin/AdminPoolsPanel";
 import * as AdminStopsPanelMod from "./components/admin/AdminStopsPanel";
@@ -18,53 +19,44 @@ function resolveComponent(mod: any, named: string): ComponentType<any> {
 
 const TodayRouteView = resolveComponent(TodayRouteViewMod, "TodayRouteView");
 const LeadRoutesPanel = resolveComponent(LeadRoutesPanelMod, "LeadRoutesPanel");
+const LeadRouteDetailComp = resolveComponent(LeadRouteDetailMod, "LeadRouteDetail");
 const AdminDashboard = resolveComponent(AdminDashboardMod, "AdminDashboard");
 const AdminPoolsPanel = resolveComponent(AdminPoolsPanelMod, "AdminPoolsPanel");
 const AdminStopsPanel = resolveComponent(AdminStopsPanelMod, "AdminStopsPanel");
 const AdminControlCenter = resolveComponent(AdminControlCenterMod, "AdminControlCenter");
 const LoginPage = resolveComponent(LoginPageMod, "LoginPage");
 
+function DefaultRedirect() {
+  const { me } = useAuth();
+  const roles = me?.roles || [];
+  if (roles.includes("Admin")) return <Navigate to="/admin/dashboard" replace />;
+  if (roles.includes("Lead")) return <Navigate to="/routes" replace />;
+  return <Navigate to="/work" replace />;
+}
+
+function RequireRole({ roles, children }: { roles: string[]; children: ReactNode }) {
+  const { me } = useAuth();
+  const userRoles = me?.roles || [];
+  const allowed = roles.some(r => userRoles.includes(r));
+  if (!allowed) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
+function LeadRouteDetailRoute() {
+  const { routeRunId } = useParams<{ routeRunId: string }>();
+  const navigate = useNavigate();
+  return <LeadRouteDetailComp id={Number(routeRunId)} onBack={() => navigate("/routes")} />;
+}
+
 export default function App() {
-  // ---- Auth/RBAC via context ----
   const { isSignedIn, signIn, signOut, me, isLoading } = useAuth();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
 
-  // ---- View State ----
-  const [activeView, setActiveView] = useState<"work" | "routes" | "admin_dash" | "admin_pools" | "admin_stops" | "admin_control_center" | "ops_dash" | "ops_pools" | "ops_stops">("work");
-
-  // ---- Role Logic ----
   const roles = me?.roles || [];
   const isAdmin = roles.includes("Admin");
   const isLead = roles.includes("Lead");
   const isUL = roles.includes("UL");
-
-  // Determine default view on login
-  useEffect(() => {
-    if (isSignedIn && !isLoading) {
-      if (isAdmin) setActiveView("admin_dash");
-      // Lead defaults to routes, or ops_dash if they prefer, but per requirements: "Lead -> routes"
-      else if (isLead) setActiveView("routes");
-      else setActiveView("work");
-    }
-  }, [isSignedIn, isAdmin, isLead, isLoading]);
-
-  // ---- Security Guard ----
-  useEffect(() => {
-    if (!isSignedIn || isLoading) return;
-
-    const isAdminView = activeView.startsWith("admin_");
-    const isOpsView = activeView.startsWith("ops_");
-
-    if (isAdminView && !isAdmin) {
-      // Boot them out
-      if (isLead) setActiveView("routes");
-      else setActiveView("work");
-    }
-
-    if (isOpsView && !(isLead || isAdmin)) {
-      // Boot them out
-      setActiveView("work");
-    }
-  }, [activeView, isAdmin, isLead, isSignedIn, isLoading]);
 
   if (isLoading) {
     return (
@@ -84,13 +76,11 @@ export default function App() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
           <div className="app-brand">BASELINE</div>
 
-          {/* Auth controls */}
           <div>
             <span style={{ marginRight: "1rem", fontSize: "0.9rem" }}>
               {me?.user?.name || me?.user?.preferred_username}
               {isAdmin && <span style={{ marginLeft: "0.5rem", background: "red", color: "white", padding: "2px 6px", borderRadius: "4px", fontSize: "0.7rem" }}>Operations</span>}
             </span>
-            {/* <OpsButton variant="secondary" size="sm" onClick={refreshMe}>Refresh identity</OpsButton> */}
             <OpsButton
               variant="danger"
               size="sm"
@@ -103,140 +93,125 @@ export default function App() {
         </div>
 
         {/* Navigation Bar */}
-        {isSignedIn && (
-          <div style={{ marginBottom: "1.5rem", display: "flex", gap: "0.5rem", borderBottom: "1px solid #e2e8f0", paddingBottom: "1rem" }}>
-            <div style={{ display: "flex", gap: "1rem" }}>
-              {/* Everyone (UL/Lead) sees "Work" (Today's Route) usually? 
-                Actually, Admin doesn't need "Work". 
-                Lead needs "Work" and "Routes".
-                UL needs "Work".
-             */}
-              {(isUL || isLead) && (
-                <button
-                  onClick={() => setActiveView("work")}
-                  style={navButtonStyle(activeView === "work")}
-                >
-                  My Work
-                </button>
-              )}
-              {isLead && (
-                <button
-                  onClick={() => setActiveView("routes")}
-                  style={navButtonStyle(activeView === "routes")}
-                >
-                  Routes
-                </button>
-              )}
+        <div style={{ marginBottom: "1.5rem", display: "flex", gap: "0.5rem", borderBottom: "1px solid #e2e8f0", paddingBottom: "1rem" }}>
+          <div style={{ display: "flex", gap: "1rem" }}>
+            {(isUL || isLead) && (
+              <button
+                onClick={() => navigate("/work")}
+                style={navButtonStyle(pathname === "/work")}
+              >
+                My Work
+              </button>
+            )}
+            {isLead && (
+              <button
+                onClick={() => navigate("/routes")}
+                style={navButtonStyle(pathname === "/routes" || pathname.startsWith("/routes/"))}
+              >
+                Routes
+              </button>
+            )}
 
-              {/* Ops Tabs (Read-only for Lead) */}
-              {isLead && !isAdmin && (
-                <>
-                  <div style={{ width: "1px", background: "#cbd5e0", margin: "0 0.5rem" }}></div>
-                  <button
-                    onClick={() => setActiveView("ops_dash")}
-                    style={navButtonStyle(activeView === "ops_dash")}
-                  >
-                    Dashboard
-                  </button>
-                  <button
-                    onClick={() => setActiveView("ops_pools")}
-                    style={navButtonStyle(activeView === "ops_pools")}
-                  >
-                    Pools
-                  </button>
-                  <button
-                    onClick={() => setActiveView("ops_stops")}
-                    style={navButtonStyle(activeView === "ops_stops")}
-                  >
-                    Stops
-                  </button>
-                </>
-              )}
+            {/* Ops Tabs (Read-only for Lead) */}
+            {isLead && !isAdmin && (
+              <>
+                <div style={{ width: "1px", background: "#cbd5e0", margin: "0 0.5rem" }}></div>
+                <button
+                  onClick={() => navigate("/ops/dashboard")}
+                  style={navButtonStyle(pathname === "/ops/dashboard")}
+                >
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => navigate("/ops/pools")}
+                  style={navButtonStyle(pathname === "/ops/pools")}
+                >
+                  Pools
+                </button>
+                <button
+                  onClick={() => navigate("/ops/stops")}
+                  style={navButtonStyle(pathname === "/ops/stops")}
+                >
+                  Stops
+                </button>
+              </>
+            )}
 
-              {/* Admin Tabs (Write access) */}
-              {isAdmin && (
-                <>
-                  <div style={{ width: "1px", background: "#cbd5e0", margin: "0 0.5rem" }}></div>
-                  <button
-                    onClick={() => setActiveView("admin_dash")}
-                    style={navButtonStyle(activeView === "admin_dash")}
-                  >
-                    Admin Dashboard
-                  </button>
-                  <button
-                    onClick={() => setActiveView("admin_pools")}
-                    style={navButtonStyle(activeView === "admin_pools")}
-                  >
-                    Pools
-                  </button>
-                  <button
-                    onClick={() => setActiveView("admin_stops")}
-                    style={navButtonStyle(activeView === "admin_stops")}
-                  >
-                    Stops
-                  </button>
-                  <button
-                    onClick={() => setActiveView("admin_control_center")}
-                    style={navButtonStyle(activeView === "admin_control_center")}
-                  >
-                    Control Center
-                  </button>
-                </>
-              )}
-            </div>
+            {/* Admin Tabs (Write access) */}
+            {isAdmin && (
+              <>
+                <div style={{ width: "1px", background: "#cbd5e0", margin: "0 0.5rem" }}></div>
+                <button
+                  onClick={() => navigate("/admin/dashboard")}
+                  style={navButtonStyle(pathname === "/admin/dashboard")}
+                >
+                  Admin Dashboard
+                </button>
+                <button
+                  onClick={() => navigate("/admin/pools")}
+                  style={navButtonStyle(pathname === "/admin/pools")}
+                >
+                  Pools
+                </button>
+                <button
+                  onClick={() => navigate("/admin/stops")}
+                  style={navButtonStyle(pathname === "/admin/stops")}
+                >
+                  Stops
+                </button>
+                <button
+                  onClick={() => navigate("/admin/control-center")}
+                  style={navButtonStyle(pathname === "/admin/control-center")}
+                >
+                  Control Center
+                </button>
+              </>
+            )}
           </div>
-        )}
+        </div>
 
         {/* Main Content Area */}
-        {isSignedIn && (
-          <section>
-            {/* Original content replaced by renderView */}
-            {(() => {
-              // View Switching
-              const renderView = () => {
-                if (activeView === "work") {
-                  // "Console" or "Ops" dashboard
-                  if (isAdmin) {
-                    // Admin might default to dashboard if they clicked "Console" tab?
-                    // Actually, let's keep "work" as the default UL view "Today's Route".
-                    // But if they are purely admin, they might not have a route.
-                    // Existing logic: "work" -> TodayRouteView (if UL/Lead).
-                    return <TodayRouteView />;
-                  } else {
-                    return <TodayRouteView />;
-                  }
-                }
-                if (activeView === "routes") return <LeadRoutesPanel />; // Lead "Routes" list (changed from LeadRouteView to LeadRoutesPanel to match existing import)
-
-                // Shared Components with Scope
-                if (activeView === "ops_dash") return <AdminDashboard scope="ops" />;
-                if (activeView === "ops_pools") return <AdminPoolsPanel scope="ops" />;
-                if (activeView === "ops_stops") return <AdminStopsPanel scope="ops" />;
-
-                if (activeView === "admin_dash") return <AdminDashboard scope="admin" />;
-                if (activeView === "admin_pools") return <AdminPoolsPanel scope="admin" />;
-                if (activeView === "admin_stops") return <AdminStopsPanel scope="admin" />;
-                if (activeView === "admin_control_center") return <AdminControlCenter />;
-
-                return <div>Select a view</div>;
-              };
-              return renderView();
-            })()}
-          </section>
-        )}
-
-        {/* Debug Footer 
-            <div style={{ marginTop: "3rem", borderTop: "1px solid #e2e8f0", paddingTop: "1rem", color: "#a0aec0", fontSize: "0.75rem", textAlign: "center" }}>
-              Backend Health: {health}
-            </div>*/}
+        <section>
+          <Routes>
+            <Route path="/" element={<DefaultRedirect />} />
+            <Route path="/work" element={
+              <RequireRole roles={["UL", "Lead"]}><TodayRouteView /></RequireRole>
+            } />
+            <Route path="/routes" element={
+              <RequireRole roles={["Lead", "Admin"]}><LeadRoutesPanel /></RequireRole>
+            } />
+            <Route path="/routes/:routeRunId" element={
+              <RequireRole roles={["Lead", "Admin"]}><LeadRouteDetailRoute /></RequireRole>
+            } />
+            <Route path="/admin/dashboard" element={
+              <RequireRole roles={["Admin"]}><AdminDashboard scope="admin" /></RequireRole>
+            } />
+            <Route path="/admin/pools" element={
+              <RequireRole roles={["Admin"]}><AdminPoolsPanel scope="admin" /></RequireRole>
+            } />
+            <Route path="/admin/stops" element={
+              <RequireRole roles={["Admin"]}><AdminStopsPanel scope="admin" /></RequireRole>
+            } />
+            <Route path="/admin/control-center" element={
+              <RequireRole roles={["Admin"]}><AdminControlCenter /></RequireRole>
+            } />
+            <Route path="/ops/dashboard" element={
+              <RequireRole roles={["Lead", "Admin"]}><AdminDashboard scope="ops" /></RequireRole>
+            } />
+            <Route path="/ops/pools" element={
+              <RequireRole roles={["Lead", "Admin"]}><AdminPoolsPanel scope="ops" /></RequireRole>
+            } />
+            <Route path="/ops/stops" element={
+              <RequireRole roles={["Lead", "Admin"]}><AdminStopsPanel scope="ops" /></RequireRole>
+            } />
+          </Routes>
+        </section>
       </div>
 
       {/* Offline Sync Manager — provides OfflineSyncContext + headless replay engine */}
-      {isSignedIn && (
-        <OfflineSyncManager>
-          <OfflineStatusBar />
-        </OfflineSyncManager>
-      )}
+      <OfflineSyncManager>
+        <OfflineStatusBar />
+      </OfflineSyncManager>
     </div>
   );
 }
