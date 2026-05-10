@@ -89,3 +89,47 @@ Does not cause data loss — second attempt succeeds. R4B removed the visible `a
 Either (a) move the hazard validation to fire after state settles using a `useEffect` or `useCallback` with the correct dependency, or (b) pass hazard selection directly as an argument to `handleSkipStop` rather than reading from `safetyState` at call time, eliminating the async read entirely. Option (b) is cleaner.
 
 **Target:** Post-R4 triage (before R4 final sign-off)
+
+---
+
+## ISSUE-005 — baseline:after-replay fires on empty replays, causing fetchRoute loop
+**Status:** Deferred  
+**Discovered:** 2026-05-10  
+**Area:** frontend — `OfflineSyncManager.tsx` / `useTodayRoute.ts`  
+**Severity:** medium  
+
+**Symptom:**  
+`window.dispatchEvent(new Event('baseline:after-replay'))` fires on every `runReplay` call, including runs where there were no queued actions. When the app loads offline, `useTodayRoute` listens for this event and calls `fetchRoute`, which immediately fails (network unavailable), triggering another replay attempt, which fires the event again — loop. Results in UI flicker and excessive failed network calls on reconnect.
+
+**Root cause (if known):**  
+`onAfterReplay` is dispatched unconditionally in `OfflineSyncManager.attemptReplay` via `.finally()`. The guard inside `runReplay` (`anyCompleteStopSucceeded`) only gates the `onAfterReplay` callback passed into `runReplay`, but the DOM event is dispatched by `OfflineSyncManager` outside that guard.
+
+**Fix hint:**  
+Gate the `window.dispatchEvent` in `OfflineSyncManager` so it only fires when `runReplay` actually processed and succeeded at least one action. Investigate whether `anyCompleteStopSucceeded` is the right guard or whether any successful action (START_STOP, UPLOAD_STOP_PHOTOS, etc.) should trigger the route refresh. `runReplay` could return a boolean or a count of successful actions to make this decision at the call site.
+
+**Deferred because:**  
+Does not cause data loss. Loop self-terminates once online. Fix requires a small but careful interface change to `runReplay`'s return type.
+
+**Target:** Post-R4 triage
+
+---
+
+## ISSUE-006 — Offline queue memoryCache may not flush to localStorage before tab crash
+**Status:** Deferred  
+**Discovered:** 2026-05-10  
+**Area:** frontend — `offlineQueue.ts` — `persistState` / `enqueueAction`  
+**Severity:** medium  
+
+**Symptom:**  
+Queue actions are held in `memoryCache` (a module-level object) and written to `localStorage` synchronously on every `enqueueAction` call. If a worker queues actions while offline and the browser tab is killed (crash, battery loss, force-quit) between the enqueue and the `localStorage.setItem` completing, queued stop data is lost permanently — the canonical visit and observation rows are never written.
+
+**Root cause (if known):**  
+`localStorage.setItem` is synchronous in the spec but browsers may defer writes under memory pressure. Module-level `memoryCache` is authoritative during a session but not durable across tab death. There is no `beforeunload` flush or write confirmation.
+
+**Fix hint:**  
+Audit write-through timing in `persistState()`. Add a `beforeunload` / `visibilitychange: hidden` handler that iterates `memoryCache` and force-flushes any entries not yet confirmed in `localStorage`. Confirm `localStorage.setItem` is truly synchronous in the target browser environments (Chrome on Android). Consider using IndexedDB for the queue store (same as `photoStore` and `todayRouteCache`) for stronger durability guarantees.
+
+**Deferred because:**  
+Edge case for pilot (requires simultaneous offline session + tab crash). Existing `persistState` call is synchronous and covers the majority of real-world scenarios. Must harden before scale.
+
+**Target:** Pre-scale hardening (before multi-agency rollout)
