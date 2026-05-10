@@ -64,15 +64,29 @@ export async function emitObservationsForStop(params: {
     assetId: number;
     locationId: number;
     actorOid: string;
+    stopId?: string;
     uiPayload?: StopUiPayload;
     client?: PoolClient;
 }): Promise<void> {
-    const { phase, visitId, orgId, assetId, locationId, actorOid, uiPayload, client: passedClient } = params;
+    const { phase, visitId, orgId, assetId, locationId, actorOid, stopId, uiPayload, client: passedClient } = params;
 
     let observations: ObservationInsert[] = [];
 
     if (phase === "arrival") {
-        observations = arrivalObservations();
+        if (stopId) {
+            if (passedClient) {
+                observations = await arrivalObservations(stopId, passedClient);
+            } else {
+                const lookupClient = await pool.connect();
+                try {
+                    observations = await arrivalObservations(stopId, lookupClient);
+                } finally {
+                    lookupClient.release();
+                }
+            }
+        } else {
+            observations = arrivalObservationDefaults();
+        }
     } else if (phase === "submit" && uiPayload) {
         observations = submitObservations(uiPayload);
     }
@@ -92,13 +106,61 @@ export async function emitObservationsForStop(params: {
 }
 
 // ARRIVAL PHASE LOGIC
-function arrivalObservations(): ObservationInsert[] {
+
+const ARRIVAL_OBSERVATION_TYPES = [
+    "ground_condition",
+    "trash_can_condition",
+    "shelter_condition",
+    "pad_condition",
+] as const;
+
+// Hardcoded pessimistic defaults — used when stopId is unavailable or no prior visit exists
+function arrivalObservationDefaults(): ObservationInsert[] {
     return [
         { observation_type: "ground_condition", payload: { state: "dirty" } },
         { observation_type: "trash_can_condition", payload: { state: "has_trash" } },
         { observation_type: "shelter_condition", payload: { state: "dirty" } },
-        { observation_type: "pad_condition", payload: { state: "dirty" } }
+        { observation_type: "pad_condition", payload: { state: "dirty" } },
     ];
+}
+
+// Looks up the most recent observation of each arrival type at this stop.
+// Bridge: core.observations → core.visits → clean_logs → route_run_stops → filter on stop_id.
+// clean_logs is used as the bridge because core.visits has no route_run_stop_id column yet
+// (pending Tier 5 assignment layer). Once Tier 5 writes that column, this join can be simplified.
+// Falls back to dirty defaults for any type with no prior history.
+async function arrivalObservations(
+    stopId: string,
+    client: PoolClient
+): Promise<ObservationInsert[]> {
+    const result = await client.query<{ observation_type: string; payload: Record<string, any> }>(
+        `
+        SELECT DISTINCT ON (o.observation_type)
+            o.observation_type,
+            o.payload
+        FROM core.observations o
+        JOIN core.visits v ON v.id = o.visit_id
+        JOIN clean_logs cl ON cl.visit_id = v.id
+        JOIN route_run_stops rrs ON rrs.id = cl.route_run_stop_id
+        WHERE rrs.stop_id = $1
+          AND o.observation_type = ANY($2)
+          AND v.ended_at IS NOT NULL
+        ORDER BY o.observation_type, v.ended_at DESC, o.id DESC
+        `,
+        [stopId, ARRIVAL_OBSERVATION_TYPES]
+    );
+
+    const priorState = new Map(result.rows.map(r => [r.observation_type, r.payload]));
+
+    return ARRIVAL_OBSERVATION_TYPES.map(type => ({
+        observation_type: type,
+        payload: priorState.get(type) ?? arrivalDefault(type),
+    }));
+}
+
+function arrivalDefault(type: typeof ARRIVAL_OBSERVATION_TYPES[number]): Record<string, any> {
+    if (type === "trash_can_condition") return { state: "has_trash" };
+    return { state: "dirty" };
 }
 
 // SUBMIT PHASE LOGIC
