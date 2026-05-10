@@ -15,6 +15,7 @@ export interface OfflineAction {
     payload: unknown;
     status: OfflineActionStatus;
     lastError?: string;
+    retryCount?: number;
 }
 
 export interface OfflineQueueState {
@@ -404,6 +405,23 @@ export async function runReplay(
             } else if (apiCode === "ROUTE_NOT_FOUND" || apiCode === "ROUTE_REASSIGNED") {
                 // Fatal/Conflict
                 updateActionStatus(tenantId, oid, action.id, "conflict", apiCode);
+            } else if (error instanceof Error && error.message === "RETRY_NEEDED_PHOTO_MISSING") {
+                // Photo missing during replay — retry up to 3 times before dead-lettering
+                const currentRetry = action.retryCount ?? 0;
+                if (currentRetry < 3) {
+                    const key = getQueueKey(tenantId, oid);
+                    const currentState = loadQueueForUser(tenantId, oid);
+                    const idx = currentState.actions.findIndex((a) => a.id === action.id);
+                    if (idx !== -1) {
+                        const updated = [...currentState.actions];
+                        updated[idx] = { ...updated[idx], status: "pending", retryCount: currentRetry + 1, lastError: error.message };
+                        const newState = { ...currentState, actions: updated, lastUpdatedAt: new Date().toISOString() };
+                        persistState(key, newState);
+                        notifySubscribers(key, newState);
+                    }
+                } else {
+                    updateActionStatus(tenantId, oid, action.id, "failed", error.message);
+                }
             } else {
                 // Other validation or unknown errors: mark failed so we don't loop forever
                 updateActionStatus(
@@ -549,4 +567,12 @@ export function getHasQueuedUploadForStop(
     kind: string
 ): boolean {
     return getQueuedUploadCountForStop(tenantId, oid, routeRunStopId, kind) > 0;
+}
+
+export function dismissConflict(
+    tenantId: string | undefined,
+    oid: string | undefined,
+    actionId: string
+): OfflineQueueState {
+    return updateActionStatus(tenantId, oid, actionId, "done");
 }

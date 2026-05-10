@@ -1,18 +1,37 @@
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { runReplay, type OfflineAction, subscribe } from "./offlineQueue";
 import { completeStop, skipRouteRunStopWithHazard, uploadStopPhotos, startRouteRunStop } from "../api/routeRuns";
 import { getPhoto, deletePhoto } from "./photoStore";
+import { OfflineSyncContext, DEFAULT_SYNC_STATE, type OfflineSyncState } from "./OfflineSyncContext";
 
-export function OfflineSyncManager() {
+interface Props {
+    children?: ReactNode;
+}
+
+export function OfflineSyncManager({ children }: Props) {
     const { getAccessToken, account } = useAuth();
     const isReplayingRef = useRef(false);
+    const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [syncState, setSyncState] = useState<OfflineSyncState>(DEFAULT_SYNC_STATE);
 
     // Derive identity
     const tenantId = account?.tenantId;
     const claims = account?.idTokenClaims as any;
     const oid = claims?.oid || account?.localAccountId;
+
+    // Track online/offline transitions
+    useEffect(() => {
+        const update = () => setSyncState(prev => ({ ...prev, isOfflineMode: !navigator.onLine }));
+        window.addEventListener('online', update);
+        window.addEventListener('offline', update);
+        update();
+        return () => {
+            window.removeEventListener('online', update);
+            window.removeEventListener('offline', update);
+        };
+    }, []);
 
     useEffect(() => {
         if (!tenantId || !oid) return;
@@ -26,9 +45,6 @@ export function OfflineSyncManager() {
                 try {
                     await completeStop(token, stopId, payload);
                 } catch (err: any) {
-                    // Detect "Photo Required" error (usually 400)
-                    // If backend says photo missing, it might be because the upload action is pending/failed.
-                    // We throw to keep this action pending/retryable.
                     const msg = err?.response?.data?.message || err?.message || "";
                     if (
                         msg.includes("photo required") ||
@@ -47,21 +63,11 @@ export function OfflineSyncManager() {
                 try {
                     await startRouteRunStop(token, stopId);
                 } catch (err: any) {
-                    // 409 Conflict => Stop already done/skipped/etc.
-                    // Do not retry. Mark as conflict or failed.
                     const status = err?.response?.status;
                     if (status === 409) {
                         const msg = err?.response?.data?.message || "Stop already started or completed";
-                        // We throw an object that parseApiErrorCode might recognize if we had a code, 
-                        // but here we just want to ensure runReplay sees it as fatal.
-                        // Actually runReplay checks `isNetworkError` first.
-                        // Then `parseApiErrorCode`. 
-                        // If we throw a standard error with a code property, parseApiErrorCode can pick it up.
                         const errorWithCode: any = new Error(msg);
-                        errorWithCode.code = "ALREADY_COMPLETE"; // Reusing this to indicate 'done' state effectively? 
-                        // Wait, if it's already started (in_progress), backend returns 200 (idempotent).
-                        // If it returns 409, it means it's DONE or SKIPPED.
-                        // So treating it as ALREADY_COMPLETE is correct for queue cleanup.
+                        errorWithCode.code = "ALREADY_COMPLETE";
                         throw errorWithCode;
                     }
                     throw err;
@@ -96,21 +102,17 @@ export function OfflineSyncManager() {
 
                 if (Array.isArray(localIds) && localIds.length > 0) {
                     const files: File[] = [];
-                    // Retrieve blobs
                     for (const id of localIds) {
                         const rec = await getPhoto(id);
                         if (rec && rec.blob) {
                             files.push(new File([rec.blob], rec.filename, { type: rec.contentType }));
                         } else {
-                            // Enforce B3: Missing blob -> Fail action
                             throw new Error(`Missing blob for localPhotoId: ${id}`);
                         }
                     }
 
                     if (files.length > 0) {
-                        // Upload
                         await uploadStopPhotos(token, Number(action.routeRunId), stopId, files, kind);
-                        // Cleanup
                         for (const id of localIds) {
                             await deletePhoto(id);
                         }
@@ -124,31 +126,41 @@ export function OfflineSyncManager() {
         };
 
         const attemptReplay = () => {
-            // Basic online check
             if (typeof navigator !== "undefined" && !navigator.onLine) return;
-
             if (isReplayingRef.current) return;
             isReplayingRef.current = true;
+
+            setSyncState(prev => ({ ...prev, syncStatus: 'syncing' }));
 
             runReplay(tenantId, oid, executors, onAfterReplay)
                 .finally(() => {
                     isReplayingRef.current = false;
+                    setSyncState(prev => ({ ...prev, syncStatus: 'success' }));
+                    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+                    successTimerRef.current = setTimeout(() => {
+                        setSyncState(prev => ({ ...prev, syncStatus: 'idle' }));
+                    }, 3000);
                 });
         };
 
-        // Listen for online events
         const onOnline = () => attemptReplay();
         window.addEventListener("online", onOnline);
 
-        // Listen for queue changes (if queue has pending items, try to sync)
         const unsub = subscribe(tenantId, oid, (state) => {
-            const hasPending = state.actions.some(a => a.status === "pending");
+            const actions = state.actions;
+            setSyncState(prev => ({
+                ...prev,
+                pendingCount: actions.filter(a => a.status === 'pending').length,
+                conflictCount: actions.filter(a => a.status === 'conflict').length,
+                failedCount: actions.filter(a => a.status === 'failed').length,
+                conflictActions: actions.filter(a => a.status === 'conflict'),
+            }));
+            const hasPending = actions.some(a => a.status === "pending");
             if (hasPending && navigator.onLine) {
                 attemptReplay();
             }
         });
 
-        // Initial attempt on mount
         if (navigator.onLine) {
             attemptReplay();
         }
@@ -156,9 +168,14 @@ export function OfflineSyncManager() {
         return () => {
             window.removeEventListener("online", onOnline);
             unsub();
+            if (successTimerRef.current) clearTimeout(successTimerRef.current);
         };
 
     }, [tenantId, oid, getAccessToken]);
 
-    return null; // Headless
+    return (
+        <OfflineSyncContext.Provider value={syncState}>
+            {children}
+        </OfflineSyncContext.Provider>
+    );
 }

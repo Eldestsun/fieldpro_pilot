@@ -10,6 +10,7 @@ import * as AdminStopsPanelMod from "./components/admin/AdminStopsPanel";
 import * as AdminControlCenterMod from "./components/admin/AdminControlCenter";
 import * as LoginPageMod from "./auth/LoginPage";
 import { OfflineSyncManager } from "./offline/OfflineSyncManager";
+import { OfflineStatusBar } from "./components/ui/OfflineStatusBar";
 
 function resolveComponent(mod: any, named: string): ComponentType<any> {
   return (mod?.[named] ?? mod?.default) as ComponentType<any>;
@@ -230,8 +231,12 @@ export default function App() {
             </div>*/}
       </div>
 
-      {/* Offline Sync Manager */}
-      {isSignedIn && <OfflineSyncManager />}
+      {/* Offline Sync Manager — provides OfflineSyncContext + headless replay engine */}
+      {isSignedIn && (
+        <OfflineSyncManager>
+          <OfflineStatusBar />
+        </OfflineSyncManager>
+      )}
     </div>
   );
 }
