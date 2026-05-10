@@ -39,7 +39,13 @@ uploads/
 pg_state.sql
 db_dumps/
 SELECT.sql
+tmp/
 *.csv
+
+# Local agent / CLI tool state (per-session, do not commit)
+.claude/worktrees/
+.codex/
+.gemini/
 *.jpg
 *.jpeg
 *.png
