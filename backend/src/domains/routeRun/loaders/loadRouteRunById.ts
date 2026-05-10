@@ -70,7 +70,7 @@ export async function loadRouteRunById(id: number | string) {
       SELECT
         sp.route_run_stop_id,
         o.observation_type,
-        o.created_at AS observed_at,
+        o.observed_at,
         array_agg(sp.s3_key)
           FILTER (WHERE sp.s3_key IS NOT NULL) AS photo_keys
       FROM public.route_run_stops rrs
@@ -82,7 +82,7 @@ export async function loadRouteRunById(id: number | string) {
       GROUP BY
         sp.route_run_stop_id,
         o.observation_type,
-        o.created_at
+        o.observed_at
     `;
 
     // Execute queries in parallel
