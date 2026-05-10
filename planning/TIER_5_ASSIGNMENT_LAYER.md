@@ -2,7 +2,7 @@
 
 > **Goal**: Wire `core.assignments` into the route creation path so every planned stop has a canonical assignment record, and wire `assignment_id` onto `core.visits` so the "planned vs. actual" question is answerable at the canonical level.
 >
-> **Status**: ⛔ Blocked
+> **Status**: 🟡 Unblocked
 > **Depends on**: Tier 1 must be stable (visit lifecycle must be correct — visit opens at stop-start)
 > **Blocks**: Nothing (feeds Tier 2 completeness but does not gate it)
 

@@ -2,7 +2,7 @@
 
 > **Goal**: Rename `public.stops` view columns to lowercase (unblocking Tier 2), drop the surveillance-adjacent tables `workforce_metrics` and `stop_scoring_history`, and create their correctly designed replacements — worker-safe stop-level effort and condition history tables.
 >
-> **Status**: 🔴 Not started
+> **Status**: 🟢 Done
 > **Depends on**: Nothing (unblocked)
 > **Blocks**: Tier 2 (Sub-task A must complete first) + R10 (Sub-task B must complete first — replacement schemas must exist before R10 wires the write paths)
 

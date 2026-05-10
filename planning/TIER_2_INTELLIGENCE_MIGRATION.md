@@ -2,7 +2,7 @@
 
 > **Goal**: Migrate `riskMapService.ts` to read cleanliness, safety, and infrastructure scores from `core.observations` and `core.visits` instead of `level3_logs`, `hazards`, and `infrastructure_issues`.
 >
-> **Status**: ⛔ Blocked
+> **Status**: 🟡 Unblocked
 > **Depends on**: Tier 1 done + Tier 4 stops-columns done
 > **Blocks**: nothing
 

@@ -3,7 +3,7 @@
 > Orchestration layer for the product refinement track.
 > Runs alongside and after the DB Refactor (Tiers 1–6).
 > Each item has its own handoff file. This document tracks ordering, dependencies, and status.
-> Last updated: 2026-05-09
+> Last updated: 2026-05-10
 
 ---
 
@@ -25,11 +25,11 @@ These are two parallel workstreams. Several refinement items can begin before al
 | R3 | Frontend Router | — (unblocked) | R1, R2, R4, R10 | 🔴 Not started |
 | R4 | Offline UX — Worker Feedback Layer | — (unblocked) | R1, R2, R3 | 🔴 Not started |
 | R5 | Enterprise UI/UX Rebuild | R3 done | R6 | 🔴 Not started |
-| R6 | Control Center — Live Updates | Tier 3 done | R5 | 🔴 Not started |
+| R6 | Control Center — Live Updates | Tier 3 done | R5 | 🟡 Unblocked |
 | R7 | Historical Backfill Framework (Scale Asset) | Tier 1 done | R6, R8 | ⛔ Blocked by Tier 1 — low priority, post-pilot |
-| R8 | CI Pipeline | Tier 6 Sub-task C done | R7 | 🔴 Not started |
+| R8 | CI Pipeline | Tier 6 Sub-task C done | R7 | ⛔ Blocked by Tier 6C |
 | R9 | Frontend Tests | R5 stable | — | ⛔ Blocked by R5 |
-| R10 | Stop Effort History (replace workforce_metrics) | Tier 4 Sub-task B done | R1, R3 | 🔴 Not started |
+| R10 | Stop Effort History (replace workforce_metrics) | Tier 4 Sub-task B done | R1, R3 | 🟡 Unblocked |
 
 ---
 

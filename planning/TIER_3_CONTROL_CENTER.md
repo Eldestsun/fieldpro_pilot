@@ -2,7 +2,7 @@
 
 > **Goal**: Mount the fully-built `AdminControlCenter.tsx` component into `App.tsx` so Admin-role users can reach the Control Center.
 >
-> **Status**: 🔴 Not started
+> **Status**: 🟢 Done
 > **Depends on**: Nothing (unblocked)
 > **Blocks**: Nothing
 

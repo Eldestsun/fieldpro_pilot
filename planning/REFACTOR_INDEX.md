@@ -10,7 +10,7 @@
 
 | Tier | Name | Depends On | Parallel With | Status |
 |------|------|-----------|---------------|--------|
-| 1 | Canonical Completeness | — (unblocked) | 3, 4, 6 | 🟢 Done |
+| 1 | Canonical Completeness | — (unblocked) | 3, 4, 6 | 🟠 In review |
 | 2 | Intelligence Migration | Tier 1 done + Tier 4 stops-columns done | — | 🟡 Unblocked |
 | 3 | Reconnect Control Center | — (unblocked) | 1, 4, 6 | 🟢 Done |
 | 4 | Schema Cleanup | — (unblocked) | 1, 3, 6 | 🟢 Done |

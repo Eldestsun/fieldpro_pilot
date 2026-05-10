@@ -2,7 +2,7 @@
 
 > **Goal**: Every completed or skipped stop writes `outcome`, `reason_code`, `washed_can`, and a `core.evidence` row. Visit lifecycle opens at stop-start, not photo upload.
 >
-> **Status**: 🟢 Done — verified against live DB 2026-05-10
+> **Status**: 🟠 In review — online path verified; offline path pending
 > **Depends on**: Nothing (unblocked)
 > **Blocks**: Tier 2, Tier 5
 
