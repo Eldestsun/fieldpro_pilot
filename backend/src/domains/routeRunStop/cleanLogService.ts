@@ -166,6 +166,41 @@ export async function completeStop(
         client,
     });
 
+    await client.query(`
+        INSERT INTO stop_effort_history (
+            stop_id, visit_id, run_date,
+            service_minutes, stop_type, complexity_score,
+            had_hazard, had_infra_issue, trash_volume
+        )
+        SELECT
+            rrs.stop_id,
+            v.id,
+            rrs.created_at::date,
+            EXTRACT(EPOCH FROM (v.ended_at - v.started_at)) / 60,
+            CASE
+                WHEN s.is_hotspot THEN 'hotspot'
+                WHEN s.compactor  THEN 'compactor'
+                ELSE 'standard'
+            END,
+            NULL,
+            EXISTS (
+                SELECT 1 FROM core.observations o3
+                WHERE o3.visit_id = v.id AND o3.observation_type = 'safety_concern_present'
+            ),
+            EXISTS (
+                SELECT 1 FROM core.observations o4
+                WHERE o4.visit_id = v.id AND o4.observation_type = 'infrastructure_issue_present'
+            ),
+            (SELECT (o5.payload->>'level')::numeric FROM core.observations o5
+             WHERE o5.visit_id = v.id AND o5.observation_type = 'trash_volume'
+             LIMIT 1)
+        FROM core.visits v, route_run_stops rrs, public.stops s
+        WHERE v.id = $1
+          AND rrs.id = $2
+          AND s.stop_id = rrs.stop_id
+        ON CONFLICT (stop_id, visit_id) DO NOTHING
+    `, [visitId, routeRunStopId]);
+
     await checkAndCompleteRouteRun(client, route_run_id);
 
     return { cleanLogId, routeRunId: route_run_id };
