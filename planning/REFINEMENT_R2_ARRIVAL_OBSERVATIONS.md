@@ -2,15 +2,15 @@
 
 > **Goal**: Replace the hardcoded pessimistic dirty state in `arrivalObservations()` with a lookup of the most recent canonical observations for the stop, so workers arrive seeing the stop's last known condition.
 >
-> **Status**: 🟠 In Review — Path B implemented, unreachable until Tier 5 passes stopId from route handler
-> **Depends on**: Tier 1 done ✅; Tier 5 (to wire stopId through the route handler and activate the lookup)
+> **Status**: 🟢 Done — 2026-05-11
+> **Depends on**: Tier 1 done ✅
 > **Blocks**: Nothing
 >
-> **What is done**: `arrivalObservations()` is async, queries `core.observations` via Path B (`transit_stop_assets` — 1 adapter hop). `clean_logs` bridge removed. `emitObservationsForStop()` accepts `stopId?: string`.
+> **What is done**: `arrivalObservations()` is async, queries `core.observations` via Path B (`transit_stop_assets` — 1 adapter hop, `active = TRUE AND role = 'primary'`). `clean_logs` bridge removed. `emitObservationsForStop()` accepts `stopId?: string`.
 >
-> **What is NOT done**: The route handler (`routeRunStopRoutes.ts`) does not pass `stopId` yet — that wire is part of Tier 5. Until then the `stopId` branch is never entered and the function falls back to dirty defaults. The done criterion ("prior completed visit shows clean, not dirty") cannot be verified end-to-end.
+> **Why the arrival lookup is dormant — by design**: The start handler does not call `emitObservationsForStop` at all. Arrival observations were removed per an architectural decision: observations are only emitted at completion (paired dirty→clean) or skip. Observation absence is a valid signal — a condition type not appearing in `core.observations` for a stop means that condition did not require servicing. Assumed-dirty arrival emissions would corrupt the silence-as-data model. See `planning/architecture/ADAPTER_BOUNDARY.md §4 — Signal Model`.
 >
-> **R2 goes to 🟢 Done as part of Tier 5**, when `routeRunStopRoutes.ts` passes `stopId` to `emitObservationsForStop`.
+> **The `arrivalObservations()` function** is correct and ready. If a future surface (e.g. a dispatcher prior-state read) needs to query last known condition for a stop, the Path B lookup is the right implementation to call. It is not dead code — it is an available internal API waiting for the right callsite.
 
 ---
 

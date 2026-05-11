@@ -22,3 +22,18 @@
 
 ## Files touched
 - `backend/src/domains/observation/observationService.ts`
+
+## Missed file — patched 2026-05-11
+
+### loadRouteRunById.ts
+- Source was already correct on disk (`o.observed_at`) from commit 724f3c9
+- `dist/loadRouteRunById.js` was compiled from pre-rename source and still
+  contained `o.created_at AS observed_at` — stale dist was being served
+- Running ts-node process had old query in Node module cache from before
+  the dist was invalidated
+- Fix: `pnpm run build` to recompile dist, then backend restart to clear
+  module cache
+- Surfaced as a 500 on `/api/ul/todays-run` once R3 router made `/work`
+  the default landing route on every load
+- Affects both `/api/ul/todays-run` and `/api/lead/todays-runs` —
+  `loadRouteRunById` is the shared loader for both paths

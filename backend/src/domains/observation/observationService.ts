@@ -149,7 +149,10 @@ async function arrivalObservations(
             o.observation_type,
             o.payload
         FROM core.observations o
-        JOIN transit_stop_assets tsa ON tsa.asset_id = o.asset_id
+        JOIN transit_stop_assets tsa
+          ON tsa.asset_id = o.asset_id
+         AND tsa.active = TRUE
+         AND tsa.role = 'primary'
         WHERE tsa.stop_id = $1
           AND o.observation_type = ANY($2)
         ORDER BY o.observation_type, o.observed_at DESC

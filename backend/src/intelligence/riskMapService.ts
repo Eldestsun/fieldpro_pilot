@@ -42,6 +42,21 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
         await client.query("TRUNCATE TABLE stop_risk_snapshot");
 
         // 2. Recompute and Insert
+        //
+        // Tier 2 migration: source CTEs now read from core.observations and core.visits
+        // instead of level3_logs / trash_volume_logs / hazards / infrastructure_issues.
+        //
+        // Stop-identity translation uses Path B/C from planning/architecture/ADAPTER_BOUNDARY.md:
+        //   asset_id (canonical) → transit_stop_assets (one-hop adapter lookup) → stop_id
+        // Path E (core.visits.route_run_stop_id) is not yet available — that column lands in Tier 5.
+        //
+        // Schema notes that deviate from the plan SQL in planning/TIER_2_INTELLIGENCE_MIGRATION.md:
+        //   - core.observations has no observed_value column; numeric values live in payload jsonb.
+        //     trash_volume payload is { level: 0|1|2|3|4 } per submitObservations().
+        //   - No observation_type 'hazard_present' or 'infra_condition' exists. The canonical
+        //     umbrella signals are 'safety_concern_present' and 'infrastructure_issue_present'.
+        //   - severity is not written to core.observations.severity. Presence is used as the
+        //     proxy: hazard severity = 1.0; infra severity = COUNT(*) capped at 5.
         const query = `
             WITH base AS (
                 SELECT
@@ -51,38 +66,68 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
                 WHERE pool_id IS NOT NULL
                   AND (has_trash = TRUE OR compactor = TRUE)
             ),
+            -- Days since last completed visit (replaces level3_logs).
+            -- core.visits → transit_stop_assets (asset_id translation) → stop_id.
             l3 AS (
                 SELECT
-                    stop_id,
-                    DATE_PART('day', NOW() - MAX(cleaned_at))::int AS days_since_last_l3
-                FROM level3_logs
-                GROUP BY stop_id
+                    tsa.stop_id,
+                    DATE_PART('day', NOW() - MAX(v.ended_at))::int AS days_since_last_l3
+                FROM core.visits v
+                JOIN transit_stop_assets tsa
+                  ON tsa.asset_id = v.primary_asset_id
+                 AND tsa.active = TRUE
+                 AND tsa.role = 'primary'
+                WHERE v.outcome = 'completed'
+                  AND v.ended_at IS NOT NULL
+                GROUP BY tsa.stop_id
             ),
+            -- Trash volume from canonical observations (replaces trash_volume_logs).
+            -- Payload shape: { level: 0|1|2|3|4 }.
             trash AS (
                 SELECT
-                    stop_id,
-                    AVG(volume)::numeric(4,2) AS recent_trash_volume_avg
-                FROM trash_volume_logs
-                WHERE logged_at >= NOW() - INTERVAL '7 days'
-                GROUP BY stop_id
+                    tsa.stop_id,
+                    AVG((o.payload->>'level')::numeric)::numeric(4,2) AS recent_trash_volume_avg
+                FROM core.observations o
+                JOIN transit_stop_assets tsa
+                  ON tsa.asset_id = o.asset_id
+                 AND tsa.active = TRUE
+                 AND tsa.role = 'primary'
+                WHERE o.observation_type = 'trash_volume'
+                  AND o.observed_at >= NOW() - INTERVAL '7 days'
+                  AND (o.payload ? 'level')
+                GROUP BY tsa.stop_id
             ),
+            -- Hazard signals from canonical observations (replaces hazards table).
+            -- Severity is not stored canonically; presence-in-window = 1.0.
             haz AS (
                 SELECT
-                    stop_id,
-                    MAX(reported_at) AS last_hazard_at,
-                    MAX(severity)    AS last_hazard_severity,
-                    DATE_PART('day', NOW() - MAX(reported_at))::int AS hazard_days_ago
-                FROM hazards
-                WHERE reported_at >= NOW() - INTERVAL '${HAZARD_WINDOW_DAYS} days'
-                GROUP BY stop_id
+                    tsa.stop_id,
+                    MAX(o.observed_at) AS last_hazard_at,
+                    1.0::numeric(4,2)  AS last_hazard_severity,
+                    DATE_PART('day', NOW() - MAX(o.observed_at))::int AS hazard_days_ago
+                FROM core.observations o
+                JOIN transit_stop_assets tsa
+                  ON tsa.asset_id = o.asset_id
+                 AND tsa.active = TRUE
+                 AND tsa.role = 'primary'
+                WHERE o.observation_type = 'safety_concern_present'
+                  AND o.observed_at >= NOW() - INTERVAL '${HAZARD_WINDOW_DAYS} days'
+                GROUP BY tsa.stop_id
             ),
+            -- Infrastructure scores from canonical observations (replaces infrastructure_issues).
+            -- Severity not stored canonically; COUNT(*) capped at 5 stands in for AVG(severity).
             infra AS (
                 SELECT
-                    stop_id,
-                    AVG(severity)::numeric(4,2) AS infra_issue_score
-                FROM infrastructure_issues
-                WHERE reported_at >= NOW() - INTERVAL '30 days'
-                GROUP BY stop_id
+                    tsa.stop_id,
+                    LEAST(COUNT(*)::numeric, 5)::numeric(4,2) AS infra_issue_score
+                FROM core.observations o
+                JOIN transit_stop_assets tsa
+                  ON tsa.asset_id = o.asset_id
+                 AND tsa.active = TRUE
+                 AND tsa.role = 'primary'
+                WHERE o.observation_type = 'infrastructure_issue_present'
+                  AND o.observed_at >= NOW() - INTERVAL '30 days'
+                GROUP BY tsa.stop_id
             ),
             scored AS (
                 SELECT
@@ -211,6 +256,189 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
     } catch (err) {
         await client.query("ROLLBACK");
         console.error("[riskMap] Failed to rebuild snapshot:", err);
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Legacy snapshot rebuild — reads from level3_logs / trash_volume_logs / hazards /
+ * infrastructure_issues. Preserved verbatim under Tier 2 additive discipline so the
+ * canonical rebuildStopRiskSnapshot() output can be diffed against the legacy output
+ * during the verification window. Delete once verified (Tier 2 done-definition).
+ *
+ * @see planning/TIER_2_INTELLIGENCE_MIGRATION.md Change 2 — Additive Verification Period
+ */
+export async function rebuildStopRiskSnapshotLegacy(pool: Pool): Promise<number> {
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+
+        await client.query("TRUNCATE TABLE stop_risk_snapshot");
+
+        const query = `
+            WITH base AS (
+                SELECT
+                    stop_id,
+                    is_hotspot
+                FROM stops
+                WHERE pool_id IS NOT NULL
+                  AND (has_trash = TRUE OR compactor = TRUE)
+            ),
+            l3 AS (
+                SELECT
+                    stop_id,
+                    DATE_PART('day', NOW() - MAX(cleaned_at))::int AS days_since_last_l3
+                FROM level3_logs
+                GROUP BY stop_id
+            ),
+            trash AS (
+                SELECT
+                    stop_id,
+                    AVG(volume)::numeric(4,2) AS recent_trash_volume_avg
+                FROM trash_volume_logs
+                WHERE logged_at >= NOW() - INTERVAL '7 days'
+                GROUP BY stop_id
+            ),
+            haz AS (
+                SELECT
+                    stop_id,
+                    MAX(reported_at) AS last_hazard_at,
+                    MAX(severity)    AS last_hazard_severity,
+                    DATE_PART('day', NOW() - MAX(reported_at))::int AS hazard_days_ago
+                FROM hazards
+                WHERE reported_at >= NOW() - INTERVAL '${HAZARD_WINDOW_DAYS} days'
+                GROUP BY stop_id
+            ),
+            infra AS (
+                SELECT
+                    stop_id,
+                    AVG(severity)::numeric(4,2) AS infra_issue_score
+                FROM infrastructure_issues
+                WHERE reported_at >= NOW() - INTERVAL '30 days'
+                GROUP BY stop_id
+            ),
+            scored AS (
+                SELECT
+                    b.stop_id,
+                    b.is_hotspot,
+
+                    LEAST(COALESCE(l3.days_since_last_l3, ${L3_DAYS_CAP}), ${L3_DAYS_CAP}) AS days_since_last_l3,
+
+                    t.recent_trash_volume_avg,
+                    h.last_hazard_at,
+                    h.last_hazard_severity,
+                    h.hazard_days_ago,
+                    i.infra_issue_score,
+
+                    (CASE WHEN b.is_hotspot THEN ${HOTSPOT_BASE_WEIGHT} ELSE 0 END)::numeric(4,2) AS hotspot_weight,
+
+                    (CASE
+                        WHEN h.last_hazard_at IS NOT NULL
+                         AND h.hazard_days_ago <= ${HAZARD_RECENT_DAYS}
+                        THEN TRUE
+                        ELSE FALSE
+                    END) AS has_recent_hazard,
+
+                    GREATEST(
+                        0,
+                        LEAST(
+                            1,
+                            (${HAZARD_MAX_DAYS_FOR_EFFECT} - COALESCE(h.hazard_days_ago, ${HAZARD_MAX_DAYS_FOR_EFFECT}))
+                            / ${HAZARD_MAX_DAYS_FOR_EFFECT}::numeric
+                        )
+                    ) AS hazard_decay_factor,
+
+                    (
+                        ${L3_DAYS_WEIGHT} * GREATEST(
+                            LEAST(COALESCE(l3.days_since_last_l3, ${L3_DAYS_CAP}), ${L3_DAYS_CAP}) -
+                            CASE WHEN b.is_hotspot THEN ${L3_TARGET_DAYS_HOTSPOT} ELSE ${L3_TARGET_DAYS_NORMAL} END,
+                            0
+                        )
+                    )::numeric(4,2) AS l3_urgency_weight,
+
+                    (
+                        (CASE WHEN b.is_hotspot THEN ${HOTSPOT_BASE_WEIGHT} ELSE 0 END) +
+                        (${TRASH_VOL_WEIGHT} * COALESCE(t.recent_trash_volume_avg, 0)) +
+                        (
+                            ${L3_DAYS_WEIGHT} * GREATEST(
+                                LEAST(COALESCE(l3.days_since_last_l3, ${L3_DAYS_CAP}), ${L3_DAYS_CAP}) -
+                                CASE WHEN b.is_hotspot THEN ${L3_TARGET_DAYS_HOTSPOT} ELSE ${L3_TARGET_DAYS_NORMAL} END,
+                                0
+                            )
+                        )
+                    )::numeric(4,2) AS cleanliness_score,
+
+                    (
+                        ${HAZARD_BASE_WEIGHT}
+                        * COALESCE(h.last_hazard_severity, 0)
+                        * GREATEST(
+                            0,
+                            LEAST(
+                                1,
+                                (${HAZARD_MAX_DAYS_FOR_EFFECT} - COALESCE(h.hazard_days_ago, ${HAZARD_MAX_DAYS_FOR_EFFECT}))
+                                / ${HAZARD_MAX_DAYS_FOR_EFFECT}::numeric
+                            )
+                        )
+                    )::numeric(4,2) AS safety_score,
+
+                    (2.0 * COALESCE(i.infra_issue_score, 0))::numeric(4,2) AS infrastructure_score
+
+                FROM base b
+                LEFT JOIN l3 ON b.stop_id = l3.stop_id
+                LEFT JOIN trash t ON b.stop_id = t.stop_id
+                LEFT JOIN haz h ON b.stop_id = h.stop_id
+                LEFT JOIN infra i ON b.stop_id = i.stop_id
+            )
+            INSERT INTO stop_risk_snapshot (
+                stop_id,
+                is_hotspot,
+                days_since_last_l3,
+                l3_urgency_weight,
+                recent_trash_volume_avg,
+                last_hazard_at,
+                last_hazard_severity,
+                hazard_days_ago,
+                hazard_decay_factor,
+                has_recent_hazard,
+                infra_issue_score,
+                hotspot_weight,
+                cleanliness_score,
+                safety_score,
+                infrastructure_score,
+                combined_risk_score,
+                computed_at
+            )
+            SELECT
+                stop_id,
+                is_hotspot,
+                days_since_last_l3,
+                l3_urgency_weight,
+                recent_trash_volume_avg,
+                last_hazard_at,
+                last_hazard_severity,
+                hazard_days_ago,
+                hazard_decay_factor,
+                has_recent_hazard,
+                infra_issue_score,
+                hotspot_weight,
+                cleanliness_score,
+                safety_score,
+                infrastructure_score,
+                (cleanliness_score + safety_score + infrastructure_score)::numeric(6,3) AS combined_risk_score,
+                NOW() AS computed_at
+            FROM scored;
+        `;
+
+        const result = await client.query(query);
+
+        await client.query("COMMIT");
+        console.log(`[riskMap:legacy] stop_risk_snapshot rebuilt with ${result.rowCount} rows`);
+        return result.rowCount ?? 0;
+    } catch (err) {
+        await client.query("ROLLBACK");
+        console.error("[riskMap:legacy] Failed to rebuild snapshot:", err);
         throw err;
     } finally {
         client.release();

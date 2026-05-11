@@ -244,7 +244,13 @@ The caller holds the canonical `asset_id` directly. No transit table is consulte
 
 ---
 
-## 4. The Contamination Rule
+## 4. Signal Model — Observation Absence Is Data
+
+Observation absence is a valid signal. A stop condition type not appearing in `core.observations` for a given visit means that condition did not require servicing — it was already clean. A skipped stop produces no observations, signaling the entire stop did not need servicing. Intelligence queries derive cleanliness duration from the interval between consecutive positive (cleaned) observations, not from dirty/clean pairs. Do not add assumed-dirty arrival observations to fill silence — silence is data.
+
+---
+
+## 5. The Contamination Rule
 
 > **A canonical layer query is contaminated if it uses a transit-vertical table as a join condition or filter, rather than as a one-time translation lookup that resolves a vertical identifier to a canonical identifier before the query begins.**
 
@@ -265,7 +271,7 @@ A translation lookup (e.g., resolving `stop_id → asset_id` once before the que
 
 ---
 
-## 5. Gap Closure Roadmap
+## 6. Gap Closure Roadmap
 
 ### Tier 5 — `route_run_stop_id` on `core.visits`
 
@@ -287,16 +293,18 @@ A translation lookup (e.g., resolving `stop_id → asset_id` once before the que
 
 ---
 
-## 6. R2 Status Note
+## 7. R2 Status Note
 
-`arrivalObservations()` in `observationService.ts` currently uses **Path A** (`clean_logs` bridge) to resolve a transit `stop_id` to prior canonical observations. This is a contaminated path — the canonical prior-state lookup routes through a transit action log.
+`arrivalObservations()` in `observationService.ts` uses **Path B** — `core.observations.asset_id → transit_stop_assets.asset_id WHERE stop_id = $1 AND active = TRUE AND role = 'primary'` — to resolve a transit `stop_id` to prior canonical observations. One adapter lookup, tolerated under the contamination rule as a vertical identifier translation.
 
-**Why it is still this way**: No clean path from a transit `stop_id` to `core.observations` exists without touching at least one transit-vertical table. The cleanest available alternative is Path B (`transit_stop_assets`), which is one adapter lookup rather than three adapter hops — an improvement in degree, not in kind.
+History: migrated from Path A (`clean_logs` bridge, 3 adapter hops) to Path B in commit `e231ed9`. The `active`/`role` filter on the `transit_stop_assets` join was added during Tier 2 verification (2026-05-11) so that historical or secondary asset re-pairings cannot leak into the prior-state lookup.
 
-**Why it is stubbed, not activated**: The current `emitObservationsForStop()` call in `routeRunStopRoutes.ts` does not pass `stopId`, so the lookup branch never fires. The implementation is complete but dormant.
+**Why Path B is the current state**: No clean path from a transit `stop_id` to `core.observations` exists without touching at least one transit-vertical table until Tier 8 makes `asset_id` the caller-supplied canonical identity. Path B is one boundary-crossing translation rather than three embedded hops — different in kind from Path A, not just in degree.
 
-**Activation path**:
-1. **Tier 5** — add `stopId` pass-through in `routeRunStopRoutes.ts` start-stop handler; switch to Path E once `route_run_stop_id` is on `core.visits`
-2. **Tier 8** — refactor to Path F; replace `stopId: string` parameter with `assetId: number`; eliminate all adapter references from the function body
+**Why it is dormant in some flows**: Live `emitObservationsForStop()` callers in `routeRunStopRoutes.ts` do not all pass `stopId` yet, so for those callsites the lookup branch never fires and the function falls back to pessimistic dirty defaults. The implementation is complete but partially unactivated.
 
-Until Tier 5, arrival observations fall back to dirty defaults for all stops. This is safe (pessimistic) but means the observation delta is always "worker improved everything from dirty" regardless of actual prior state.
+**Activation / cleanup path**:
+1. **Tier 5** — pass `stopId` through everywhere `emitObservationsForStop()` is called from the start-stop handler. (Optionally switch to Path E once `route_run_stop_id` is on `core.visits`, but Path B is acceptable until Tier 8.)
+2. **Tier 8** — refactor to Path F: replace `stopId: string` with `assetId: number`; drop the `transit_stop_assets` join entirely.
+
+Until callers fully pass `stopId`, arrival observations fall back to dirty defaults for those stops. This is safe (pessimistic) but means the observation delta for those flows is always "worker improved everything from dirty" regardless of actual prior state.

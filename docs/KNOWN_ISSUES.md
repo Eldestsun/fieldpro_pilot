@@ -133,3 +133,28 @@ Audit write-through timing in `persistState()`. Add a `beforeunload` / `visibili
 Edge case for pilot (requires simultaneous offline session + tab crash). Existing `persistState` call is synchronous and covers the majority of real-world scenarios. Must harden before scale.
 
 **Target:** Pre-scale hardening (before multi-agency rollout)
+
+---
+
+## ISSUE-007 — Hazard severity not captured in canonical observations
+core.observations.severity is never written by cleanLogService.ts
+or observationService.ts. riskMapService.ts hazard CTE uses
+presence-only scoring (hardcoded 1.0) as a result. Risk scores
+will underweight high-severity hazard stops until severity is
+emitted at write time.
+Affects: stop_risk_snapshot.hazard_score
+Fix: update observationService.ts to write severity from
+StopUiPayload.safety.hazard_severity (or equivalent field)
+into core.observations.severity at stop completion.
+Priority: before pilot go-live.
+
+---
+
+## ISSUE-008 — complexity_score not computed in stop_effort_history
+stop_effort_history.complexity_score is always NULL. The spec intended 
+a count of non-clean observations but payload key varies by observation 
+type with no consistent 'value'/'clean' field across types.
+Fix: define a canonical "condition" observation type with a consistent 
+payload shape, then rewrite the complexity subquery against it.
+Priority: post-pilot — complexity_score is not consumed by any 
+current surface.

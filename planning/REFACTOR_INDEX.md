@@ -11,7 +11,7 @@
 | Tier | Name | Depends On | Parallel With | Status |
 |------|------|-----------|---------------|--------|
 | 1 | Canonical Completeness | — (unblocked) | 3, 4, 6 | 🟢 Done |
-| 2 | Intelligence Migration | Tier 1 done + Tier 4 stops-columns done | — | 🟡 Unblocked |
+| 2 | Intelligence Migration | Tier 1 done + Tier 4 stops-columns done | — | 🟢 Done |
 | 3 | Reconnect Control Center | — (unblocked) | 1, 4, 6 | 🟢 Done |
 | 4 | Schema Cleanup | — (unblocked) | 1, 3, 6 | 🟢 Done |
 | 5 | Assignment Layer | Tier 1 must be stable | 3, 4, 6 | 🟢 Done |
@@ -69,6 +69,8 @@ Migrate `riskMapService.ts` and all intelligence derivations to read from `core.
 **Two hard prerequisites:**
 - Tier 1 done — `core.observations` must be fully populated before intelligence can rely on it
 - Tier 4 stops-columns done — `riskMapService.ts` queries `public.stops` with uppercase quoted column names. Tier 2's SQL rewrite must use whatever column names Tier 4 leaves behind. Doing Tier 2 first embeds the old names and makes Tier 4 a breaking change.
+
+Status: Complete — changelog written 2026-05-11. Change 1 (canonical CTEs in `rebuildStopRiskSnapshot()`) shipped. Change 2 (additive verification harness via `rebuildStopRiskSnapshotLegacy()`) shipped and structurally verified: both functions execute cleanly, 206 rows each. Runtime canonical-vs-legacy distribution comparison deferred to first real field session — current DB has no rows in either source. ISSUE-007 logged for the hardcoded hazard severity (canonical `severity` column never written). `arrivalObservations()` hardened with `active`/`role` filter on the `transit_stop_assets` join. `ADAPTER_BOUNDARY.md §6` corrected to reflect Path B.
 
 ---
 

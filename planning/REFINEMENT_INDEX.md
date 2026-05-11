@@ -21,7 +21,7 @@ These are two parallel workstreams. Several refinement items can begin before al
 | ID | Name | Depends On | Parallel With | Status |
 |----|------|-----------|---------------|--------|
 | R1 | Auth Identity Cleanup | — (unblocked) | R3, R4, R10 | 🟢 Done |
-| R2 | Arrival Observations — Real Prior State | Tier 1 done | R1, R3, R4 | 🟠 In Review |
+| R2 | Arrival Observations — Real Prior State | Tier 1 done | R1, R3, R4 | 🟢 Done |
 | R3 | Frontend Router | — (unblocked) | R1, R2, R4, R10 | 🟢 Done |
 | R4 | Offline UX — Worker Feedback Layer | — (unblocked) | R1, R2, R3 | 🟢 Done |
 | R5 | Enterprise UI/UX Rebuild | R3 done | R6 | 🟢 Done |
