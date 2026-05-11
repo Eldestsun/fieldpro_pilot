@@ -86,6 +86,22 @@ export async function ensureVisitForRouteRunStop(client: PoolClient, params: Ens
   // 2) Resolve org/location/asset context (no routing fields in visits)
   const { orgId, assetId, locationId } = await getVisitContext(client, params.routeRunStopId);
 
+  // 2b) Look up canonical assignment for this stop.
+  // Returns null for pre-Tier-5 routes (no assignments written) — safe, no regression.
+  const assignmentResult = await client.query(
+    `
+    SELECT a.id
+    FROM core.assignments a
+    JOIN route_run_stops rrs ON rrs.route_run_id::text = a.source_ref
+    WHERE rrs.id = $1
+      AND a.source_system = 'route_runs'
+      AND a.assignment_type = 'transit_stop_clean'
+    LIMIT 1
+    `,
+    [params.routeRunStopId]
+  );
+  const assignmentId: number | null = assignmentResult.rows[0]?.id ?? null;
+
   // 3) Insert (idempotent + race-safe)
   const insert = await client.query(
     `
@@ -93,13 +109,14 @@ export async function ensureVisitForRouteRunStop(client: PoolClient, params: Ens
       org_id,
       location_id,
       primary_asset_id,
+      assignment_id,
       actor_oid,
       visit_type,
       outcome,
       client_visit_id,
       started_at
     )
-    VALUES ($1,$2,$3,$4,$5,$6,$7, NOW())
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8, NOW())
     ON CONFLICT (client_visit_id) DO NOTHING
     RETURNING id
     `,
@@ -107,6 +124,7 @@ export async function ensureVisitForRouteRunStop(client: PoolClient, params: Ens
       orgId,
       locationId,
       assetId,
+      assignmentId,
       params.actorOid,
       params.visitType,
       params.outcome ?? null,

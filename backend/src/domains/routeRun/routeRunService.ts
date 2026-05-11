@@ -403,6 +403,30 @@ export async function createRouteRun(
       ]);
     }
 
+    // Write canonical assignments — one per stop, within the same transaction.
+    // created_by_oid is NOT NULL in schema; fall back to 'system' if Lead OID unavailable.
+    const effectiveCreatedByOid = created_by_oid ?? 'system';
+    if (!created_by_oid) {
+      console.warn('[createRouteRun] created_by_oid not provided — using system placeholder for core.assignments');
+    }
+    await client.query(`
+      INSERT INTO core.assignments (
+        org_id, assignment_type, status, location_id,
+        primary_asset_id, planned_for_date, created_by_oid,
+        source_system, source_ref, meta
+      )
+      SELECT
+        a.org_id, 'transit_stop_clean', 'planned', loc.location_id,
+        s.asset_id, $1::date, $2,
+        'route_runs', $3::text, '{}'::jsonb
+      FROM route_run_stops rrs
+      JOIN public.stops s ON s.stop_id = rrs.stop_id
+      JOIN public.assets a ON a.id = rrs.asset_id
+      LEFT JOIN core.v_locations_transit loc ON loc.stop_id = rrs.stop_id
+      WHERE rrs.route_run_id = $3::bigint
+      ON CONFLICT DO NOTHING
+    `, [runDateVal, effectiveCreatedByOid, routeRunId]);
+
     await client.query("COMMIT");
 
     return { routeRunId, planned };
