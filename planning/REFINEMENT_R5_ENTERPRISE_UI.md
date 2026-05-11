@@ -41,18 +41,30 @@ Rationale:
 - Tailwind utility classes replace inline styles without a large runtime
 - Works with the existing Vite + React setup without ejecting
 
-Install:
+### ✅ Already installed (Surface 1 — 2026-05-10)
+
 ```bash
-cd frontend
-npm install tailwindcss @tailwindcss/vite radix-ui
-npx shadcn@latest init
+pnpm add tailwindcss @tailwindcss/vite clsx tailwind-merge
 ```
+
+- `tailwindcss` v4, `@tailwindcss/vite` plugin wired in `vite.config.ts`
+- `@import "tailwindcss"` + `@import "./styles/tokens.css"` at top of `src/index.css`
+- `src/lib/utils.ts` — `cn()` helper (clsx + tailwind-merge) ready to import
+- `src/styles/tokens.css` — design tokens live (see section below)
+
+### ⚠️ shadcn CLI not run — use manual extraction
+
+`npx shadcn@latest init` targets Tailwind v3 by default and will emit broken CSS for a v4 project. Do **not** run it.
+
+Instead, copy individual component source from [ui.shadcn.com](https://ui.shadcn.com) into `src/components/ui/` manually and convert any `@apply` or `tailwind.config.js` theme references to plain Tailwind v4 utility classes. The `cn()` utility is the only shadcn infrastructure dependency — it is already wired.
 
 ---
 
 ## Design Tokens
 
-Define once in `frontend/src/styles/tokens.css`:
+✅ Live at `frontend/src/styles/tokens.css` — imported globally via `index.css`. Do not redefine; extend by adding to this file.
+
+Reference:
 
 ```css
 :root {
@@ -188,46 +200,77 @@ Desktop-primary. Operational real-time view.
 R5 is complete when ALL of the following are true across all six surfaces, **and a changelog entry has been written**:
 
 - [ ] Zero inline `style={{}}` props remain in any component (App.tsx or below)
+  - ✅ App.tsx, UlLayout, RouteHeader, StopList, StopListItem, TodayRouteView done
+  - One documented exception: `RouteHeader.tsx` progress bar `style={{ width: \`${progress}%\` }}` — dynamic runtime value, cannot be a static Tailwind class
+  - One component-API pass-through: `TodayRouteView` passes `style` prop to `ULRouteMap` — not a DOM inline style
 - [ ] shadcn/ui component library initialized and in use
-- [ ] Design tokens defined and applied consistently
-- [ ] All six surfaces rebuilt to spec
+  - ✅ `cn()` utility live; manual component extraction approach confirmed (CLI not used — v4 incompatibility)
+- [x] Design tokens defined and applied consistently — `src/styles/tokens.css` live
+- [ ] All six surfaces rebuilt to spec — Surfaces 1–2 done, 3–6 remaining
 - [ ] Every surface has explicit loading, empty, and error states
+  - ✅ Surfaces 1–2: skeleton loading, styled error, empty state with CTA
 - [ ] UL stop list and stop wizard are fully usable on a 375px mobile viewport
-- [ ] Lead routes panel is usable on a 768px tablet viewport
-- [ ] Admin views are usable on a 1280px desktop viewport
-- [ ] No worker-identifying UI elements on any surface
+  - ✅ Stop list: verified at 375px, 44px touch targets, semantic badges
+  - [ ] Stop wizard: Surface 3 not started
+- [ ] Lead routes panel is usable on a 768px tablet viewport — Surface 4 not started
+- [ ] Admin views are usable on a 1280px desktop viewport — Surfaces 5–6 not started
+- [x] No worker-identifying UI elements on any surface
 - [ ] Changelog entry written to `docs/changelog/YYYY-MM-DD-r5-enterprise-ui.md`
+  - ✅ Per-surface changelogs written: `2026-05-10-r5-surface1-app-shell.md`, `2026-05-10-r5-surface2-stop-list.md`
+  - Final consolidated entry to be written when all surfaces are done
 
 ---
 
 ## Agent Launch Blocks
 
-Each surface is a separate agent session:
+Each surface is a separate agent session.
 
-### Surface 1 — App Shell
+### Surface 1 — App Shell ✅ done 2026-05-10
+### Surface 2 — UL Stop List ✅ done 2026-05-10
+
+### Surface 3 — Stop Wizard ← start here
 ```
-Feature task. Read CLAUDE.md, then planning/REFINEMENT_R5_ENTERPRISE_UI.md, Surface 1 only.
-Rebuild the App.tsx shell and nav bar. Replace all inline styles in App.tsx with
-Tailwind utility classes. Add a mobile hamburger menu for UL workers.
-Use the design tokens and route paths from R3.
-Do not touch any component below the shell.
+Refinement task. Read CLAUDE.md, then planning/REFINEMENT_R5_ENTERPRISE_UI.md, Surface 3 only.
+
+Primary files:
+  frontend/src/components/today-route/StopDetail.tsx
+  frontend/src/components/today-route/StopChecklist.tsx
+
+Infrastructure already in place — do not reinstall:
+  - Tailwind v4 via @tailwindcss/vite (vite.config.ts)
+  - Design tokens: src/styles/tokens.css
+  - cn() utility: src/lib/utils.ts
+  - No shadcn CLI — copy components manually if needed
+
+Constraints:
+  - Zero inline style={{}} props — Tailwind only
+  - Use cn() for conditional classes
+  - Min 44px touch targets on all interactive elements
+  - Do not change wizard step logic, state, or API calls
+  - Do not start Surface 4 in this session
+  - Write changelog entry before marking done
 ```
 
-### Surface 2 — Stop List
+### Surface 4 — Lead Routes Panel
 ```
-Feature task. Read CLAUDE.md, then planning/REFINEMENT_R5_ENTERPRISE_UI.md, Surface 2 only.
-Rebuild StopList.tsx, StopListItem.tsx, RouteHeader.tsx, UlLayout.tsx.
-Mobile-first. Touch targets min 44px. Status badges with semantic colors.
-Loading skeleton, empty state. Do not change data fetching logic.
-```
-
-### Surface 3 — Stop Wizard
-```
-Feature task. Read CLAUDE.md, then planning/REFINEMENT_R5_ENTERPRISE_UI.md, Surface 3 only.
-Rebuild StopDetail.tsx and StopChecklist.tsx.
-Large touch targets, prominent photo button, hazard selection as icon tiles,
-full-width completion CTA. Draft restoration banner if draft exists.
-Do not change wizard step logic or API calls.
+Refinement task. Read CLAUDE.md, then planning/REFINEMENT_R5_ENTERPRISE_UI.md, Surface 4 only.
+Primary files: LeadRoutesPanel.tsx, LeadRouteDetail.tsx, RouteSummary.tsx, RouteCreatePanel.tsx.
+Tablet-primary (768px). Data density for route list. Progress bars. Map preview in route create.
+Same infrastructure and constraints as Surface 3. Do not start Surface 5 in this session.
 ```
 
-### Surfaces 4, 5, 6 — (same pattern, reference respective surface section)
+### Surface 5 — Admin Dashboard, Pools, Stops
+```
+Refinement task. Read CLAUDE.md, then planning/REFINEMENT_R5_ENTERPRISE_UI.md, Surface 5 only.
+Primary files: AdminDashboard.tsx, AdminPoolsPanel.tsx, AdminStopsPanel.tsx.
+Desktop-primary (1280px). Data tables with sort/filter. shadcn DataTable via manual extraction.
+Confirmation dialogs for destructive actions. Do not start Surface 6 in this session.
+```
+
+### Surface 6 — Admin Control Center
+```
+Refinement task. Read CLAUDE.md, then planning/REFINEMENT_R5_ENTERPRISE_UI.md, Surface 6 only.
+Primary file: AdminControlCenter.tsx.
+Desktop 2×2 grid, stacked on mobile. Consistent with Surface 5 admin design language.
+Write final consolidated changelog entry at docs/changelog/YYYY-MM-DD-r5-enterprise-ui.md.
+```
