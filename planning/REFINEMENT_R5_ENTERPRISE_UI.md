@@ -2,7 +2,7 @@
 
 > **Goal**: Replace the dev-grade inline-style UI with an enterprise-standard design system — mobile-first for UL workers, responsive for Leads and Admins — with consistent components, states, and interaction patterns across the full application.
 >
-> **Status**: 🔴 Not started (start after R3 router is in place)
+> **Status**: 🟡 In progress
 > **Depends on**: R3 done (router must be in place — UI rebuild defines navigation structure)
 > **Blocks**: R9 (Frontend Tests — test the stable UI, not the one being rebuilt)
 
@@ -97,7 +97,7 @@ Execute as separate agent sessions. Each session takes one surface, leaves other
 
 ---
 
-### Surface 1 — App Shell + Navigation
+### Surface 1 — App Shell + Navigation ✅ 2026-05-10
 
 **Files**: `App.tsx`, `App.css`
 
@@ -109,7 +109,7 @@ Replace the inline-style nav bar with a proper shell layout:
 
 ---
 
-### Surface 2 — UL Worker — Stop List
+### Surface 2 — UL Worker — Stop List ✅ 2026-05-10
 
 **Files**: `frontend/src/components/today-route/StopList.tsx`, `StopListItem.tsx`, `RouteHeader.tsx`, `UlLayout.tsx`
 
@@ -124,7 +124,7 @@ The primary mobile surface. A UL worker sees this all day.
 
 ---
 
-### Surface 3 — UL Worker — Stop Wizard
+### Surface 3 — UL Worker — Stop Wizard ← next
 
 **Files**: `frontend/src/components/today-route/StopDetail.tsx`, `StopChecklist.tsx`
 

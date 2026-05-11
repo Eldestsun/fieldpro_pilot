@@ -1,44 +1,66 @@
+import { cn } from "../../lib/utils";
+
 interface RouteHeaderProps {
-    stats: {
-        pending: number;
-        done: number;
-        miles: string;
-    };
-    syncStatus: any; // We can import type if exported, or use any for speed as instruction implies minimal changes
-    routeLabel?: string;
+  stats: {
+    pending: number;
+    done: number;
+    miles: string;
+  };
+  syncStatus: {
+    statusKind: "synced" | "offline-queued" | "syncing" | "conflict";
+    label: string;
+  };
+  routeLabel?: string;
 }
 
+const SYNC_STYLES: Record<string, string> = {
+  synced: "text-green-600",
+  "offline-queued": "text-amber-600",
+  syncing: "text-blue-600",
+  conflict: "text-red-600",
+};
+
 export function RouteHeader({ stats, syncStatus, routeLabel }: RouteHeaderProps) {
-    return (
-        <header style={{ marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #eee" }}>
-            <h2 style={{ margin: "0 0 0.5rem 0", color: "#2d3748" }}>
-                {routeLabel ? `Route: ${routeLabel}` : "Today's Route"}
-            </h2>
-            <div style={{ fontSize: '0.8rem', paddingTop: '4px', marginBottom: '8px' }}>
-                {syncStatus.statusKind === 'synced' && (
-                    <span style={{ color: '#4caf50' }}>{syncStatus.label}</span>
-                )}
-                {syncStatus.statusKind === 'offline-queued' && (
-                    <span style={{ color: '#ff9800' }}>{syncStatus.label}</span>
-                )}
-                {syncStatus.statusKind === 'syncing' && (
-                    <span style={{ color: '#2196f3' }}>{syncStatus.label}</span>
-                )}
-                {syncStatus.statusKind === 'conflict' && (
-                    <span style={{ color: '#f44336' }}>{syncStatus.label}</span>
-                )}
-            </div>
-            <div style={{ display: "flex", gap: "1.5rem", fontSize: "0.95rem", color: "#4a5568" }}>
-                <span>
-                    <strong>{stats.pending}</strong> pending
-                </span>
-                <span>
-                    <strong>{stats.done}</strong> done
-                </span>
-                <span>
-                    <strong>{stats.miles}</strong> mi
-                </span>
-            </div>
-        </header>
-    );
+  const total = stats.done + stats.pending;
+  const progress = total > 0 ? Math.round((stats.done / total) * 100) : 0;
+  const today = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+
+  return (
+    <header className="mb-4 pb-4 border-b border-gray-200">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold text-gray-900 leading-tight truncate">
+            {routeLabel ?? "Today's Route"}
+          </h2>
+          <p className="text-sm text-gray-500 mt-0.5">{today}</p>
+        </div>
+        <span className={cn("shrink-0 text-xs font-medium mt-0.5", SYNC_STYLES[syncStatus.statusKind] ?? "text-gray-500")}>
+          {syncStatus.label}
+        </span>
+      </div>
+
+      <div className="mt-3">
+        <div className="flex items-center justify-between text-sm mb-1.5">
+          <span className="text-gray-600">
+            <strong className="text-gray-900 font-semibold">{stats.done}</strong>
+            {" of "}
+            <strong className="text-gray-900 font-semibold">{total}</strong>
+            {" complete"}
+          </span>
+          <span className="text-gray-500">{stats.miles} mi</span>
+        </div>
+        {/* progress bar — width is inherently dynamic */}
+        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-green-500 rounded-full transition-all duration-300"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      </div>
+    </header>
+  );
 }

@@ -1,97 +1,83 @@
+import { cn } from "../../lib/utils";
 import { formatStopLocation } from "../../utils/formatStopLocation";
 import type { Stop } from "../../api/routeRuns";
 
 interface StopListItemProps {
-    stop: Stop;
-    onClick: () => void;
+  stop: Stop;
+  onClick: () => void;
 }
 
+const STATUS_BADGE: Record<string, { label: string; className: string }> = {
+  pending:     { label: "Pending",     className: "bg-amber-100 text-amber-800" },
+  in_progress: { label: "In Progress", className: "bg-blue-100 text-blue-700"  },
+  done:        { label: "Done",        className: "bg-green-100 text-green-800" },
+  skipped:     { label: "Skipped",     className: "bg-gray-100 text-gray-500"  },
+};
+
 export function StopListItem({ stop, onClick }: StopListItemProps) {
-    return (
-        <li
-            onClick={onClick}
-            style={{
-                padding: "1rem",
-                border: "1px solid #e2e8f0",
-                borderRadius: "8px",
-                marginBottom: "0.75rem",
-                cursor: "pointer",
-                background: stop.status === "done" ? "#f7fafc" : "#fff",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                opacity: stop.status === "done" ? 0.8 : 1,
-            }}
-        >
-            <div className="flex items-start gap-3" style={{ display: "flex", gap: "0.75rem", width: "100%" }}>
-                <div className="shrink-0 text-xs font-semibold text-slate-700 bg-slate-100 border border-slate-200 rounded px-2 py-1"
-                    style={{
-                        flexShrink: 0,
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#334155",
-                        backgroundColor: "#f1f5f9",
-                        border: "1px solid #e2e8f0",
-                        borderRadius: "0.25rem",
-                        padding: "0.25rem 0.5rem"
-                    }}>
-                    #{Number.isFinite(stop.sequence) ? stop.sequence : Number(stop.stopNumber)}
-                </div>
+  const badge = STATUS_BADGE[stop.status] ?? STATUS_BADGE.pending;
+  const syncState = (stop as any).syncState as string | undefined;
+  const location = formatStopLocation(stop);
 
-                <div className="min-w-0 flex-1" style={{ minWidth: 0, flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
-                        <div style={{ fontWeight: "bold", marginBottom: "0.25rem", color: "#2d3748" }}>
-                            Stop {stop.stopNumber} — {formatStopLocation(stop)}
-                        </div>
-                        <div style={{ fontSize: "0.85rem", color: "#718096" }}>
-                            <div style={{ display: "flex", gap: "0.25rem", marginTop: "0.25rem", flexWrap: "wrap" }}>
-                                {stop.is_hotspot && (
-                                    <span style={{ fontSize: "0.8rem", marginRight: "0.25rem" }} title="Hotspot">
-                                        🔥
-                                    </span>
-                                )}
-                                {stop.compactor && (
-                                    <span style={{ fontSize: "0.7rem", color: "#2b6cb0", background: "#ebf8ff", padding: "1px 4px", borderRadius: "4px", border: "1px solid #bee3f8" }}>
-                                        Compactor
-                                    </span>
-                                )}
-                                {stop.has_trash && (
-                                    <span style={{ fontSize: "0.7rem", color: "#2d3748", background: "#edf2f7", padding: "1px 4px", borderRadius: "4px", border: "1px solid #e2e8f0" }}>
-                                        Trash bag
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                    <div>
-                        <span
-                            style={{
-                                fontSize: "0.75rem",
-                                padding: "4px 8px",
-                                borderRadius: "12px",
-                                background: stop.status === "done" ? "#c6f6d5" : "#feebc8",
-                                color: stop.status === "done" ? "#22543d" : "#744210",
-                                fontWeight: "bold",
-                                textTransform: "uppercase",
-                            }}
-                        >
-                            {stop.status}
-                        </span>
-                        {(stop as any).syncState === "queued" && (
-                            <span style={{ fontSize: "0.75rem", color: "#ff9800", marginLeft: "6px" }}>
-                                Queued
-                            </span>
-                        )}
+  return (
+    <li
+      onClick={onClick}
+      className={cn(
+        "flex items-start gap-3 p-4 bg-white rounded-lg border border-gray-200",
+        "min-h-[44px] cursor-pointer shadow-sm select-none",
+        "transition-colors active:bg-gray-50 hover:border-gray-300",
+        stop.status === "done" && "opacity-70",
+      )}
+    >
+      {/* Sequence number */}
+      <div className="shrink-0 min-w-[2rem] text-center text-xs font-bold text-gray-500 bg-gray-100 border border-gray-200 rounded px-1.5 py-1 mt-0.5">
+        #{Number.isFinite(stop.sequence) ? stop.sequence : Number(stop.stopNumber)}
+      </div>
 
-                        {(stop as any).syncState === "conflict" && (
-                            <span style={{ fontSize: "0.75rem", color: "#f44336", marginLeft: "6px" }}>
-                                Conflict
-                            </span>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </li>
-    );
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        {/* Location + status badge */}
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-sm font-semibold text-gray-900 leading-snug">
+            {location || `Stop ${stop.stopNumber}`}
+          </p>
+          <span
+            className={cn(
+              "shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide",
+              badge.className,
+            )}
+          >
+            {badge.label}
+          </span>
+        </div>
+
+        {/* Metadata badges */}
+        {(stop.is_hotspot || stop.compactor || stop.has_trash) && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {stop.is_hotspot && (
+              <span className="text-xs" title="Hotspot">🔥 Hotspot</span>
+            )}
+            {stop.compactor && (
+              <span className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded">
+                Compactor
+              </span>
+            )}
+            {stop.has_trash && (
+              <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-600 border border-gray-200 rounded">
+                Trash bag
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Offline sync indicator */}
+        {syncState === "queued" && (
+          <p className="mt-1.5 text-xs text-amber-600 font-medium">⏳ Queued — will sync when online</p>
+        )}
+        {syncState === "conflict" && (
+          <p className="mt-1.5 text-xs text-red-600 font-medium">⚠ Sync conflict</p>
+        )}
+      </div>
+    </li>
+  );
 }

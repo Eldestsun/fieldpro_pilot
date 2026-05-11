@@ -87,14 +87,29 @@ export function TodayRouteView() {
         );
     })();
 
-    // Loading State
+    // Loading State — skeleton cards
     if (loading) {
         return (
-            <div style={{ padding: "2rem", textAlign: "center", color: "#666" }}>
-                <div className="spinner" style={{ marginBottom: "1rem" }}>
-                    ⏳
+            <div className="max-w-xl mx-auto px-4 pt-4">
+                <div className="animate-pulse mb-4 pb-4 border-b border-gray-200">
+                    <div className="h-5 bg-gray-200 rounded w-40 mb-2" />
+                    <div className="h-3 bg-gray-100 rounded w-24 mb-3" />
+                    <div className="h-2 bg-gray-200 rounded-full" />
                 </div>
-                Loading today's route...
+                <div className="flex flex-col gap-3">
+                    {[1, 2, 3, 4].map((i) => (
+                        <div key={i} className="flex items-start gap-3 p-4 bg-white rounded-lg border border-gray-200 animate-pulse">
+                            <div className="shrink-0 h-7 w-8 bg-gray-200 rounded" />
+                            <div className="flex-1 min-w-0">
+                                <div className="flex justify-between gap-4">
+                                    <div className="h-4 bg-gray-200 rounded w-2/3" />
+                                    <div className="h-5 bg-gray-200 rounded-full w-16" />
+                                </div>
+                                <div className="h-3 bg-gray-100 rounded w-1/2 mt-2" />
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
         );
     }
@@ -102,12 +117,17 @@ export function TodayRouteView() {
     // Error State
     if (error) {
         return (
-            <div style={{ padding: "2rem", color: "crimson", textAlign: "center" }}>
-                <h3>Something went wrong</h3>
-                <p>{error}</p>
-                <button onClick={fetchRoute} style={{ padding: "0.5rem 1rem", marginTop: "1rem" }}>
-                    Retry
-                </button>
+            <div className="max-w-xl mx-auto px-4 pt-8 text-center">
+                <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+                    <h3 className="text-base font-semibold text-red-800 mb-1">Something went wrong</h3>
+                    <p className="text-sm text-red-600 mb-4">{error}</p>
+                    <button
+                        onClick={fetchRoute}
+                        className="px-4 py-2 text-sm font-medium text-red-700 border border-red-300 rounded-md hover:bg-red-100 transition-colors"
+                    >
+                        Retry
+                    </button>
+                </div>
             </div>
         );
     }
@@ -115,11 +135,17 @@ export function TodayRouteView() {
     // Empty State
     if (!routeRun) {
         return (
-            <div style={{ padding: "2rem", textAlign: "center", color: "#555" }}>
-                <h3>No route assigned yet</h3>
-                <p>Check with your lead or try again later.</p>
-                <button onClick={fetchRoute} style={{ padding: "0.5rem 1rem", marginTop: "1rem" }}>
-                    Retry
+            <div className="max-w-xl mx-auto px-4 pt-16 text-center">
+                <div className="text-4xl mb-4">📋</div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">No route assigned today</h3>
+                <p className="text-sm text-gray-500 mb-6">
+                    Check with your lead to get a route assigned, then refresh.
+                </p>
+                <button
+                    onClick={fetchRoute}
+                    className="px-5 py-2.5 text-sm font-medium text-white bg-blue-700 rounded-md hover:bg-blue-800 transition-colors"
+                >
+                    Check again
                 </button>
             </div>
         );
@@ -149,9 +175,14 @@ export function TodayRouteView() {
 
         if (!stop) {
             return (
-                <div style={{ padding: "1rem" }}>
-                    <p>Stop not found.</p>
-                    <button onClick={resetStopView}>Back to route</button>
+                <div className="max-w-xl mx-auto px-4 pt-8 text-center">
+                    <p className="text-gray-600 mb-3">Stop not found.</p>
+                    <button
+                        onClick={resetStopView}
+                        className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors"
+                    >
+                        ← Back to route
+                    </button>
                 </div>
             );
         }
@@ -189,14 +220,7 @@ export function TodayRouteView() {
     return (
         <UlLayout>
             {syncStatus.summary.totalConflict > 0 && (
-                <div style={{
-                    backgroundColor: '#f44336',
-                    color: 'white',
-                    padding: '6px 10px',
-                    fontSize: '0.85rem',
-                    marginBottom: '8px',
-                    borderRadius: '4px'
-                }}>
+                <div className="mb-2 px-3 py-2 bg-red-600 text-white text-sm rounded-md">
                     Some changes could not be synced. Server truth will reload when you're online.
                 </div>
             )}
@@ -204,60 +228,32 @@ export function TodayRouteView() {
 
             {/* Route Completed Banner */}
             {isRouteCompleted && (
-                <div
-                    style={{
-                        background: "#c6f6d5",
-                        color: "#22543d",
-                        padding: "1rem",
-                        borderRadius: "8px",
-                        marginBottom: "1.5rem",
-                        textAlign: "center",
-                        fontWeight: "bold",
-                        border: "1px solid #9ae6b4",
-                    }}
-                >
+                <div className="mb-6 p-4 bg-green-100 text-green-800 border border-green-300 rounded-lg text-center font-semibold">
                     🎉 Route Completed
                 </div>
             )}
 
             {/* Start Route Action */}
             {routeRun.status === "planned" ? (
-                <div style={{ textAlign: "center", marginTop: "4rem" }}>
+                <div className="text-center mt-16">
                     <button
                         onClick={handleStartRoute}
                         disabled={isStartingRoute}
-                        className="btn-primary"
-                        style={{
-                            fontSize: "1.5rem",
-                            padding: "1.2rem 2.5rem",
-                            marginTop: "2rem"
-                        }}
+                        className="w-full sm:w-auto px-10 py-5 text-2xl font-semibold text-white bg-blue-700 rounded-xl hover:bg-blue-800 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
                     >
-                        {isStartingRoute ? "Starting..." : "Start Route"}
+                        {isStartingRoute ? "Starting…" : "Start Route"}
                     </button>
-                    <p style={{ marginTop: "1.5rem", color: "#718096" }}>
-                        Ready to roll? Click to begin.
-                    </p>
+                    <p className="mt-6 text-gray-500 text-sm">Ready to roll? Tap to begin.</p>
                 </div>
             ) : (
                 <>
-                    {/* Suggested Route Sequence Banner - Map */}
-                    <div className="mb-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700"
-                        style={{
-                            marginBottom: "0.5rem",
-                            borderRadius: "0.25rem",
-                            border: "1px solid #e2e8f0",
-                            backgroundColor: "#f8fafc",
-                            padding: "0.5rem 0.75rem",
-                            fontSize: "0.875rem",
-                            fontWeight: 600,
-                            color: "#334155"
-                        }}>
+                    {/* Suggested Route Sequence label */}
+                    <div className="mb-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
                         Suggested Route Sequence
                     </div>
 
-                    {/* Map Viewport - Added */}
-                    <div className="card" style={{ padding: 0, overflow: "hidden", position: "relative" }}>
+                    {/* Map Viewport */}
+                    <div className="bg-white rounded-xl shadow-md mb-4 overflow-hidden relative">
                         <ULRouteMap
                             stops={routeRun.stops}
                             onSelectStop={handleMapStopSelect}
@@ -270,7 +266,6 @@ export function TodayRouteView() {
                         <button
                             type="button"
                             onClick={() => {
-                                // Extract valid coords from nextStop
                                 const s = nextStop as any;
                                 const lat = s?.lat ?? s?.latitude ?? s?.location?.lat;
                                 const lon = s?.lon ?? s?.longitude ?? s?.location?.lon;
@@ -279,48 +274,26 @@ export function TodayRouteView() {
                                 }
                             }}
                             disabled={!nextStop}
-                            style={{
-                                position: "absolute",
-                                left: "16px",
-                                bottom: "16px",
-                                padding: "8px 12px",
-                                borderRadius: "6px",
-                                background: "white",
-                                color: nextStop ? "#2b6cb0" : "#a0aec0",
-                                fontSize: "0.85rem",
-                                fontWeight: "bold",
-                                border: "1px solid #cbd5e0",
-                                boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-                                cursor: nextStop ? "pointer" : "not-allowed",
-                                zIndex: 10,
-                            }}
+                            className={`absolute left-4 bottom-4 z-10 px-3 py-2 bg-white border border-gray-300 rounded-md shadow-md text-sm font-bold transition-colors ${nextStop ? "text-blue-700 cursor-pointer hover:bg-blue-50" : "text-gray-400 cursor-not-allowed"}`}
                         >
                             Navigate to Next Stop
                         </button>
                     </div>
 
-                    {/* Next Suggested Stop Banner - List */}
+                    {/* Next Suggested Stop Banner */}
                     {nextStop && (
-                        <div className="mb-2 rounded border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-                            style={{
-                                marginBottom: "0.5rem",
-                                borderRadius: "0.25rem",
-                                border: "1px solid #e2e8f0",
-                                backgroundColor: "white",
-                                padding: "0.5rem 0.75rem",
-                                fontSize: "0.875rem",
-                                color: "#334155"
-                            }}>
-                            <span className="font-semibold" style={{ fontWeight: 600 }}>Next suggested:</span>{" "}
-                            <span className="font-semibold" style={{ fontWeight: 600 }}>#{nextStop.sequence}</span>{" "}
-                            <span className="text-slate-600" style={{ color: "#475569" }}>
+                        <div className="mb-2 rounded border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                            <span className="font-semibold">Next suggested:</span>{" "}
+                            <span className="font-semibold">#{nextStop.sequence}</span>{" "}
+                            <span className="text-slate-600">
                                 {nextStop.on_street_name ?? nextStop.intersection_loc ?? ""}
                             </span>
                         </div>
                     )}
 
-                    <div className="card" style={{ padding: "0.5rem" }}>
-                        <div style={{ maxHeight: "60vh", overflowY: "auto" }}>
+                    {/* Stop list */}
+                    <div className="bg-white rounded-xl shadow-sm mb-6 p-2">
+                        <div className="max-h-[60vh] overflow-y-auto">
                             <StopList
                                 stops={sortedStops}
                                 onSelectStop={setSelectedStopId}
@@ -330,7 +303,7 @@ export function TodayRouteView() {
 
                     {/* Review & Finish Action */}
                     {!isRouteCompleted && (
-                        <div style={{ marginTop: "2rem", textAlign: "center", paddingBottom: "3rem" }}>
+                        <div className="mt-8 text-center pb-12">
                             <button
                                 onClick={() => setShowSummary(true)}
                                 className="btn-primary"
