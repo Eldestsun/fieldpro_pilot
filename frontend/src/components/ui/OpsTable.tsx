@@ -26,7 +26,7 @@ export function OpsTable({ headers, children, numericColumns = [] }: OpsTablePro
                         ))}
                     </tr>
                 </thead>
-                <tbody className="text-sm text-gray-800">
+                <tbody className="text-sm text-gray-800 divide-y divide-gray-100">
                     {children}
                 </tbody>
             </table>
@@ -38,23 +38,19 @@ export function OpsTableRow({
     children,
     onClick,
     className,
-    /** @deprecated Use className instead. Kept for backward compat. */
-    style,
 }: {
     children: ReactNode;
     onClick?: () => void;
     className?: string;
-    style?: React.CSSProperties;
 }) {
     return (
         <tr
             onClick={onClick}
             className={cn(
-                "border-b border-gray-100 transition-colors",
+                "transition-colors",
                 onClick ? "cursor-pointer hover:bg-gray-50" : "cursor-default",
                 className
             )}
-            style={style}
         >
             {children}
         </tr>
@@ -65,14 +61,11 @@ export function OpsTableCell({
     children,
     alignRight,
     className,
-    /** @deprecated Use className instead. Kept for backward compat. */
-    style,
     ...props
 }: {
     children: ReactNode;
     alignRight?: boolean;
     className?: string;
-    style?: React.CSSProperties;
 } & React.TdHTMLAttributes<HTMLTableCellElement>) {
     return (
         <td
@@ -82,7 +75,6 @@ export function OpsTableCell({
                 alignRight ? "text-right" : "text-left",
                 className
             )}
-            style={style}
         >
             {children}
         </td>

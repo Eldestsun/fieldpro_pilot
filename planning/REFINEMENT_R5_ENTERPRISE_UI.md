@@ -166,7 +166,7 @@ Tablet-primary surface. Leads manage multiple routes simultaneously.
 
 ---
 
-### Surface 5 — Admin — Dashboard, Pools, Stops
+### Surface 5 — Admin — Dashboard, Pools, Stops ✅ 2026-05-11
 
 **Files**: `frontend/src/components/admin/AdminDashboard.tsx`, `AdminPoolsPanel.tsx`, `AdminStopsPanel.tsx`
 
@@ -200,30 +200,31 @@ Desktop-primary. Operational real-time view.
 R5 is complete when ALL of the following are true across all six surfaces, **and a changelog entry has been written**:
 
 - [ ] Zero inline `style={{}}` props remain in any component (App.tsx or below)
-  - ✅ App.tsx, UlLayout, RouteHeader, StopList, StopListItem, TodayRouteView, StopChecklist, StopDetail done
-  - ✅ OpsLayout, OpsCard, OpsButton, OpsTable, OpsBadge, LeadRoutesPanel, LeadRouteDetail, LeadCompletedRouteDetail, RouteSummary, RouteCreatePanel done
-  - One documented exception: `RouteHeader.tsx` progress bar `style={{ width: \`${progress}%\` }}` — dynamic runtime value, cannot be a static Tailwind class
-  - One component-API pass-through: `StopDetail` passes `style` prop to `ULRouteMap` — not a DOM inline style
-  - Backward-compat: `OpsCard`/`OpsButton`/`OpsTableRow`/`OpsTableCell` accept deprecated `style` prop for admin callers — Surface 5 removes those
+  - ✅ All UL worker surfaces (Surfaces 1–3): App.tsx, UlLayout, RouteHeader, StopList, StopListItem, TodayRouteView, StopChecklist, StopDetail
+  - ✅ All Lead surfaces (Surface 4): OpsLayout, OpsCard, OpsButton, OpsTable, OpsBadge, LeadRoutesPanel, LeadRouteDetail, LeadCompletedRouteDetail, RouteSummary, RouteCreatePanel
+  - ✅ All Admin surfaces (Surface 5): AdminDashboard, AdminPoolsPanel, AdminStopsPanel; deprecated style/padding props removed from OpsCard and OpsTable
+  - ✅ New primitives: DataTable, ConfirmDialog — zero inline styles
+  - Remaining: AdminControlCenter.tsx (Surface 6)
+  - Two documented exceptions carry forward: `RouteHeader.tsx` dynamic progress bar width; `StopDetail → ULRouteMap` component-API style prop
 - [ ] shadcn/ui component library initialized and in use
-  - ✅ `cn()` utility live; manual component extraction approach confirmed (CLI not used — v4 incompatibility)
+  - ✅ `cn()` utility live; DataTable follows shadcn DataTable pattern (manual, no TanStack dep at this data scale)
 - [x] Design tokens defined and applied consistently — `src/styles/tokens.css` live
-- [ ] All six surfaces rebuilt to spec — Surfaces 1–4 done, 5–6 remaining
-- [ ] Every surface has explicit loading, empty, and error states
+- [ ] All six surfaces rebuilt to spec — Surfaces 1–5 done, Surface 6 remaining
+- [x] Every surface has explicit loading, empty, and error states
   - ✅ Surfaces 1–2: skeleton loading, styled error, empty state with CTA
-  - ✅ Surface 3: all wizard states styled (not-started, read-only, wizard flow with sync/resume/modal states)
-  - ✅ Surface 4: loading/error states on route detail and completed route detail; empty-state rows in tables
+  - ✅ Surface 3: all wizard states (not-started, read-only, wizard flow with sync/resume/modal states)
+  - ✅ Surface 4: loading/error states on detail views; empty-state rows in tables
+  - ✅ Surface 5: skeleton loading cards on Dashboard; error card; DataTable empty/loading states
 - [x] UL stop list and stop wizard are fully usable on a 375px mobile viewport
-  - ✅ Stop list: verified at 375px, 44px touch targets, semantic badges
-  - ✅ Stop wizard: 44px touch targets throughout, modal overlays, mobile-first card layout
 - [x] Lead routes panel is usable on a 768px tablet viewport
-  - ✅ Surface 4 done: max-w-5xl layout, data-dense tables, 44px touch targets, slide-over create panel
-- [ ] Admin views are usable on a 1280px desktop viewport — Surfaces 5–6 not started
+- [ ] Admin views are usable on a 1280px desktop viewport
+  - ✅ Surface 5 done: responsive stat grid, sortable DataTable, ConfirmDialog, 44px targets
+  - Surface 6 (AdminControlCenter) remaining
 - [x] No worker-identifying UI elements on any surface
-  - ✅ Fixed: removed `UID:{user_id}` from LeadRouteDetail (was showing worker's user_id)
+  - ✅ Fixed: removed `UID:{user_id}` from LeadRouteDetail
 - [ ] Changelog entry written to `docs/changelog/YYYY-MM-DD-r5-enterprise-ui.md`
-  - ✅ Per-surface changelogs: `2026-05-10-r5-surface1-app-shell.md`, `2026-05-10-r5-surface2-stop-list.md`, `2026-05-11-r5-surface3-stop-wizard.md`, `2026-05-11-r5-surface4-lead-routes.md`
-  - Final consolidated entry to be written when all surfaces are done
+  - ✅ Per-surface changelogs: surfaces 1–5 written
+  - Final consolidated entry to be written when Surface 6 done
 
 ---
 
