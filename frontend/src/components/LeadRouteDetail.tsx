@@ -37,7 +37,7 @@ export function LeadRouteDetail({ id, onBack }: LeadRouteDetailProps) {
         return (
             <OpsLayout title={`Route Run #${id}`} subtitle="Loading detail...">
                 <OpsCard>
-                    <p style={{ textAlign: "center", color: "#718096" }}>Loading stop list...</p>
+                    <p className="text-center text-gray-500">Loading stop list...</p>
                 </OpsCard>
             </OpsLayout>
         );
@@ -47,8 +47,8 @@ export function LeadRouteDetail({ id, onBack }: LeadRouteDetailProps) {
         return (
             <OpsLayout title={`Route Run #${id}`} subtitle="Error">
                 <OpsCard>
-                    <p style={{ color: "#e53e3e", textAlign: "center" }}>{error || "Route not found"}</p>
-                    <div style={{ textAlign: "center", marginTop: "1rem" }}>
+                    <p className="text-red-600 text-center">{error || "Route not found"}</p>
+                    <div className="text-center mt-4">
                         <OpsButton onClick={onBack}>Back to list</OpsButton>
                     </div>
                 </OpsCard>
@@ -68,31 +68,36 @@ export function LeadRouteDetail({ id, onBack }: LeadRouteDetailProps) {
             subtitle="Route detail and stop list."
             rightActions={rightActions}
         >
-            <OpsCard style={{ marginBottom: "1.5rem" }}>
-                <div style={{ display: "flex", gap: "2rem" }}>
+            <OpsCard className="mb-6">
+                <div className="flex gap-8">
                     <div>
-                        <div style={{ fontSize: "0.75rem", color: "#718096", fontWeight: 600, textTransform: "uppercase" }}>Status</div>
-                        <div style={{ marginTop: "0.25rem" }}>
-                            <OpsBadge variant={routeRun.status === "completed" ? "success" : "status"} value={routeRun.status.replace("_", " ")} />
+                        <div className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Status</div>
+                        <div className="mt-1">
+                            <OpsBadge
+                                variant={routeRun.status === "completed" ? "success" : "status"}
+                                value={routeRun.status.replace("_", " ")}
+                            />
                         </div>
                     </div>
                     <div>
-                        <div style={{ fontSize: "0.75rem", color: "#718096", fontWeight: 600, textTransform: "uppercase" }}>Pool</div>
-                        <div style={{ marginTop: "0.25rem", fontWeight: 600 }}>{routeRun.route_pool_id}</div>
+                        <div className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Pool</div>
+                        <div className="mt-1 font-semibold text-gray-900">{routeRun.route_pool_id}</div>
                     </div>
                     <div>
-                        <div style={{ fontSize: "0.75rem", color: "#718096", fontWeight: 600, textTransform: "uppercase" }}>Worker</div>
-                        <div style={{ marginTop: "0.25rem", fontWeight: 600 }}>UID:{routeRun.user_id}</div>
+                        <div className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Date</div>
+                        <div className="mt-1 font-semibold text-gray-900">
+                            {new Date(routeRun.run_date).toLocaleDateString()}
+                        </div>
                     </div>
                 </div>
             </OpsCard>
 
-            <OpsCard padding={0}>
+            <OpsCard className="p-0">
                 <OpsTable headers={["Seq", "Stop #", "Location", "Status"]}>
                     {routeRun.stops.map((stop) => (
                         <OpsTableRow key={stop.route_run_stop_id}>
-                            <OpsTableCell style={{ color: "#718096" }}>{stop.sequence}</OpsTableCell>
-                            <OpsTableCell style={{ fontWeight: 600 }}>{stop.stopNumber || stop.stop_id.slice(0, 8)}</OpsTableCell>
+                            <OpsTableCell className="text-gray-500">{stop.sequence}</OpsTableCell>
+                            <OpsTableCell className="font-semibold">{stop.stopNumber || stop.stop_id.slice(0, 8)}</OpsTableCell>
                             <OpsTableCell>
                                 {stop.on_street_name} {stop.cross_street && `& ${stop.cross_street}`}
                             </OpsTableCell>
@@ -106,7 +111,7 @@ export function LeadRouteDetail({ id, onBack }: LeadRouteDetailProps) {
                     ))}
                     {routeRun.stops.length === 0 && (
                         <OpsTableRow>
-                            <OpsTableCell colSpan={4} style={{ textAlign: "center", padding: "2rem", color: "#718096" }}>
+                            <OpsTableCell colSpan={4} className="text-center py-8 text-gray-500">
                                 No stops in this route.
                             </OpsTableCell>
                         </OpsTableRow>

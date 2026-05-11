@@ -68,17 +68,17 @@ export function LeadRoutesPanel() {
       rightActions={rightActions}
     >
       {error && (
-        <OpsCard style={{ backgroundColor: "#fff5f5", borderColor: "#feb2b2", marginBottom: "1.5rem" }} padding="0.75rem">
-          <p style={{ margin: 0, color: "#c53030", fontSize: "0.875rem" }}>{error}</p>
+        <OpsCard className="bg-red-50 border-red-200 mb-6 p-3">
+          <p className="m-0 text-red-700 text-sm">{error}</p>
         </OpsCard>
       )}
 
-      <OpsCard style={{ marginBottom: "1.5rem" }}>
-        <h3 style={{ marginTop: 0, marginBottom: "0.75rem" }}>Active Routes</h3>
+      <OpsCard className="mb-6">
+        <h3 className="mt-0 mb-3 text-lg font-semibold text-gray-800">Active Routes</h3>
         <OpsTable headers={["ID", "Pool", "Status", "Stops", "Date"]}>
           {activeRuns.map((run) => (
             <OpsTableRow key={run.id} onClick={() => setSelectedActiveRunId(run.id)}>
-              <OpsTableCell style={{ fontFamily: "monospace", color: "#718096" }}>#{run.id}</OpsTableCell>
+              <OpsTableCell className="font-mono text-gray-500">#{run.id}</OpsTableCell>
               <OpsTableCell>{run.pool_label || run.route_pool_id}</OpsTableCell>
               <OpsTableCell>
                 <OpsBadge
@@ -92,7 +92,7 @@ export function LeadRoutesPanel() {
           ))}
           {activeRuns.length === 0 && !loading && (
             <OpsTableRow>
-              <OpsTableCell colSpan={5} style={{ textAlign: "center", padding: "1.5rem", color: "#718096" }}>
+              <OpsTableCell colSpan={5} className="text-center py-6 text-gray-500">
                 No active routes.
               </OpsTableCell>
             </OpsTableRow>
@@ -101,11 +101,11 @@ export function LeadRoutesPanel() {
       </OpsCard>
 
       <OpsCard>
-        <h3 style={{ marginTop: 0, marginBottom: "0.75rem" }}>Completed Routes</h3>
+        <h3 className="mt-0 mb-3 text-lg font-semibold text-gray-800">Completed Routes</h3>
         <OpsTable headers={["ID", "Pool", "Status", "Stops", "Date"]}>
           {completedRuns.map((run) => (
             <OpsTableRow key={run.id} onClick={() => setSelectedCompletedRunId(run.id)}>
-              <OpsTableCell style={{ fontFamily: "monospace", color: "#718096" }}>#{run.id}</OpsTableCell>
+              <OpsTableCell className="font-mono text-gray-500">#{run.id}</OpsTableCell>
               <OpsTableCell>{run.pool_label || run.route_pool_id}</OpsTableCell>
               <OpsTableCell>
                 <OpsBadge
@@ -119,7 +119,7 @@ export function LeadRoutesPanel() {
           ))}
           {completedRuns.length === 0 && !loading && (
             <OpsTableRow>
-              <OpsTableCell colSpan={5} style={{ textAlign: "center", padding: "1.5rem", color: "#718096" }}>
+              <OpsTableCell colSpan={5} className="text-center py-6 text-gray-500">
                 No completed routes.
               </OpsTableCell>
             </OpsTableRow>

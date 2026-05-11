@@ -5,6 +5,7 @@ import { OpsLayout } from "./ui/OpsLayout";
 import { OpsCard } from "./ui/OpsCard";
 import { OpsTable, OpsTableRow, OpsTableCell } from "./ui/OpsTable";
 import { OpsButton } from "./ui/OpsButton";
+import { cn } from "../lib/utils";
 
 interface LeadCompletedRouteDetailProps {
     id: number;
@@ -43,10 +44,6 @@ export function LeadCompletedRouteDetail({ id, onBack }: LeadCompletedRouteDetai
             setLoadingLogs(true);
             try {
                 const token = await getAccessToken();
-                // Fetch logs for this specific stop on this run's date (or generally for this stop)
-                // User requested: "stops from route-run detail... click a stop loads its clean logs"
-                // And suggested: "/api/ops/clean-logs?stop_id=...&run_date=..."
-                // We know run_date from route.run_date.
                 const res = await getOpsCleanLogs(token, {
                     page: 1,
                     pageSize: 50,
@@ -63,8 +60,28 @@ export function LeadCompletedRouteDetail({ id, onBack }: LeadCompletedRouteDetai
         loadLogs();
     }, [selectedStopId, route?.run_date, getAccessToken]);
 
-    if (loading) return <OpsLayout title="Loading..."><OpsCard>Loading route details...</OpsCard></OpsLayout>;
-    if (!route) return <OpsLayout title="Error"><OpsCard><p>Route not found.</p><OpsButton onClick={onBack}>Back</OpsButton></OpsCard></OpsLayout>;
+    if (loading) {
+        return (
+            <OpsLayout title="Loading...">
+                <OpsCard>
+                    <p className="text-center text-gray-500">Loading route details...</p>
+                </OpsCard>
+            </OpsLayout>
+        );
+    }
+
+    if (!route) {
+        return (
+            <OpsLayout title="Error">
+                <OpsCard>
+                    <p className="text-center text-gray-500">Route not found.</p>
+                    <div className="text-center mt-4">
+                        <OpsButton onClick={onBack}>Back</OpsButton>
+                    </div>
+                </OpsCard>
+            </OpsLayout>
+        );
+    }
 
     return (
         <OpsLayout
@@ -72,18 +89,20 @@ export function LeadCompletedRouteDetail({ id, onBack }: LeadCompletedRouteDetai
             subtitle={`${route.run_date} • ${route.route_pool_id}`}
             onBack={onBack}
         >
-            <OpsCard style={{ marginBottom: "1.5rem" }}>
-                <h3 style={{ marginTop: 0 }}>Stops List</h3>
-                <p style={{ color: "#718096", fontSize: "0.875rem" }}>Click a stop to view clean logs.</p>
+            <OpsCard className="mb-6">
+                <h3 className="mt-0 mb-1 text-base font-semibold text-gray-800">Stops List</h3>
+                <p className="text-gray-500 text-sm mb-4">Click a stop to view clean logs.</p>
                 <OpsTable headers={["#", "Location", "Status", "Actions"]}>
                     {route.stops.map((stop) => (
                         <OpsTableRow
                             key={stop.stop_id}
                             onClick={() => setSelectedStopId(stop.stop_id)}
-                            style={selectedStopId === stop.stop_id ? { backgroundColor: "#ebf8ff" } : {}}
+                            className={cn(selectedStopId === stop.stop_id ? "bg-blue-50" : "")}
                         >
                             <OpsTableCell>{stop.stopNumber}</OpsTableCell>
-                            <OpsTableCell>{stop.on_street_name} {stop.cross_street ? `/ ${stop.cross_street}` : ""}</OpsTableCell>
+                            <OpsTableCell>
+                                {stop.on_street_name} {stop.cross_street ? `/ ${stop.cross_street}` : ""}
+                            </OpsTableCell>
                             <OpsTableCell>{stop.status}</OpsTableCell>
                             <OpsTableCell>
                                 <OpsButton size="sm" variant="outline" onClick={() => setSelectedStopId(stop.stop_id)}>
@@ -97,8 +116,12 @@ export function LeadCompletedRouteDetail({ id, onBack }: LeadCompletedRouteDetai
 
             {selectedStopId && (
                 <OpsCard>
-                    <h3 style={{ marginTop: 0 }}>Clean Logs: Stop {selectedStopId}</h3>
-                    {loadingLogs ? <p>Loading logs...</p> : (
+                    <h3 className="mt-0 mb-3 text-base font-semibold text-gray-800">
+                        Clean Logs: Stop {selectedStopId}
+                    </h3>
+                    {loadingLogs ? (
+                        <p className="text-gray-500 text-sm">Loading logs...</p>
+                    ) : (
                         <OpsTable headers={["Cleaned At", "Washed pad", "Washed shelter", "Litter", "Volume"]}>
                             {cleanLogs.map(log => (
                                 <OpsTableRow key={log.id}>
@@ -109,7 +132,13 @@ export function LeadCompletedRouteDetail({ id, onBack }: LeadCompletedRouteDetai
                                     <OpsTableCell>{log.trash_volume ?? "—"}%</OpsTableCell>
                                 </OpsTableRow>
                             ))}
-                            {cleanLogs.length === 0 && <OpsTableRow><OpsTableCell colSpan={4}>No logs found for this stop/date.</OpsTableCell></OpsTableRow>}
+                            {cleanLogs.length === 0 && (
+                                <OpsTableRow>
+                                    <OpsTableCell colSpan={5} className="text-center py-6 text-gray-500">
+                                        No logs found for this stop/date.
+                                    </OpsTableCell>
+                                </OpsTableRow>
+                            )}
                         </OpsTable>
                     )}
                 </OpsCard>

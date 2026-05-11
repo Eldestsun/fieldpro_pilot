@@ -1,36 +1,32 @@
+import { cn } from "../../lib/utils";
 import type { ReactNode } from "react";
 
 interface OpsTableProps {
     headers: string[];
     children: ReactNode;
-    numericColumns?: number[]; // indices of columns that should be right-aligned
+    numericColumns?: number[];
 }
 
 export function OpsTable({ headers, children, numericColumns = [] }: OpsTableProps) {
     return (
-        <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
+        <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-left">
                 <thead>
-                    <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                    <tr className="bg-gray-50 border-b border-gray-200">
                         {headers.map((header, idx) => (
                             <th
                                 key={idx}
-                                style={{
-                                    padding: "12px 1rem",
-                                    fontSize: "0.75rem",
-                                    fontWeight: 600,
-                                    textTransform: "uppercase",
-                                    letterSpacing: "0.05em",
-                                    color: "#4a5568",
-                                    textAlign: numericColumns.includes(idx) ? "right" : "left",
-                                }}
+                                className={cn(
+                                    "px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-600",
+                                    numericColumns.includes(idx) ? "text-right" : "text-left"
+                                )}
                             >
                                 {header}
                             </th>
                         ))}
                     </tr>
                 </thead>
-                <tbody style={{ fontSize: "0.875rem", color: "#2d3748" }}>
+                <tbody className="text-sm text-gray-800">
                     {children}
                 </tbody>
             </table>
@@ -38,34 +34,55 @@ export function OpsTable({ headers, children, numericColumns = [] }: OpsTablePro
     );
 }
 
-export function OpsTableRow({ children, onClick, style }: { children: ReactNode; onClick?: () => void; style?: React.CSSProperties }) {
+export function OpsTableRow({
+    children,
+    onClick,
+    className,
+    /** @deprecated Use className instead. Kept for backward compat. */
+    style,
+}: {
+    children: ReactNode;
+    onClick?: () => void;
+    className?: string;
+    style?: React.CSSProperties;
+}) {
     return (
         <tr
             onClick={onClick}
-            style={{
-                borderBottom: "1px solid #edf2f7",
-                cursor: onClick ? "pointer" : "default",
-                backgroundColor: "transparent",
-                transition: "background-color 0.15s ease-in-out",
-                ...style,
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f7fafc")}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+            className={cn(
+                "border-b border-gray-100 transition-colors",
+                onClick ? "cursor-pointer hover:bg-gray-50" : "cursor-default",
+                className
+            )}
+            style={style}
         >
             {children}
         </tr>
     );
 }
 
-export function OpsTableCell({ children, alignRight, style, ...props }: { children: ReactNode; alignRight?: boolean; style?: React.CSSProperties } & React.TdHTMLAttributes<HTMLTableCellElement>) {
+export function OpsTableCell({
+    children,
+    alignRight,
+    className,
+    /** @deprecated Use className instead. Kept for backward compat. */
+    style,
+    ...props
+}: {
+    children: ReactNode;
+    alignRight?: boolean;
+    className?: string;
+    style?: React.CSSProperties;
+} & React.TdHTMLAttributes<HTMLTableCellElement>) {
     return (
         <td
             {...props}
-            style={{
-                padding: "12px 1rem",
-                textAlign: alignRight ? "right" : "left",
-                ...style,
-            }}
+            className={cn(
+                "px-4 py-3",
+                alignRight ? "text-right" : "text-left",
+                className
+            )}
+            style={style}
         >
             {children}
         </td>

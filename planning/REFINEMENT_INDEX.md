@@ -95,7 +95,7 @@ The offline queue and replay engine are production-quality but entirely invisibl
 
 Replace the dev-grade inline-style UI with an enterprise-standard design system. Mobile-first for UL workers. Responsive for Leads (tablet) and Admins (desktop). Consistent component library, typography, spacing, color, loading states, error states, and empty states across the full application surface.
 
-**Surface progress**: Surface 1 (shell) 🟢, Surface 2 (UL stop list) 🟢, Surface 3 (stop wizard) 🟢, Surface 4 (Lead routes) 🔴 not started
+**Surface progress**: Surface 1 (shell) 🟢, Surface 2 (UL stop list) 🟢, Surface 3 (stop wizard) 🟢, Surface 4 (Lead routes) 🟢, Surface 5 (Admin) 🔴 not started
 
 ---
 

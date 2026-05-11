@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { finishRoute } from "../api/routeRuns";
 import { UlLayout } from "./today-route/UlLayout";
+import { cn } from "../lib/utils";
 
 interface RouteSummaryProps {
     routeRun: RouteRun;
@@ -13,7 +14,7 @@ interface RouteSummaryProps {
         pendingStops: number;
         hotspotCount: number;
         compactorCount: number;
-        photoList: string[]; // List of object keys or URLs
+        photoList: string[];
     };
     onFinishRoute?: () => void;
     onBack: () => void;
@@ -34,11 +35,8 @@ export function RouteSummary({
     const stops = Array.isArray(routeRun.stops) ? routeRun.stops : [];
     const totalStops = stops.length || summary.totalStops;
 
-    // A stop is “finished enough” if done OR skipped
     const finishedStopCount = stops.filter(s => s.status === "done" || s.status === "skipped").length;
 
-    // If we have stops array, trust it; otherwise fall back to summary
-    // If we have stops array, trust it; otherwise fall back to summary
     const isAllDone = stops.length > 0
         ? stops.every(s => s.status === "done" || s.status === "skipped")
         : (summary.totalStops > 0 && summary.pendingStops === 0 && summary.inProgressStops === 0);
@@ -47,7 +45,8 @@ export function RouteSummary({
         ? (stops.length > 0 ? finishedStopCount < totalStops : (summary.pendingStops > 0 || summary.inProgressStops > 0))
         : false;
 
-    const isAlreadyFinished = String(routeRun.status || "").toLowerCase() === "completed" || String(routeRun.status || "").toLowerCase() === "finished";
+    const isAlreadyFinished = String(routeRun.status || "").toLowerCase() === "completed"
+        || String(routeRun.status || "").toLowerCase() === "finished";
 
     // Debug — remove after demo if you want
     console.log("RouteSummary gates", {
@@ -76,64 +75,55 @@ export function RouteSummary({
         }
     };
 
+    const isDisabled = !isAllDone || isBusy || isAlreadyFinished;
+
     return (
         <UlLayout>
-            <div
-                style={{
-                    maxWidth: "600px",
-                    margin: "0 auto",
-                    padding: "16px",
-                }}
-            >
+            <div className="max-w-xl mx-auto px-4">
                 <button
                     onClick={onBack}
-                    style={{
-                        marginBottom: "1rem",
-                        padding: "0.5rem 1rem",
-                        fontSize: "1rem",
-                        cursor: "pointer",
-                        background: "none",
-                        border: "1px solid #ccc",
-                        borderRadius: "4px",
-                    }}
+                    className="mb-4 px-4 py-2 bg-transparent border border-gray-300 rounded text-base cursor-pointer text-gray-700 min-h-[44px] flex items-center hover:bg-gray-50 transition-colors"
                 >
                     ← Back to stops
                 </button>
 
-                <h2 style={{ marginBottom: "1.5rem", color: "#2d3748" }}>
-                    Route Summary
-                </h2>
+                <h2 className="mb-6 text-2xl font-bold text-gray-800">Route Summary</h2>
 
-                <div
-                    style={{
-                        background: "#f7fafc",
-                        padding: "1.5rem",
-                        borderRadius: "8px",
-                        border: "1px solid #e2e8f0",
-                        marginBottom: "2rem",
-                    }}
-                >
-                    <div style={{ marginBottom: "1rem", fontWeight: "bold", color: "#4a5568" }}>
+                <div className="bg-gray-50 p-6 rounded-lg border border-gray-200 mb-8">
+                    <div className="mb-4 font-semibold text-gray-600">
                         {routeRun.base_id} • {new Date(routeRun.run_date).toLocaleDateString()}
                     </div>
 
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                    <div className="grid grid-cols-2 gap-4">
                         <StatBox label="Total Stops" value={summary.totalStops} />
                         <StatBox label="Completed" value={summary.completedStops} color="green" />
-                        <StatBox label="Pending" value={summary.pendingStops} color={summary.pendingStops > 0 ? "orange" : undefined} />
-                        <StatBox label="In Progress" value={summary.inProgressStops} color={summary.inProgressStops > 0 ? "blue" : undefined} />
+                        <StatBox
+                            label="Pending"
+                            value={summary.pendingStops}
+                            color={summary.pendingStops > 0 ? "orange" : undefined}
+                        />
+                        <StatBox
+                            label="In Progress"
+                            value={summary.inProgressStops}
+                            color={summary.inProgressStops > 0 ? "blue" : undefined}
+                        />
                         <StatBox label="Hotspots" value={summary.hotspotCount} icon="🔥" />
                         <StatBox label="Compactors" value={summary.compactorCount} icon="♻" />
                     </div>
                 </div>
 
-                {/* Photos Section (Placeholder as we don't have persistent photos yet) */}
+                {/* Photos Section */}
                 {summary.photoList.length > 0 && (
-                    <div style={{ marginBottom: "2rem" }}>
-                        <h3 style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>Photos ({summary.photoList.length})</h3>
-                        <div style={{ display: "flex", gap: "0.5rem", overflowX: "auto", paddingBottom: "0.5rem" }}>
+                    <div className="mb-8">
+                        <h3 className="text-lg font-semibold mb-2">
+                            Photos ({summary.photoList.length})
+                        </h3>
+                        <div className="flex gap-2 overflow-x-auto pb-2">
                             {summary.photoList.map((_, i) => (
-                                <div key={i} style={{ width: "80px", height: "80px", background: "#eee", borderRadius: "4px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem", color: "#888" }}>
+                                <div
+                                    key={i}
+                                    className="w-20 h-20 bg-gray-200 rounded shrink-0 flex items-center justify-center text-gray-500 text-sm"
+                                >
                                     📷
                                 </div>
                             ))}
@@ -143,17 +133,7 @@ export function RouteSummary({
 
                 {/* Warnings */}
                 {hasUnfinished && !isAlreadyFinished && (
-                    <div
-                        style={{
-                            background: "#fffaf0",
-                            border: "1px solid #fbd38d",
-                            color: "#c05621",
-                            padding: "1rem",
-                            borderRadius: "8px",
-                            marginBottom: "1.5rem",
-                            textAlign: "center",
-                        }}
-                    >
+                    <div className="bg-orange-50 border border-orange-200 text-orange-700 p-4 rounded-lg mb-6 text-center">
                         ⚠️ You still have unfinished stops.
                         <br />
                         Please complete all stops before finishing the route.
@@ -161,37 +141,39 @@ export function RouteSummary({
                 )}
 
                 {/* Action */}
-                <div style={{ textAlign: "center" }}>
-                    <button
-                        onClick={handleFinish}
-                        disabled={!isAllDone || isBusy || isAlreadyFinished}
-                        style={{
-                            padding: "1.2rem 2.5rem",
-                            fontSize: "1.2rem",
-                            background: !isAllDone || isBusy || isAlreadyFinished ? "#cbd5e0" : "#2b6cb0",
-                            color: "white",
-                            border: "none",
-                            borderRadius: "8px",
-                            cursor: !isAllDone || isBusy || isAlreadyFinished ? "not-allowed" : "pointer",
-                            width: "100%",
-                            boxShadow: !isAllDone || isBusy || isAlreadyFinished ? "none" : "0 4px 6px rgba(0,0,0,0.1)",
-                        }}
-                    >
-                        {isAlreadyFinished ? "Route Completed" : isBusy ? "Finishing..." : "Complete Route"}
-                    </button>
-                </div>
+                <button
+                    onClick={handleFinish}
+                    disabled={isDisabled}
+                    className={cn(
+                        "w-full py-5 text-xl font-bold text-white border-0 rounded-lg min-h-[44px] transition-colors",
+                        isDisabled
+                            ? "bg-gray-300 cursor-not-allowed"
+                            : "bg-blue-700 cursor-pointer hover:bg-blue-800 shadow-md"
+                    )}
+                >
+                    {isAlreadyFinished ? "Route Completed" : isBusy ? "Finishing..." : "Complete Route"}
+                </button>
             </div>
         </UlLayout>
     );
 }
 
+const COLOR_CLASSES: Record<string, string> = {
+    green:  "text-green-700",
+    orange: "text-orange-600",
+    blue:   "text-blue-600",
+};
+
 function StatBox({ label, value, color, icon }: { label: string; value: number; color?: string; icon?: string }) {
     return (
-        <div style={{ background: "white", padding: "0.75rem", borderRadius: "6px", border: "1px solid #edf2f7", textAlign: "center" }}>
-            <div style={{ fontSize: "1.5rem", fontWeight: "bold", color: color || "#2d3748" }}>
+        <div className="bg-white p-3 rounded-lg border border-gray-100 text-center">
+            <div className={cn(
+                "text-2xl font-bold",
+                color ? COLOR_CLASSES[color] : "text-gray-800"
+            )}>
                 {icon} {value}
             </div>
-            <div style={{ fontSize: "0.85rem", color: "#718096", marginTop: "0.25rem" }}>{label}</div>
+            <div className="text-sm text-gray-500 mt-1">{label}</div>
         </div>
     );
 }

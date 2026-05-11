@@ -10,34 +10,24 @@ interface OpsLayoutProps {
 
 export function OpsLayout({ title, subtitle, rightActions, children, onBack }: OpsLayoutProps) {
     return (
-        <div style={{ minHeight: "100vh", backgroundColor: "#f8fafc", padding: "2rem 1rem" }}>
-            <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-                <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "2rem" }}>
-                    <div style={{ display: "flex", gap: "1rem", alignItems: "flex-start" }}>
+        <div className="min-h-screen bg-gray-50 px-4 py-8">
+            <div className="max-w-5xl mx-auto">
+                <header className="flex justify-between items-start mb-8">
+                    <div className="flex gap-4 items-start">
                         {onBack && (
                             <button
                                 onClick={onBack}
-                                style={{
-                                    marginTop: "0.25rem",
-                                    background: "white",
-                                    border: "1px solid #e2e8f0",
-                                    borderRadius: "0.375rem",
-                                    padding: "0.25rem 0.75rem",
-                                    cursor: "pointer",
-                                    color: "#4a5568",
-                                    fontSize: "0.875rem",
-                                    fontWeight: 500,
-                                }}
+                                className="mt-1 bg-white border border-gray-200 rounded-md px-3 py-1 cursor-pointer text-gray-600 text-sm font-medium min-h-[44px] flex items-center hover:bg-gray-50 transition-colors"
                             >
                                 ← Back
                             </button>
                         )}
                         <div>
-                            <h1 style={{ margin: 0, fontSize: "1.875rem", fontWeight: 700, color: "#1a202c" }}>{title}</h1>
-                            {subtitle && <p style={{ margin: "0.5rem 0 0", color: "#718096", fontSize: "1rem" }}>{subtitle}</p>}
+                            <h1 className="m-0 text-3xl font-bold text-gray-900">{title}</h1>
+                            {subtitle && <p className="mt-2 mb-0 text-gray-500 text-base">{subtitle}</p>}
                         </div>
                     </div>
-                    {rightActions && <div style={{ display: "flex", gap: "0.75rem" }}>{rightActions}</div>}
+                    {rightActions && <div className="flex gap-3">{rightActions}</div>}
                 </header>
                 <main>{children}</main>
             </div>

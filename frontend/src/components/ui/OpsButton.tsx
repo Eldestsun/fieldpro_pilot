@@ -1,3 +1,4 @@
+import { cn } from "../../lib/utils";
 import type { ReactNode } from "react";
 
 type OpsButtonVariant = "primary" | "secondary" | "danger" | "outline";
@@ -9,9 +10,24 @@ interface OpsButtonProps {
     onClick?: () => void;
     disabled?: boolean;
     children: ReactNode;
+    className?: string;
+    /** @deprecated Use className instead. Kept for backward compat. */
     style?: React.CSSProperties;
     type?: "button" | "submit" | "reset";
 }
+
+const VARIANT_CLASSES: Record<OpsButtonVariant, string> = {
+    primary:   "bg-blue-700 text-white border-0 hover:bg-blue-800",
+    secondary: "bg-gray-100 text-gray-800 border-0 hover:bg-gray-200",
+    danger:    "bg-red-500 text-white border-0 hover:bg-red-600",
+    outline:   "bg-transparent text-gray-600 border border-gray-300 hover:bg-gray-50",
+};
+
+const SIZE_CLASSES: Record<OpsButtonSize, string> = {
+    sm: "px-2 py-1 text-xs min-h-[32px]",
+    md: "px-4 py-2 text-sm min-h-[44px]",
+    lg: "px-6 py-3 text-base min-h-[44px]",
+};
 
 export function OpsButton({
     variant = "primary",
@@ -19,84 +35,24 @@ export function OpsButton({
     onClick,
     disabled,
     children,
+    className,
     style,
     type = "button",
 }: OpsButtonProps) {
-    const getVariantStyles = (v: OpsButtonVariant) => {
-        switch (v) {
-            case "primary":
-                return {
-                    bg: "#2b6cb0",
-                    color: "white",
-                    border: "none",
-                    hover: "#2c5282",
-                };
-            case "secondary":
-                return {
-                    bg: "#edf2f7",
-                    color: "#2d3748",
-                    border: "none",
-                    hover: "#e2e8f0",
-                };
-            case "danger":
-                return {
-                    bg: "#e53e3e",
-                    color: "white",
-                    border: "none",
-                    hover: "#c53030",
-                };
-            case "outline":
-                return {
-                    bg: "transparent",
-                    color: "#4a5568",
-                    border: "1px solid #cbd5e0",
-                    hover: "#f7fafc",
-                };
-            default:
-                return {};
-        }
-    };
-
-    const getSizeStyles = (s: OpsButtonSize) => {
-        switch (s) {
-            case "sm":
-                return { padding: "0.25rem 0.5rem", fontSize: "0.75rem" };
-            case "lg":
-                return { padding: "0.75rem 1.5rem", fontSize: "1rem" };
-            default:
-                return { padding: "0.5rem 1rem", fontSize: "0.875rem" };
-        }
-    };
-
-    const vStyle = getVariantStyles(variant) as any;
-    const sStyle = getSizeStyles(size);
-
     return (
         <button
             type={type}
             onClick={onClick}
             disabled={disabled}
-            style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 600,
-                borderRadius: "6px",
-                cursor: disabled ? "not-allowed" : "pointer",
-                opacity: disabled ? 0.6 : 1,
-                transition: "all 0.2s",
-                backgroundColor: vStyle.bg,
-                color: vStyle.color,
-                border: vStyle.border,
-                ...sStyle,
-                ...style,
-            }}
-            onMouseEnter={(e) => {
-                if (!disabled) e.currentTarget.style.backgroundColor = vStyle.hover;
-            }}
-            onMouseLeave={(e) => {
-                if (!disabled) e.currentTarget.style.backgroundColor = vStyle.bg;
-            }}
+            className={cn(
+                "inline-flex items-center justify-center font-semibold rounded-md transition-colors",
+                VARIANT_CLASSES[variant],
+                SIZE_CLASSES[size],
+                disabled && "opacity-60 cursor-not-allowed",
+                !disabled && "cursor-pointer",
+                className
+            )}
+            style={style}
         >
             {children}
         </button>
