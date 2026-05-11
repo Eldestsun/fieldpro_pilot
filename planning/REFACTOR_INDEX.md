@@ -101,6 +101,8 @@ Wire `core.assignments` into the write path so that every route run stop executi
 
 Load-bearing. Must wait until Tier 1 is confirmed stable — specifically, visit creation must be reliably triggered on stop-start before assignments can be linked.
 
+Status: Complete — changelog written 2026-05-10. Change 2 (assignment_id on new visits) verified structurally. Runtime verification (live stop-start on a post-Tier-5 route) requires Entra auth — deferred to first authenticated field session. SQL lookup pattern identical to verified Change 1 join.
+
 ---
 
 ### Tier 6 — Infrastructure

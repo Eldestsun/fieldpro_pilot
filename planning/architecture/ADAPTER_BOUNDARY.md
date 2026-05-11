@@ -100,7 +100,7 @@ Tables in `public.*` that carry operational meaning for the transit vertical. Th
 |-------|------|
 | `transit_stops` | Source of truth for transit stop metadata (stop_id text, coordinates, names). The transit stop identifier lives here. |
 | `transit_stop_assets` | Maps transit `stop_id` (text) → canonical `assets.id`. The translation table between vertical identity and canonical identity. |
-| `assets` | Shared table (public schema, canonical FK target). Transit stops are represented as asset rows. |
+| `assets` | Shared table (public schema, canonical FK target). Transit stops are represented as asset rows. Also the source of `org_id` for canonical writes — `core.assignments` and `core.visits` both derive `org_id` by joining `route_run_stops → assets.org_id`. Schema: `id bigint PK`, `org_id bigint NOT NULL FK→organizations`, `asset_type_id bigint NOT NULL`, `seed_key text NOT NULL` (unique with org_id+type), `lon/lat float`, `display_name text`, `active bool`. |
 | `route_runs` | A planned or active route for a given date and pool. Transit workflow artifact. |
 | `route_run_stops` | One row per stop on a route run. The transit execution unit. Has `stop_id` (text FK → transit_stops), `asset_id` (FK → assets). |
 | `clean_logs` | Boolean action log: what a worker *did* at a stop. Has `route_run_stop_id`, `stop_id`, `visit_id`, `asset_id`. Transit adapter bridge into canonical visits. |
@@ -114,6 +114,31 @@ Tables in `public.*` that carry operational meaning for the transit vertical. Th
 | `trash_volume_logs` | Trash volume records. Has `route_run_stop_id`, `visit_id`. |
 | `lead_route_overrides` | Lead-driven stop reassignment overrides. |
 | `route_run_audit` | Audit log for route run mutations. |
+
+---
+
+## 2b. Bridge Views
+
+Views in the `core` schema that translate transit-vertical identifiers into canonical identifiers. These are one-hop translation surfaces — they are tolerated at the adapter boundary but must not be embedded as join hops inside canonical intelligence queries.
+
+### `core.v_locations_transit`
+
+A read-only view that maps transit `stop_id` (text) to the corresponding `core.locations.id`. Used wherever a canonical write needs a `location_id` but only has a transit `stop_id` available.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `location_id` | bigint | `core.locations.id` — the canonical location FK |
+| `org_id` | bigint | Organization the location belongs to |
+| `location_type` | text | e.g. `'transit_stop'` |
+| `label` | text | Human-readable stop label |
+| `lon` | double precision | Longitude |
+| `lat` | double precision | Latitude |
+| `source_system` | text | e.g. `'transit'` |
+| `stop_id` | text | Transit stop identifier (the join key from the adapter side) |
+
+**Usage in Tier 5**: The `core.assignments` INSERT joins `route_run_stops → core.v_locations_transit ON loc.stop_id = rrs.stop_id` to populate `location_id`. Verified 2026-05-10 — all 4 test stops resolved correctly (`has_location = t`).
+
+**Classification**: Tolerated bridge — one adapter lookup, not an embedded join hop inside a canonical query. The same one-hop translation rule applies as for `transit_stop_assets`.
 
 ---
 
