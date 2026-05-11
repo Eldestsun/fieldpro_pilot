@@ -136,7 +136,7 @@ The primary mobile surface. A UL worker sees this all day.
 
 ---
 
-### Surface 3 — UL Worker — Stop Wizard ← next
+### Surface 3 — UL Worker — Stop Wizard ✅ 2026-05-11
 
 **Files**: `frontend/src/components/today-route/StopDetail.tsx`, `StopChecklist.tsx`
 
@@ -200,23 +200,24 @@ Desktop-primary. Operational real-time view.
 R5 is complete when ALL of the following are true across all six surfaces, **and a changelog entry has been written**:
 
 - [ ] Zero inline `style={{}}` props remain in any component (App.tsx or below)
-  - ✅ App.tsx, UlLayout, RouteHeader, StopList, StopListItem, TodayRouteView done
+  - ✅ App.tsx, UlLayout, RouteHeader, StopList, StopListItem, TodayRouteView, StopChecklist, StopDetail done
   - One documented exception: `RouteHeader.tsx` progress bar `style={{ width: \`${progress}%\` }}` — dynamic runtime value, cannot be a static Tailwind class
-  - One component-API pass-through: `TodayRouteView` passes `style` prop to `ULRouteMap` — not a DOM inline style
+  - One component-API pass-through: `StopDetail` passes `style` prop to `ULRouteMap` — not a DOM inline style
 - [ ] shadcn/ui component library initialized and in use
   - ✅ `cn()` utility live; manual component extraction approach confirmed (CLI not used — v4 incompatibility)
 - [x] Design tokens defined and applied consistently — `src/styles/tokens.css` live
-- [ ] All six surfaces rebuilt to spec — Surfaces 1–2 done, 3–6 remaining
+- [ ] All six surfaces rebuilt to spec — Surfaces 1–3 done, 4–6 remaining
 - [ ] Every surface has explicit loading, empty, and error states
   - ✅ Surfaces 1–2: skeleton loading, styled error, empty state with CTA
+  - ✅ Surface 3: all wizard states styled (not-started, read-only, wizard flow with sync/resume/modal states)
 - [ ] UL stop list and stop wizard are fully usable on a 375px mobile viewport
   - ✅ Stop list: verified at 375px, 44px touch targets, semantic badges
-  - [ ] Stop wizard: Surface 3 not started
+  - ✅ Stop wizard: 44px touch targets throughout, modal overlays, mobile-first card layout
 - [ ] Lead routes panel is usable on a 768px tablet viewport — Surface 4 not started
 - [ ] Admin views are usable on a 1280px desktop viewport — Surfaces 5–6 not started
 - [x] No worker-identifying UI elements on any surface
 - [ ] Changelog entry written to `docs/changelog/YYYY-MM-DD-r5-enterprise-ui.md`
-  - ✅ Per-surface changelogs written: `2026-05-10-r5-surface1-app-shell.md`, `2026-05-10-r5-surface2-stop-list.md`
+  - ✅ Per-surface changelogs written: `2026-05-10-r5-surface1-app-shell.md`, `2026-05-10-r5-surface2-stop-list.md`, `2026-05-11-r5-surface3-stop-wizard.md`
   - Final consolidated entry to be written when all surfaces are done
 
 ---
@@ -227,31 +228,9 @@ Each surface is a separate agent session.
 
 ### Surface 1 — App Shell ✅ done 2026-05-10
 ### Surface 2 — UL Stop List ✅ done 2026-05-10
+### Surface 3 — Stop Wizard ✅ done 2026-05-11
 
-### Surface 3 — Stop Wizard ← start here
-```
-Refinement task. Read CLAUDE.md, then planning/REFINEMENT_R5_ENTERPRISE_UI.md, Surface 3 only.
-
-Primary files:
-  frontend/src/components/today-route/StopDetail.tsx
-  frontend/src/components/today-route/StopChecklist.tsx
-
-Infrastructure already in place — do not reinstall:
-  - Tailwind v4 via @tailwindcss/vite (vite.config.ts)
-  - Design tokens: src/styles/tokens.css
-  - cn() utility: src/lib/utils.ts
-  - No shadcn CLI — copy components manually if needed
-
-Constraints:
-  - Zero inline style={{}} props — Tailwind only
-  - Use cn() for conditional classes
-  - Min 44px touch targets on all interactive elements
-  - Do not change wizard step logic, state, or API calls
-  - Do not start Surface 4 in this session
-  - Write changelog entry before marking done
-```
-
-### Surface 4 — Lead Routes Panel
+### Surface 4 — Lead Routes Panel ← next
 ```
 Refinement task. Read CLAUDE.md, then planning/REFINEMENT_R5_ENTERPRISE_UI.md, Surface 4 only.
 Primary files: LeadRoutesPanel.tsx, LeadRouteDetail.tsx, RouteSummary.tsx, RouteCreatePanel.tsx.

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { cn } from "../../lib/utils";
 import type { Stop, ChecklistState, InfraIssuePayload, PhotoDto } from "../../api/routeRuns";
 import type { SafetyState, InfraState } from "../../hooks/useTodayRoute";
 import { formatStopLocation } from "../../utils/formatStopLocation";
@@ -398,38 +399,24 @@ export function StopDetail({
         <button
             type="button"
             onClick={() => onToggleHotspot(!stop.is_hotspot)}
-            style={{
-                display: "inline-flex",
-                alignItems: "center",
-                padding: "0.3rem 0.9rem",
-                borderRadius: "9999px",
-                fontSize: "0.875rem",
-                fontWeight: 500,
-                lineHeight: 1.1,
-                border: stop.is_hotspot ? "1px solid #2f855a" : "1px solid #d69e2e",
-                background: stop.is_hotspot ? "#f0fff4" : "#fffaf0",
-                color: stop.is_hotspot ? "#2f855a" : "#975a16",
-                cursor: "pointer",
-            }}
+            className={cn(
+                "inline-flex items-center px-4 py-2 rounded-full text-sm font-medium min-h-[44px] transition-colors",
+                stop.is_hotspot
+                    ? "bg-green-50 border border-green-600 text-green-700"
+                    : "bg-amber-50 border border-amber-400 text-amber-800",
+            )}
         >
             {stop.is_hotspot ? "🔥 Hotspot" : "Mark Hotspot"}
         </button>
     );
 
     // 1. Not Started View
-    // 1. Not Started View
     if (!effectiveHasStartedThisStop && !isReadOnly) {
         return (
             <UlLayout>
                 <button
                     onClick={onBack}
-                    style={{
-                        marginBottom: "1rem",
-                        background: "none",
-                        border: "none",
-                        color: "#3182ce",
-                        cursor: "pointer",
-                    }}
+                    className="mb-4 text-blue-600 font-medium hover:text-blue-800 transition-colors"
                 >
                     ← Back to Route
                 </button>
@@ -471,16 +458,9 @@ export function StopDetail({
                     };
 
                     return (
-                        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+                        <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6">
                             {/* MAP HERO */}
-                            <div
-                                style={{
-                                    position: "relative",
-                                    width: "100%",
-                                    height: 240,
-                                    background: "#f7fafc",
-                                }}
-                            >
+                            <div className="relative w-full h-60 bg-gray-50">
                                 {hasCoords ? (
                                     <ULRouteMap
                                         stops={[mapStop as any]}
@@ -497,47 +477,20 @@ export function StopDetail({
                                         }}
                                     />
                                 ) : (
-                                    <div
-                                        style={{
-                                            height: "100%",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            justifyContent: "center",
-                                            color: "#a0aec0",
-                                            fontSize: "0.95rem",
-                                        }}
-                                    >
+                                    <div className="h-full flex items-center justify-center text-gray-400 text-sm">
                                         Map unavailable for this stop
                                     </div>
                                 )}
 
                                 {/* STATUS OVERLAY */}
-                                <div
-                                    style={{
-                                        position: "absolute",
-                                        top: 14,
-                                        left: 14,
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: 10,
-                                        padding: "10px 14px",
-                                        borderRadius: 9999,
-                                        background: "rgba(255,255,255,0.92)",
-                                        boxShadow: "0 6px 20px rgba(0,0,0,0.12)",
-                                        backdropFilter: "blur(6px)",
-                                    }}
-                                >
-                                    <span
-                                        style={{
-                                            width: 10,
-                                            height: 10,
-                                            borderRadius: 9999,
-                                            background: normalizedStatus === "in_progress" ? "#3182ce" : "#d69e2e",
-                                        }}
-                                    />
-                                    <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                                        <span style={{ fontWeight: 700, color: "#111827" }}>Status:</span>
-                                        <span style={{ letterSpacing: 0.2, color: "#111827" }}>
+                                <div className="absolute top-3.5 left-3.5 flex items-center gap-2.5 px-3.5 py-2.5 rounded-full bg-white/90 shadow-lg backdrop-blur-sm">
+                                    <span className={cn(
+                                        "w-2.5 h-2.5 rounded-full",
+                                        normalizedStatus === "in_progress" ? "bg-blue-500" : "bg-amber-400"
+                                    )} />
+                                    <div className="flex items-baseline gap-1.5">
+                                        <span className="font-bold text-gray-900">Status:</span>
+                                        <span className="text-gray-900 tracking-wide">
                                             {(stop.status || "pending").toUpperCase()}
                                         </span>
                                     </div>
@@ -548,82 +501,26 @@ export function StopDetail({
                                     type="button"
                                     onClick={openGoogleMaps}
                                     disabled={!hasCoords}
-                                    style={{
-                                        position: "absolute",
-                                        left: "50%",
-                                        bottom: 14,
-                                        transform: "translateX(-50%)",
-                                        padding: "10px 14px",
-                                        borderRadius: 9999,
-                                        border: "1px solid rgba(17,24,39,0.10)",
-                                        background: "rgba(255,255,255,0.92)",
-                                        color: hasCoords ? "#374151" : "#9ca3af",
-                                        fontWeight: 700,
-                                        cursor: hasCoords ? "pointer" : "not-allowed",
-                                        boxShadow: "0 6px 20px rgba(0,0,0,0.12)",
-                                        backdropFilter: "blur(6px)",
-                                    }}
+                                    className={cn(
+                                        "absolute left-1/2 -translate-x-1/2 bottom-3.5 px-4 py-2.5 rounded-full bg-white/90 shadow-lg backdrop-blur-sm border border-black/10 font-bold text-sm min-h-[44px] transition-colors",
+                                        hasCoords ? "text-gray-700 cursor-pointer hover:bg-white" : "text-gray-400 cursor-not-allowed"
+                                    )}
                                 >
                                     Navigate to Stop
                                 </button>
                             </div>
 
                             {/* CONTENT */}
-                            <div style={{ padding: 24 }}>
-                                <div
-                                    style={{
-                                        display: "flex",
-                                        justifyContent: "space-between",
-                                        alignItems: "flex-start",
-                                        gap: 16,
-                                        marginBottom: 10,
-                                    }}
-                                >
-                                    <div>
-                                        <div
-                                            style={{
-                                                fontSize: 14,
-                                                color: "#6b7280",
-                                                fontWeight: 700,
-                                                marginBottom: 6,
-                                            }}
-                                        >
-                                            Stop {stop.stopNumber}
-                                        </div>
-                                        <div
-                                            style={{
-                                                fontSize: 28,
-                                                lineHeight: 1.15,
-                                                fontWeight: 800,
-                                                color: "#111827",
-                                            }}
-                                        >
-                                            {locationString}
-                                        </div>
-                                    </div>
+                            <div className="p-6">
+                                <div className="mb-2.5">
+                                    <p className="text-sm text-gray-500 font-bold mb-1.5">Stop {stop.stopNumber}</p>
+                                    <h2 className="text-3xl font-extrabold text-gray-900 leading-tight">{locationString}</h2>
                                 </div>
 
-                                <div
-                                    style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: 10,
-                                        marginBottom: 18,
-                                        flexWrap: "wrap",
-                                    }}
-                                >
+                                <div className="flex items-center gap-2.5 mb-5 flex-wrap">
                                     {renderHotspotToggle()}
                                     {stop.compactor && (
-                                        <span
-                                            style={{
-                                                background: "#e0f2fe",
-                                                color: "#075985",
-                                                padding: "0.25rem 0.5rem",
-                                                borderRadius: "9999px",
-                                                fontSize: "0.8rem",
-                                                fontWeight: 700,
-                                            }}
-                                        >
+                                        <span className="bg-sky-100 text-sky-800 px-3 py-1 rounded-full text-sm font-bold">
                                             Compactor
                                         </span>
                                     )}
@@ -632,14 +529,14 @@ export function StopDetail({
                                 <button
                                     onClick={onStartStop}
                                     disabled={isCompletingStop || isStartQueued}
-                                    className="btn-primary"
-                                    style={{
-                                        fontSize: "1.15rem",
-                                        width: "100%",
-                                        opacity: (isCompletingStop || isStartQueued) ? 0.6 : 1
-                                    }}
+                                    className={cn(
+                                        "w-full py-4 rounded-xl text-lg font-bold text-white min-h-[44px] transition-colors",
+                                        (isCompletingStop || isStartQueued)
+                                            ? "bg-blue-300 cursor-not-allowed"
+                                            : "bg-blue-700 hover:bg-blue-800 cursor-pointer"
+                                    )}
                                 >
-                                    {isStartQueued ? "Start Queued..." : "Start Stop"}
+                                    {isStartQueued ? "Start Queued…" : "Start Stop"}
                                 </button>
                             </div>
                         </div>
@@ -651,100 +548,112 @@ export function StopDetail({
 
     // 2. Read Only View (Done/Skipped)
     if (isReadOnly) {
+        const isSkipped = stop.status === "skipped";
         return (
             <UlLayout>
-                <button onClick={onBack} style={{ marginBottom: "1rem", background: "none", border: "none", color: "#3182ce", cursor: "pointer" }}>
+                <button
+                    onClick={onBack}
+                    className="mb-4 bg-transparent border-0 text-blue-600 cursor-pointer font-medium min-h-[44px] flex items-center"
+                >
                     ← Back to Route
                 </button>
-                <div className="card">
-                    <h2 style={{ marginTop: 0 }}>Stop {stop.stopNumber} — {locationString}</h2>
-                    <div style={{ margin: "1rem 0", padding: "1rem", background: stop.status === "skipped" ? "#fff5f5" : "#f0fff4", borderRadius: "8px", border: `1px solid ${stop.status === "skipped" ? "#feb2b2" : "#9ae6b4"}` }}>
-                        <h3 style={{ marginTop: 0, color: stop.status === "skipped" ? "#c53030" : "#2f855a" }}>
-                            {stop.status === "skipped" ? "⚠ Skipped" : "✓ Completed"}
+                <div className="bg-white rounded-xl shadow-md p-6">
+                    <h2 className="mt-0 mb-4 text-xl font-bold text-gray-900">
+                        Stop {stop.stopNumber} — {locationString}
+                    </h2>
+
+                    {/* Status banner */}
+                    <div className={cn(
+                        "my-4 p-4 rounded-lg border",
+                        isSkipped
+                            ? "bg-red-50 border-red-200"
+                            : "bg-green-50 border-green-200"
+                    )}>
+                        <h3 className={cn(
+                            "mt-0 mb-1 font-semibold flex items-center gap-2",
+                            isSkipped ? "text-red-700" : "text-green-700"
+                        )}>
+                            {isSkipped ? "⚠ Skipped" : "✓ Completed"}
                             {renderHotspotToggle()}
                         </h3>
-                        {stop.status === "skipped" && <p>Reason: {safety?.hazardTypes?.join(", ") || "Safety Concern"}</p>}
+                        {isSkipped && (
+                            <p className="m-0 text-sm text-red-700">
+                                Reason: {safety?.hazardTypes?.join(", ") || "Safety Concern"}
+                            </p>
+                        )}
                     </div>
 
                     {/* Safety Summary */}
-                    {isReadOnly && (
-                        <div style={{ marginTop: "1rem", borderTop: "1px solid #e2e8f0", paddingTop: "1rem" }}>
-                            <h3 style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.5rem", marginTop: 0 }}>Safety</h3>
-
-                            {safety?.hasConcern ? (
-                                <div style={{ fontSize: "0.875rem" }}>
-                                    <div style={{ marginBottom: "0.25rem" }}>
-                                        <span style={{ fontWeight: 500 }}>Concerns:</span>{" "}
-                                        {safety.hazardTypes?.join(", ") ?? "Reported"}
-                                    </div>
-                                    {safety.severity && (
-                                        <div style={{ marginBottom: "0.25rem" }}>
-                                            <span style={{ fontWeight: 500 }}>Severity:</span>{" "}
-                                            {safety.severity}
-                                        </div>
-                                    )}
-                                    {safety.notes && (
-                                        <div style={{ marginBottom: "0.25rem" }}>
-                                            <span style={{ fontWeight: 500 }}>Notes:</span>{" "}
-                                            {safety.notes}
-                                        </div>
-                                    )}
-                                    {stop.status === "skipped" && (
-                                        <div style={{ fontSize: "0.75rem", color: "#c53030", marginTop: "0.25rem" }}>
-                                            This stop was skipped for safety.
-                                        </div>
-                                    )}
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                        <h3 className="text-sm font-semibold mb-2 mt-0 text-gray-700">Safety</h3>
+                        {safety?.hasConcern ? (
+                            <div className="text-sm text-gray-700 flex flex-col gap-1">
+                                <div>
+                                    <span className="font-medium">Concerns:</span>{" "}
+                                    {safety.hazardTypes?.join(", ") ?? "Reported"}
                                 </div>
-                            ) : (
-                                <p style={{ fontSize: "0.875rem", color: "#718096", margin: 0 }}>
-                                    No safety concerns reported.
-                                </p>
-                            )}
-                        </div>
-                    )}
+                                {safety.severity && (
+                                    <div>
+                                        <span className="font-medium">Severity:</span>{" "}
+                                        {safety.severity}
+                                    </div>
+                                )}
+                                {safety.notes && (
+                                    <div>
+                                        <span className="font-medium">Notes:</span>{" "}
+                                        {safety.notes}
+                                    </div>
+                                )}
+                                {isSkipped && (
+                                    <div className="text-xs text-red-600 mt-1">
+                                        This stop was skipped for safety.
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <p className="text-sm text-gray-400 m-0">No safety concerns reported.</p>
+                        )}
+                    </div>
 
                     {/* Infra Summary */}
-                    {isReadOnly && (
-                        <div style={{ marginTop: "1rem", borderTop: "1px solid #e2e8f0", paddingTop: "1rem" }}>
-                            <h3 style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: "0.5rem", marginTop: 0 }}>Infrastructure</h3>
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                        <h3 className="text-sm font-semibold mb-2 mt-0 text-gray-700">Infrastructure</h3>
+                        {infra?.issues && infra.issues.length > 0 ? (
+                            <ul className="text-sm pl-5 m-0 flex flex-col gap-1">
+                                {infra.issues.map((issue, idx) => (
+                                    <li key={idx}>
+                                        <span className="font-medium">{issue.issue_type ?? "Issue"}</span>
+                                        {issue.component && ` • Component: ${issue.component}`}
+                                        {issue.cause && ` • Cause: ${issue.cause}`}
+                                        {infra.notes && (
+                                            <>
+                                                <br />
+                                                <span className="font-medium">Notes:</span>{" "}
+                                                {infra.notes}
+                                            </>
+                                        )}
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <p className="text-sm text-gray-400 m-0">No infrastructure issues reported.</p>
+                        )}
+                    </div>
 
-                            {infra?.issues && infra.issues.length > 0 ? (
-                                <ul style={{ fontSize: "0.875rem", paddingLeft: "1.2rem", margin: 0 }}>
-                                    {infra.issues.map((issue, idx) => (
-                                        <li key={idx} style={{ marginBottom: "0.25rem" }}>
-                                            <span style={{ fontWeight: 500 }}>
-                                                {issue.issue_type ?? "Issue"}
-                                            </span>
-                                            {issue.component && ` • Component: ${issue.component}`}
-                                            {issue.cause && ` • Cause: ${issue.cause}`}
-                                            {infra.notes && (
-                                                <>
-                                                    <br />
-                                                    <span style={{ fontWeight: 500 }}>Notes:</span>{" "}
-                                                    {infra.notes}
-                                                </>
-                                            )}
-                                        </li>
-                                    ))}
-                                </ul>
-                            ) : (
-                                <p style={{ fontSize: "0.875rem", color: "#718096", margin: 0 }}>
-                                    No infrastructure issues reported.
-                                </p>
-                            )}
-                        </div>
-                    )}
-                    {/* Show Checklist Summary if not skipped */}
+                    {/* Tasks Completed */}
                     {stop.status === "done" && (
-                        <div style={{ marginTop: "1.5rem" }}>
-                            <h4>Tasks Completed</h4>
-                            <div style={{ display: "grid", gap: "0.5rem" }}>
+                        <div className="mt-6 pt-4 border-t border-gray-200">
+                            <h4 className="text-sm font-semibold mb-3 mt-0 text-gray-700">Tasks Completed</h4>
+                            <div className="flex flex-col gap-2">
                                 {CHECKLIST_ITEMS.map((item) => (
-                                    <div key={item.key} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                                        <span style={{ color: checklist[item.key] ? "#48bb78" : "#a0aec0" }}>
+                                    <div key={item.key} className="flex items-center gap-2">
+                                        <span className={checklist[item.key] ? "text-green-500" : "text-gray-300"}>
                                             {checklist[item.key] ? "✓" : "○"}
                                         </span>
-                                        <span style={{ color: checklist[item.key] ? "#2d3748" : "#a0aec0", textDecoration: checklist[item.key] ? "none" : "line-through" }}>
+                                        <span className={cn(
+                                            "text-sm",
+                                            checklist[item.key] ? "text-gray-800" : "text-gray-400 line-through"
+                                        )}>
                                             {item.label}
                                         </span>
                                     </div>
@@ -762,30 +671,26 @@ export function StopDetail({
     const currentStepIndex = steps.indexOf(currentStep);
 
     const _renderProgressBar = () => (
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1.5rem", padding: "0 1rem" }}>
+        <div className="flex justify-between mb-6 px-4">
             {steps.map((step, index) => {
                 const isActive = index === currentStepIndex;
                 const isCompleted = index < currentStepIndex;
-                let label = step.charAt(0).toUpperCase() + step.slice(1);
+                const label = step.charAt(0).toUpperCase() + step.slice(1);
 
                 return (
-                    <div key={step} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1 }}>
-                        <div style={{
-                            width: "30px",
-                            height: "30px",
-                            borderRadius: "50%",
-                            background: isActive ? "#3182ce" : isCompleted ? "#48bb78" : "#e2e8f0",
-                            color: isActive || isCompleted ? "white" : "#718096",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontWeight: "bold",
-                            marginBottom: "0.25rem",
-                            fontSize: "0.8rem"
-                        }}>
+                    <div key={step} className="flex flex-col items-center flex-1">
+                        <div className={cn(
+                            "w-8 h-8 rounded-full flex items-center justify-center font-bold mb-1 text-xs",
+                            isActive ? "bg-blue-600 text-white"
+                                : isCompleted ? "bg-green-500 text-white"
+                                    : "bg-gray-200 text-gray-500"
+                        )}>
                             {isCompleted ? "✓" : index + 1}
                         </div>
-                        <span style={{ fontSize: "0.75rem", color: isActive ? "#2d3748" : "#a0aec0", fontWeight: isActive ? "bold" : "normal" }}>
+                        <span className={cn(
+                            "text-xs",
+                            isActive ? "text-gray-800 font-bold" : "text-gray-400"
+                        )}>
                             {label}
                         </span>
                     </div>
@@ -856,28 +761,26 @@ export function StopDetail({
 
     return (
         <UlLayout>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-                <button onClick={onBack} style={{ background: "none", border: "none", color: "#718096", cursor: "pointer" }}>
+            <div className="flex justify-between items-center mb-4">
+                <button
+                    onClick={onBack}
+                    className="bg-transparent border-0 text-gray-500 cursor-pointer min-h-[44px] flex items-center font-medium"
+                >
                     ← Back
                 </button>
-                <div style={{ fontSize: "0.9rem", color: "#718096" }}>
+                <div className="text-sm text-gray-500 font-medium">
                     Stop {stop.stopNumber}
                 </div>
             </div>
 
-            <h2 style={{ marginTop: 0, marginBottom: "0.5rem", textAlign: "center" }}>{locationString}</h2>
+            <h2 className="mt-0 mb-2 text-center text-xl font-bold text-gray-900">{locationString}</h2>
 
             {showResumeBanner && (
-                <div style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    padding: "0.65rem 1rem", marginBottom: "0.75rem",
-                    background: "#ebf8ff", border: "1px solid #90cdf4", borderRadius: "8px",
-                    fontSize: "0.875rem", color: "#2b6cb0",
-                }}>
+                <div className="flex items-center justify-between px-4 py-2.5 mb-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
                     <span>↩ Resume from where you left off</span>
                     <button
                         onClick={handleDismissResumeBanner}
-                        style={{ background: "none", border: "none", color: "#2b6cb0", cursor: "pointer", fontWeight: "bold", fontSize: "1rem", padding: "0 0.25rem" }}
+                        className="bg-transparent border-0 text-blue-700 cursor-pointer font-bold text-base px-1 min-h-[44px] flex items-center"
                     >
                         ✕
                     </button>
@@ -885,56 +788,32 @@ export function StopDetail({
             )}
 
             {(stop as any).syncState === "queued" && (
-                <div style={{ color: '#ff9800', fontSize: '0.85rem', marginBottom: '8px', textAlign: 'center' }}>
+                <div className="text-amber-600 text-sm mb-2 text-center">
                     This stop will sync when you're back online.
                 </div>
             )}
             {(stop as any).syncState === "conflict" && (
-                <div style={{ color: '#f44336', fontSize: '0.85rem', marginBottom: '8px', textAlign: 'center' }}>
+                <div className="text-red-600 text-sm mb-2 text-center">
                     There was an issue syncing this stop. Server truth will reload when online.
                 </div>
             )}
             {queuedUploadCount > 0 && (
-                <div style={{
-                    color: '#dd6b20',
-                    fontSize: '0.85rem',
-                    marginBottom: '8px',
-                    textAlign: 'center',
-                    fontWeight: 500
-                }}>
+                <div className="text-orange-600 text-sm mb-2 text-center font-medium">
                     📷 {queuedUploadCount} photo{queuedUploadCount > 1 ? 's' : ''} queued for upload
                 </div>
             )}
 
             {/* Top Controls: Report Buttons */}
-            <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem" }}>
+            <div className="flex gap-3 mb-4">
                 <button
                     onClick={() => setIsReportSafetyOpen(!isReportSafetyOpen)}
-                    style={{
-                        flex: 1,
-                        padding: "0.75rem",
-                        background: "#fffaf0",
-                        border: "1px solid #ed8936",
-                        color: "#c05621",
-                        borderRadius: "8px",
-                        fontWeight: "bold",
-                        display: "flex", justifyContent: "center", alignItems: "center", gap: "0.5rem"
-                    }}
+                    className="flex-1 py-3 px-3 bg-orange-50 border border-orange-400 text-orange-700 rounded-lg font-bold flex justify-center items-center gap-2 min-h-[44px] cursor-pointer"
                 >
                     ⚠️ REPORT SAFETY
                 </button>
                 <button
                     onClick={() => setIsReportInfraOpen(!isReportInfraOpen)}
-                    style={{
-                        flex: 1,
-                        padding: "0.75rem",
-                        background: "#ebf8ff",
-                        border: "1px solid #4299e1",
-                        color: "#2b6cb0",
-                        borderRadius: "8px",
-                        fontWeight: "bold",
-                        display: "flex", justifyContent: "center", alignItems: "center", gap: "0.5rem"
-                    }}
+                    className="flex-1 py-3 px-3 bg-blue-50 border border-blue-400 text-blue-700 rounded-lg font-bold flex justify-center items-center gap-2 min-h-[44px] cursor-pointer"
                 >
                     🏗 REPORT INFRASTRUCTURE
                 </button>
@@ -942,27 +821,27 @@ export function StopDetail({
 
             {/* Safety Modal */}
             {isReportSafetyOpen && (
-                <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: "1rem" }}>
-                    <div style={{ background: "white", width: "100%", maxWidth: "500px", maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden", borderRadius: "12px", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
+                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-[2000] p-4">
+                    <div className="bg-white w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden rounded-xl shadow-2xl">
                         {/* Header */}
-                        <div style={{ padding: "1rem", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f7fafc" }}>
-                            <h3 style={{ margin: 0, color: "#c05621" }}>Report Safety Concern</h3>
+                        <div className="px-4 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                            <h3 className="m-0 text-orange-700 font-bold text-lg">Report Safety Concern</h3>
                             <button
                                 onClick={() => setIsReportSafetyOpen(false)}
-                                style={{ background: "none", border: "none", fontSize: "1.5rem", color: "#718096", cursor: "pointer", padding: "0 0.5rem" }}
+                                className="bg-transparent border-0 text-2xl text-gray-500 cursor-pointer px-2 min-h-[44px] flex items-center"
                             >
                                 ✕
                             </button>
                         </div>
 
-                        <div style={{ padding: "1.5rem", flex: 1, overflowY: "auto" }}>
-                            <div style={{ marginBottom: "1rem", background: "#fff5f5", padding: "1rem", borderRadius: "8px", border: "1px solid #feb2b2" }}>
-                                <p style={{ marginTop: 0, color: "#c53030", fontWeight: "bold" }}>Is there a safety issue preventing work?</p>
-                                <p style={{ margin: 0, fontSize: "0.9rem", color: "#e53e3e" }}>Select hazards below. If unsafe to work, you can Skip Stop.</p>
+                        <div className="p-6 flex-1 overflow-y-auto">
+                            <div className="mb-4 bg-red-50 p-4 rounded-lg border border-red-200">
+                                <p className="mt-0 text-red-700 font-bold">Is there a safety issue preventing work?</p>
+                                <p className="m-0 text-sm text-red-600">Select hazards below. If unsafe to work, you can Skip Stop.</p>
                             </div>
 
-                            <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "bold" }}>Hazards (Required):</label>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "1.5rem" }}>
+                            <label className="block mb-2 font-bold text-gray-700">Hazards (Required):</label>
+                            <div className="grid grid-cols-2 gap-2 mb-6">
                                 {[
                                     { val: "encampment", label: "Encampment" },
                                     { val: "fire", label: "Fire" },
@@ -972,35 +851,38 @@ export function StopDetail({
                                     { val: "biohazard", label: "Biohazard" },
                                     { val: "traffic", label: "Traffic / Access" },
                                     { val: "other", label: "Other" },
-                                ].map((opt) => (
-                                    <label
-                                        key={opt.val}
-                                        style={{
-                                            display: "flex", alignItems: "center", padding: "0.75rem",
-                                            background: localSafety.hazardTypes?.includes(opt.val) ? "#fff5f5" : "white",
-                                            border: `1px solid ${localSafety.hazardTypes?.includes(opt.val) ? "#c53030" : "#e2e8f0"}`,
-                                            borderRadius: "8px", fontSize: "0.9rem", transition: "all 0.2s"
-                                        }}
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={localSafety.hazardTypes?.includes(opt.val) || false}
-                                            onChange={(e) => {
-                                                const current = localSafety.hazardTypes || [];
-                                                const next = e.target.checked ? [...current, opt.val] : current.filter((h) => h !== opt.val);
-                                                setLocalSafety(prev => ({ ...prev, hazardTypes: next }));
-                                            }}
-                                            style={{ marginRight: "0.75rem", transform: "scale(1.2)" }}
-                                        />
-                                        {opt.label}
-                                    </label>
-                                ))}
+                                ].map((opt) => {
+                                    const isChecked = localSafety.hazardTypes?.includes(opt.val) || false;
+                                    return (
+                                        <label
+                                            key={opt.val}
+                                            className={cn(
+                                                "flex items-center p-3 rounded-lg text-sm transition-colors min-h-[44px] cursor-pointer",
+                                                isChecked
+                                                    ? "bg-red-50 border border-red-600"
+                                                    : "bg-white border border-gray-200"
+                                            )}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={isChecked}
+                                                onChange={(e) => {
+                                                    const current = localSafety.hazardTypes || [];
+                                                    const next = e.target.checked ? [...current, opt.val] : current.filter((h) => h !== opt.val);
+                                                    setLocalSafety(prev => ({ ...prev, hazardTypes: next }));
+                                                }}
+                                                className="w-5 h-5 mr-3 shrink-0 accent-red-600"
+                                            />
+                                            {opt.label}
+                                        </label>
+                                    );
+                                })}
                             </div>
 
-                            <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "bold" }}>Safety Photo (For Skipping):</label>
-                            <div style={{ marginBottom: "1.5rem" }}>
+                            <label className="block mb-2 font-bold text-gray-700">Safety Photo (For Skipping):</label>
+                            <div className="mb-6">
                                 <input
-                                    type="file" accept="image/*" id="safety-photo-upload-modal" style={{ display: "none" }}
+                                    type="file" accept="image/*" id="safety-photo-upload-modal" className="hidden"
                                     onChange={async (e) => {
                                         if (e.target.files && e.target.files[0]) {
                                             try {
@@ -1013,7 +895,12 @@ export function StopDetail({
                                 />
                                 <button
                                     onClick={() => document.getElementById("safety-photo-upload-modal")?.click()}
-                                    style={{ width: "100%", padding: "1rem", background: localSafety.safetyPhotoKey ? "#c6f6d5" : "white", border: localSafety.safetyPhotoKey ? "1px solid #48bb78" : "1px dashed #cbd5e0", borderRadius: "8px", color: localSafety.safetyPhotoKey ? "#276749" : "#718096", fontWeight: "bold" }}
+                                    className={cn(
+                                        "w-full p-4 rounded-lg font-bold min-h-[44px] cursor-pointer",
+                                        localSafety.safetyPhotoKey
+                                            ? "bg-green-100 border border-green-400 text-green-800"
+                                            : "bg-white border border-dashed border-gray-300 text-gray-500"
+                                    )}
                                 >
                                     {localSafety.safetyPhotoKey ? "✓ Photo Attached (Click to Replace)" : "📷 Add Safety Photo"}
                                 </button>
@@ -1022,7 +909,7 @@ export function StopDetail({
                             <textarea
                                 value={localSafety.notes || ""}
                                 onChange={(e) => setLocalSafety(prev => ({ ...prev, notes: e.target.value }))}
-                                style={{ width: "100%", padding: "1rem", minHeight: "100px", marginBottom: "1rem", borderRadius: "8px", border: "1px solid #cbd5e0", fontSize: "1rem" }}
+                                className="w-full p-4 min-h-[100px] mb-4 rounded-lg border border-gray-300 text-base resize-none"
                                 placeholder={
                                     localSafety.hazardTypes?.length === 1 && localSafety.hazardTypes[0] === "other"
                                         ? "Please describe the issue (Required)..."
@@ -1032,7 +919,7 @@ export function StopDetail({
                         </div>
 
                         {/* Footer / Actions */}
-                        <div style={{ padding: "1rem", borderTop: "1px solid #e2e8f0", background: "white", display: "flex", gap: "1rem" }}>
+                        <div className="p-4 border-t border-gray-200 bg-white flex gap-3">
                             {(() => {
                                 const hasHazards = localSafety.hazardTypes && localSafety.hazardTypes.length > 0;
                                 const isOtherOnly = localSafety.hazardTypes?.length === 1 && localSafety.hazardTypes[0] === "other";
@@ -1049,13 +936,12 @@ export function StopDetail({
                                                 onSkipStop?.();
                                             }}
                                             disabled={!(isContentValid && hasPhoto)}
-                                            style={{
-                                                flex: 1, padding: "1rem",
-                                                background: (isContentValid && hasPhoto) ? "#c53030" : "#fed7d7",
-                                                color: (isContentValid && hasPhoto) ? "white" : "#e53e3e",
-                                                borderRadius: "8px", border: "none", fontWeight: "bold",
-                                                cursor: (isContentValid && hasPhoto) ? "pointer" : "not-allowed"
-                                            }}
+                                            className={cn(
+                                                "flex-1 py-4 rounded-lg border-0 font-bold min-h-[44px]",
+                                                (isContentValid && hasPhoto)
+                                                    ? "bg-red-700 text-white cursor-pointer"
+                                                    : "bg-red-100 text-red-400 cursor-not-allowed"
+                                            )}
                                         >
                                             Skip Stop
                                         </button>
@@ -1067,13 +953,12 @@ export function StopDetail({
                                                 setIsReportSafetyOpen(false);
                                             }}
                                             disabled={!isContentValid}
-                                            style={{
-                                                flex: 1, padding: "1rem",
-                                                background: isContentValid ? "#ed8936" : "#fbd38d",
-                                                color: isContentValid ? "white" : "#7b341e",
-                                                borderRadius: "8px", border: "none", fontWeight: "bold",
-                                                cursor: isContentValid ? "pointer" : "not-allowed"
-                                            }}
+                                            className={cn(
+                                                "flex-1 py-4 rounded-lg border-0 font-bold min-h-[44px]",
+                                                isContentValid
+                                                    ? "bg-orange-500 text-white cursor-pointer"
+                                                    : "bg-orange-200 text-orange-400 cursor-not-allowed"
+                                            )}
                                         >
                                             Save Hazards
                                         </button>
@@ -1087,31 +972,34 @@ export function StopDetail({
 
             {/* Infra Modal */}
             {isReportInfraOpen && (
-                <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: "1rem" }}>
-                    <div style={{ background: "white", width: "100%", maxWidth: "500px", maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden", borderRadius: "12px", boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}>
+                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-[2000] p-4">
+                    <div className="bg-white w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden rounded-xl shadow-2xl">
                         {/* Header */}
-                        <div style={{ padding: "1rem", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f7fafc" }}>
-                            <h3 style={{ margin: 0, color: "#2b6cb0" }}>Report Infrastructure</h3>
+                        <div className="px-4 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                            <h3 className="m-0 text-blue-700 font-bold text-lg">Report Infrastructure</h3>
                             <button
                                 onClick={() => setIsReportInfraOpen(false)}
-                                style={{ background: "none", border: "none", fontSize: "1.5rem", color: "#718096", cursor: "pointer", padding: "0 0.5rem" }}
+                                className="bg-transparent border-0 text-2xl text-gray-500 cursor-pointer px-2 min-h-[44px] flex items-center"
                             >
                                 ✕
                             </button>
                         </div>
 
-                        <div style={{ padding: "1.5rem", flex: 1, overflowY: "auto" }}>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "1.5rem" }}>
+                        <div className="p-6 flex-1 overflow-y-auto">
+                            <div className="grid grid-cols-2 gap-3 mb-6">
                                 {(Object.keys(INFRA_ISSUE_META) as InfraIssueKey[]).map((key) => {
                                     const meta = INFRA_ISSUE_META[key];
                                     const isSelected = selectedInfraKeys.includes(key);
                                     return (
-                                        <label key={key} style={{
-                                            display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem",
-                                            background: isSelected ? "#ebf8ff" : "white",
-                                            border: isSelected ? "1px solid #90cdf4" : "1px solid #e2e8f0",
-                                            borderRadius: "8px", fontSize: "0.9rem", transition: "all 0.2s"
-                                        }}>
+                                        <label
+                                            key={key}
+                                            className={cn(
+                                                "flex items-center gap-2 p-3 rounded-lg text-sm transition-colors min-h-[44px] cursor-pointer",
+                                                isSelected
+                                                    ? "bg-blue-50 border border-blue-300"
+                                                    : "bg-white border border-gray-200"
+                                            )}
+                                        >
                                             <input
                                                 type="checkbox"
                                                 checked={isSelected}
@@ -1119,7 +1007,7 @@ export function StopDetail({
                                                     if (e.target.checked) setSelectedInfraKeys([...selectedInfraKeys, key]);
                                                     else setSelectedInfraKeys(selectedInfraKeys.filter(k => k !== key));
                                                 }}
-                                                style={{ transform: "scale(1.2)" }}
+                                                className="w-5 h-5 shrink-0 accent-blue-600"
                                             />
                                             {meta.label}
                                         </label>
@@ -1130,14 +1018,14 @@ export function StopDetail({
                             <textarea
                                 value={infraNotes}
                                 onChange={(e) => setInfraNotes(e.target.value)}
-                                style={{ width: "100%", padding: "1rem", minHeight: "100px", marginBottom: "1rem", borderRadius: "8px", border: "1px solid #cbd5e0", fontSize: "1rem" }}
+                                className="w-full p-4 min-h-[100px] mb-4 rounded-lg border border-gray-300 text-base resize-none"
                                 placeholder="Infra notes..."
                             />
 
                             {/* Infra Photo Upload */}
-                            <div style={{ marginBottom: "1.5rem" }}>
+                            <div className="mb-6">
                                 <input
-                                    type="file" accept="image/*" id="infra-photo-upload-modal" style={{ display: "none" }}
+                                    type="file" accept="image/*" id="infra-photo-upload-modal" className="hidden"
                                     onChange={async (e) => {
                                         if (e.target.files && e.target.files[0]) {
                                             try {
@@ -1150,7 +1038,12 @@ export function StopDetail({
                                 />
                                 <button
                                     onClick={() => document.getElementById("infra-photo-upload-modal")?.click()}
-                                    style={{ width: "100%", padding: "1rem", background: localInfraPhotoKey ? "#c6f6d5" : "white", border: "1px solid #cbd5e0", borderRadius: "8px", color: localInfraPhotoKey ? "#276749" : "#718096", fontWeight: "bold" }}
+                                    className={cn(
+                                        "w-full p-4 rounded-lg font-bold border min-h-[44px] cursor-pointer",
+                                        localInfraPhotoKey
+                                            ? "bg-green-100 border-green-400 text-green-800"
+                                            : "bg-white border-gray-300 text-gray-500"
+                                    )}
                                 >
                                     {localInfraPhotoKey ? "✓ Infra Photo Attached" : "📷 Add Photo"}
                                 </button>
@@ -1158,7 +1051,7 @@ export function StopDetail({
 
                             <button
                                 onClick={handleSaveInfra}
-                                style={{ width: "100%", padding: "1rem", background: "#3182ce", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold", fontSize: "1.1rem" }}
+                                className="w-full p-4 bg-blue-600 text-white border-0 rounded-lg font-bold text-lg min-h-[44px] cursor-pointer hover:bg-blue-700"
                             >
                                 Save Infrastructure
                             </button>
@@ -1168,9 +1061,9 @@ export function StopDetail({
             )}
 
             {/* Main Task Cards */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", marginBottom: "1rem" }}>
+            <div className="flex flex-wrap gap-4 mb-4">
                 {/* Spot Check Toggle */}
-                <div style={{ width: "100%", marginBottom: "0.5rem" }}>
+                <div className="w-full mb-2">
                     <button
                         onClick={() => {
                             const next = !checklist.spotCheck;
@@ -1181,81 +1074,82 @@ export function StopDetail({
                                 onSetChecklist('trashVolume', undefined as any);
                             }
                         }}
-                        style={{
-                            width: "100%",
-                            padding: "1rem",
-                            background: checklist.spotCheck ? "#4299e1" : "white",
-                            color: checklist.spotCheck ? "white" : "#2b6cb0",
-                            border: "2px solid #4299e1",
-                            borderRadius: "8px",
-                            fontWeight: "bold",
-                            fontSize: "1rem",
-                            display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem",
-                            cursor: "pointer",
-                            transition: "all 0.2s"
-                        }}
+                        className={cn(
+                            "w-full py-4 px-4 border-2 border-blue-400 rounded-lg font-bold text-base flex items-center justify-center gap-2 cursor-pointer transition-colors min-h-[44px]",
+                            checklist.spotCheck
+                                ? "bg-blue-500 text-white"
+                                : "bg-white text-blue-700"
+                        )}
                     >
                         {checklist.spotCheck ? "✅ SPOT CHECK ENABLED" : "🔍 PERFORM SPOT CHECK"}
                     </button>
                     {checklist.spotCheck && (
-                        <div style={{ textAlign: "center", fontSize: "0.85rem", color: "#4299e1", marginTop: "0.25rem" }}>
+                        <div className="text-center text-sm text-blue-500 mt-1">
                             Cleaning tasks are disabled. Photo required.
                         </div>
                     )}
                 </div>
 
                 {/* Cleaning Tasks */}
-                <div className="card" style={{ flex: "1 1 300px", margin: 0, opacity: checklist.spotCheck ? 0.5 : 1, pointerEvents: checklist.spotCheck ? "none" : "auto" }}>
-                    <h3 style={{ marginTop: 0, fontSize: "1rem", color: "#4a5568" }}>CLEANING TASKS</h3>
-                    <div style={{ display: "grid", gap: "0.75rem" }}>
+                <div className={cn(
+                    "flex-1 min-w-[300px] bg-white rounded-xl shadow-md p-4 transition-opacity",
+                    checklist.spotCheck ? "opacity-50 pointer-events-none" : "opacity-100"
+                )}>
+                    <h3 className="mt-0 mb-3 text-base font-semibold text-gray-600 uppercase tracking-wide">Cleaning Tasks</h3>
+                    <div className="flex flex-col gap-3">
                         {CHECKLIST_ITEMS.map((item) => (
                             <label
                                 key={item.key}
-                                style={{
-                                    display: "flex", alignItems: "center", padding: "0.75rem",
-                                    background: checklist[item.key] ? "#f0fff4" : "white",
-                                    border: `1px solid ${checklist[item.key] ? "#48bb78" : "#e2e8f0"}`,
-                                    borderRadius: "8px", transition: "all 0.2s"
-                                }}
+                                className={cn(
+                                    "flex items-center p-3 rounded-lg transition-colors min-h-[44px] cursor-pointer",
+                                    checklist[item.key]
+                                        ? "bg-green-50 border border-green-300"
+                                        : "bg-white border border-gray-200"
+                                )}
                             >
                                 <input
                                     type="checkbox"
                                     checked={!!checklist[item.key]}
                                     onChange={(e) => onSetChecklist(item.key, e.target.checked)}
-                                    style={{ width: "18px", height: "18px", marginRight: "0.75rem" }}
+                                    className="w-5 h-5 mr-3 shrink-0 accent-green-600"
                                 />
-                                <span style={{ fontWeight: checklist[item.key] ? "bold" : "normal" }}>{item.label}</span>
+                                <span className={cn("text-base", checklist[item.key] ? "font-semibold text-gray-900" : "text-gray-700")}>
+                                    {item.label}
+                                </span>
                             </label>
                         ))}
                     </div>
                 </div>
 
                 {/* Trash Volume */}
-                <div className="card" style={{ flex: "1 1 300px", margin: 0, opacity: checklist.spotCheck ? 0.5 : 1, pointerEvents: checklist.spotCheck ? "none" : "auto" }}>
-                    <h3 style={{ marginTop: 0, fontSize: "1rem", color: "#4a5568" }}>TRASH VOLUME (Required)</h3>
-                    <div style={{ display: "flex", borderRadius: "8px", overflow: "hidden", border: "1px solid #cbd5e0", marginBottom: "1rem" }}>
+                <div className={cn(
+                    "flex-1 min-w-[300px] bg-white rounded-xl shadow-md p-4 transition-opacity",
+                    checklist.spotCheck ? "opacity-50 pointer-events-none" : "opacity-100"
+                )}>
+                    <h3 className="mt-0 mb-3 text-base font-semibold text-gray-600 uppercase tracking-wide">
+                        Trash Volume <span className="text-red-500">*</span>
+                    </h3>
+                    <div className="flex rounded-lg overflow-hidden border border-gray-300 mb-3">
                         {[0, 1, 2, 3, 4].map(val => (
                             <button
                                 key={val}
                                 onClick={() => onSetChecklist('trashVolume', val)}
-                                style={{
-                                    flex: 1, padding: "1rem 0",
-                                    background: checklist.trashVolume === val ? "#edf2f7" : "white",
-                                    fontWeight: "bold",
-                                    border: "none",
-                                    borderRight: val < 4 ? "1px solid #cbd5e0" : "none",
-                                    color: checklist.trashVolume === val ? "#2d3748" : "#718096",
-                                    boxShadow: checklist.trashVolume === val ? "inset 0 2px 4px rgba(0,0,0,0.06)" : "none"
-                                }}
+                                className={cn(
+                                    "flex-1 py-4 font-bold border-0 min-h-[44px] cursor-pointer transition-colors",
+                                    val < 4 ? "border-r border-gray-300" : "",
+                                    checklist.trashVolume === val
+                                        ? "bg-gray-100 text-gray-900 shadow-inner"
+                                        : "bg-white text-gray-500 hover:bg-gray-50"
+                                )}
                             >
                                 {val}
                             </button>
                         ))}
                     </div>
-                    <div style={{ textAlign: "center", color: "#718096", fontSize: "0.9rem" }}>
+                    <div className="text-center text-gray-500 text-sm">
                         {checklist.trashVolume !== undefined ? (
-                            <strong>
-                                {checklist.trashVolume} - {
+                            <strong className="text-gray-800">
+                                {checklist.trashVolume} — {
                                     ["Empty / Almost Empty", "Low", "Medium", "High", "Overflowing"][checklist.trashVolume]
                                 }
                             </strong>
@@ -1265,58 +1159,68 @@ export function StopDetail({
             </div>
 
             {/* Photos & Finish Action Area */}
-            {/* Show any existing photos first */}
-            {
-                (existingPhotos.length > 0 || selectedFiles.length > 0) && (
-                    <div className="card" style={{ padding: "1rem", marginBottom: "1rem" }}>
-                        <h4 style={{ margin: "0 0 0.5rem 0", fontSize: "0.9rem", color: "#718096" }}>Attached Photos</h4>
-                        <div style={{ display: "flex", gap: "0.5rem", overflowX: "auto", paddingBottom: "0.5rem" }}>
-                            {existingPhotos.map(p => (
-                                <img key={p.id} src={p.url} style={{ height: "80px", borderRadius: "6px" }} onClick={() => setPreviewUrl(p.url)} alt="existing" />
-                            ))}
-                            {selectedFiles.map((f, i) => (
-                                <div key={i} style={{ position: "relative" }}>
-                                    <img src={URL.createObjectURL(f)} style={{ height: "80px", borderRadius: "6px", opacity: 0.7 }} alt="pending" />
-                                    <button onClick={() => handleRemoveSelectedFile(i)} style={{ position: "absolute", top: 0, right: 0, background: "rgba(0,0,0,0.5)", color: "white", border: "none", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
-                                </div>
-                            ))}
-                        </div>
-                        {selectedFiles.length > 0 && (
-                            <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem" }}>
-                                <button onClick={handleConfirmUpload} style={{ flex: 1, padding: "0.5rem", background: "#48bb78", color: "white", borderRadius: "6px", border: "none", fontWeight: "bold" }}>Upload Now</button>
-                                <button onClick={handleDiscardSelection} style={{ flex: 1, padding: "0.5rem", background: "#fff", border: "1px solid #fc8181", color: "#c53030", borderRadius: "6px" }}>Discard</button>
+            {(existingPhotos.length > 0 || selectedFiles.length > 0) && (
+                <div className="bg-white rounded-xl shadow-md p-4 mb-4">
+                    <h4 className="m-0 mb-2 text-sm text-gray-500 font-medium">Attached Photos</h4>
+                    <div className="flex gap-2 overflow-x-auto pb-2">
+                        {existingPhotos.map(p => (
+                            <img
+                                key={p.id}
+                                src={p.url}
+                                className="h-20 rounded-md shrink-0 cursor-pointer"
+                                onClick={() => setPreviewUrl(p.url)}
+                                alt="existing"
+                            />
+                        ))}
+                        {selectedFiles.map((f, i) => (
+                            <div key={i} className="relative shrink-0">
+                                <img src={URL.createObjectURL(f)} className="h-20 rounded-md opacity-70" alt="pending" />
+                                <button
+                                    onClick={() => handleRemoveSelectedFile(i)}
+                                    className="absolute top-0 right-0 bg-black/50 text-white border-0 rounded-full w-5 h-5 flex items-center justify-center text-xs cursor-pointer"
+                                >
+                                    ×
+                                </button>
                             </div>
-                        )}
+                        ))}
                     </div>
-                )
-            }
+                    {selectedFiles.length > 0 && (
+                        <div className="mt-2 flex gap-2">
+                            <button
+                                onClick={handleConfirmUpload}
+                                className="flex-1 py-2 bg-green-500 text-white rounded-lg border-0 font-bold min-h-[44px] cursor-pointer"
+                            >
+                                Upload Now
+                            </button>
+                            <button
+                                onClick={handleDiscardSelection}
+                                className="flex-1 py-2 bg-white border border-red-300 text-red-700 rounded-lg font-medium min-h-[44px] cursor-pointer"
+                            >
+                                Discard
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <div className="flex flex-col gap-4">
                 {/* Main DURING photo upload input (always enabled unless uploading) */}
                 <input
                     type="file"
                     accept="image/*"
                     multiple
                     id="main-photo-upload"
-                    style={{ display: "none" }}
+                    className="hidden"
                     onChange={handleFileSelect}
                     disabled={isUploadingPhoto}
                 />
                 <button
                     onClick={() => document.getElementById("main-photo-upload")?.click()}
-                    style={{
-                        padding: "1rem",
-                        background: "#3182ce",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "8px",
-                        fontSize: "1rem",
-                        fontWeight: "bold",
-                        display: "flex", justifyContent: "center", alignItems: "center", gap: "0.5rem",
-                        opacity: isUploadingPhoto ? 0.6 : 1,
-                        cursor: isUploadingPhoto ? "not-allowed" : "pointer"
-                    }}
                     disabled={isUploadingPhoto}
+                    className={cn(
+                        "py-4 bg-blue-600 text-white border-0 rounded-lg text-base font-bold flex justify-center items-center gap-2 min-h-[44px]",
+                        isUploadingPhoto ? "opacity-60 cursor-not-allowed" : "cursor-pointer hover:bg-blue-700"
+                    )}
                 >
                     📸 Document Conditions (Optional)
                 </button>
@@ -1328,16 +1232,7 @@ export function StopDetail({
                         return (
                             <button
                                 disabled
-                                style={{
-                                    padding: "1rem",
-                                    background: "#cbd5e0",
-                                    color: "white",
-                                    border: "none",
-                                    borderRadius: "8px",
-                                    fontSize: "1rem",
-                                    fontWeight: "bold",
-                                    cursor: "not-allowed"
-                                }}
+                                className="py-4 bg-gray-300 text-white border-0 rounded-lg text-base font-bold cursor-not-allowed min-h-[44px]"
                             >
                                 Finish
                             </button>
@@ -1352,7 +1247,7 @@ export function StopDetail({
                                     type="file"
                                     accept="image/*"
                                     id="after-photo-upload"
-                                    style={{ display: "none" }}
+                                    className="hidden"
                                     onChange={async (e) => {
                                         if (!e.target.files || !e.target.files[0]) return;
                                         setAfterPhotoTaken(true);
@@ -1363,21 +1258,10 @@ export function StopDetail({
                                 <button
                                     onClick={() => document.getElementById("after-photo-upload")?.click()}
                                     disabled={isUploadingPhoto}
-                                    style={{
-                                        padding: "1rem",
-                                        background: "#2c5282",
-                                        color: "white",
-                                        border: "none",
-                                        borderRadius: "8px",
-                                        fontSize: "1rem",
-                                        fontWeight: "bold",
-                                        display: "flex",
-                                        justifyContent: "center",
-                                        alignItems: "center",
-                                        gap: "0.5rem",
-                                        cursor: "pointer",
-                                        opacity: isUploadingPhoto ? 0.6 : 1
-                                    }}
+                                    className={cn(
+                                        "py-4 bg-blue-900 text-white border-0 rounded-lg text-base font-bold flex justify-center items-center gap-2 min-h-[44px]",
+                                        isUploadingPhoto ? "opacity-60 cursor-not-allowed" : "cursor-pointer hover:bg-blue-950"
+                                    )}
                                 >
                                     📷 Take After Photo
                                 </button>
@@ -1390,17 +1274,10 @@ export function StopDetail({
                         <button
                             onClick={onCompleteStop}
                             disabled={!canComplete}
-                            style={{
-                                padding: "1rem",
-                                background: "#2c5282",
-                                color: "white",
-                                border: "none",
-                                borderRadius: "8px",
-                                fontSize: "1rem",
-                                fontWeight: "bold",
-                                cursor: canComplete ? "pointer" : "not-allowed",
-                                opacity: canComplete ? 1 : 0.6
-                            }}
+                            className={cn(
+                                "py-4 bg-blue-900 text-white border-0 rounded-lg text-base font-bold min-h-[44px]",
+                                canComplete ? "cursor-pointer hover:bg-blue-950" : "opacity-60 cursor-not-allowed"
+                            )}
                         >
                             {isCompletingStop ? "FINISHING..." : "Finish"}
                         </button>
@@ -1410,19 +1287,27 @@ export function StopDetail({
 
             <ImagePreviewModal isOpen={!!previewUrl} imageUrl={previewUrl} onClose={() => setPreviewUrl(null)} />
 
-            {
-                showSkipModal && (
-                    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "1rem" }}>
-                        <div style={{ background: "white", padding: "1.5rem", borderRadius: "12px", width: "100%", maxWidth: "400px" }}>
-                            <h3>Confirm Skip?</h3>
-                            <div style={{ display: "flex", gap: "1rem", marginTop: "1rem" }}>
-                                <button onClick={() => setShowSkipModal(false)} style={{ flex: 1, padding: "0.75rem", background: "white", border: "1px solid #cbd5e0", borderRadius: "8px" }}>Cancel</button>
-                                <button onClick={() => onSkipStop?.()} style={{ flex: 1, padding: "0.75rem", background: "#c53030", color: "white", border: "none", borderRadius: "8px", fontWeight: "bold" }}>Skip</button>
-                            </div>
+            {showSkipModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
+                    <div className="bg-white p-6 rounded-xl w-full max-w-sm shadow-2xl">
+                        <h3 className="mt-0 mb-4 text-lg font-bold text-gray-900">Confirm Skip?</h3>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowSkipModal(false)}
+                                className="flex-1 py-3 bg-white border border-gray-300 rounded-lg text-gray-700 font-medium min-h-[44px] cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => onSkipStop?.()}
+                                className="flex-1 py-3 bg-red-700 text-white border-0 rounded-lg font-bold min-h-[44px] cursor-pointer"
+                            >
+                                Skip
+                            </button>
                         </div>
                     </div>
-                )
-            }
-        </UlLayout >
+                </div>
+            )}
+        </UlLayout>
     );
 }

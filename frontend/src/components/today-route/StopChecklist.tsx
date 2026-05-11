@@ -1,54 +1,53 @@
-
+import { cn } from "../../lib/utils";
 import type { ChecklistState } from "../../api/routeRuns";
 
 interface StopChecklistProps {
-    checklist: ChecklistState;
-    isReadOnly: boolean;
-    onToggle: (field: keyof ChecklistState) => void;
+  checklist: ChecklistState;
+  isReadOnly: boolean;
+  onToggle: (field: keyof ChecklistState) => void;
 }
 
-export function StopChecklist({ checklist, isReadOnly, onToggle }: StopChecklistProps) {
-    const items = [
-        { key: "picked_up_litter", label: "Picked up litter" },
-        { key: "emptied_trash", label: "Emptied trash" },
-        { key: "washed_shelter", label: "Pressure Washed shelter" },
-        { key: "washed_pad", label: "Scrubbed pad" },
-        { key: "washed_can", label: "Washed Trash Receptacle"}
-    ];
+const ITEMS = [
+  { key: "picked_up_litter",  label: "Picked up litter" },
+  { key: "emptied_trash",     label: "Emptied trash" },
+  { key: "washed_shelter",    label: "Pressure washed shelter" },
+  { key: "washed_pad",        label: "Scrubbed pad" },
+  { key: "washed_can",        label: "Washed trash receptacle" },
+] as const;
 
-    return (
-        <div style={{ marginBottom: "2rem" }}>
-            <h3 style={{ fontSize: "1rem", marginBottom: "0.5rem" }}>Tasks</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                {items.map(({ key, label }) => {
-                    const isChecked = checklist[key as keyof ChecklistState] || false;
-                    return (
-                        <label
-                            key={key}
-                            style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "0.75rem",
-                                cursor: isReadOnly ? "default" : "pointer",
-                                padding: "0.5rem",
-                                background: "#f8f9fa",
-                                borderRadius: "6px",
-                            }}
-                        >
-                            <input
-                                type="checkbox"
-                                checked={!!isChecked}
-                                onChange={() => onToggle(key as keyof ChecklistState)}
-                                disabled={isReadOnly}
-                                style={{ width: "1.3rem", height: "1.3rem" }}
-                            />
-                            <span style={{ fontSize: "1.1rem", color: isReadOnly ? "#777" : "#000" }}>
-                                {label}
-                            </span>
-                        </label>
-                    );
-                })}
-            </div>
-        </div>
-    );
+export function StopChecklist({ checklist, isReadOnly, onToggle }: StopChecklistProps) {
+  return (
+    <div className="mb-8">
+      <h3 className="text-base font-semibold text-gray-700 mb-2">Tasks</h3>
+      <div className="flex flex-col gap-3">
+        {ITEMS.map(({ key, label }) => {
+          const isChecked = !!checklist[key as keyof ChecklistState];
+          return (
+            <label
+              key={key}
+              className={cn(
+                "flex items-center gap-3 px-4 py-3 rounded-lg min-h-[44px] transition-colors",
+                isReadOnly
+                  ? "cursor-default bg-gray-50"
+                  : isChecked
+                    ? "cursor-pointer bg-green-50 border border-green-300"
+                    : "cursor-pointer bg-white border border-gray-200 hover:border-gray-300",
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={isChecked}
+                onChange={() => onToggle(key as keyof ChecklistState)}
+                disabled={isReadOnly}
+                className="w-5 h-5 shrink-0 accent-green-600"
+              />
+              <span className={cn("text-base", isReadOnly ? "text-gray-400" : "text-gray-900")}>
+                {label}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
