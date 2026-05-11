@@ -3,6 +3,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { OpsLayout } from "../ui/OpsLayout";
 import { OpsCard } from "../ui/OpsCard";
 import { OpsTable, OpsTableRow, OpsTableCell } from "../ui/OpsTable";
+import { cn } from "../../lib/utils";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -56,6 +57,27 @@ interface DifficultyResponse {
         pool_label: string;
         heavy_stop_count: number;
     }>;
+}
+
+// ── Sub-components ──────────────────────────────────────────────────────────
+
+interface StatCardProps {
+    label: string;
+    value: number | string;
+    valueClassName?: string;
+}
+
+function StatCard({ label, value, valueClassName }: StatCardProps) {
+    return (
+        <OpsCard>
+            <div className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                {label}
+            </div>
+            <div className={valueClassName ?? "text-4xl font-bold text-gray-800"}>
+                {value}
+            </div>
+        </OpsCard>
+    );
 }
 
 // ── Component ───────────────────────────────────────────────────────────────
@@ -117,9 +139,16 @@ export const AdminControlCenter: React.FC = () => {
 
     if (loading && !summary) {
         return (
-            <OpsLayout title="Control Center">
-                <div style={{ padding: "2rem", textAlign: "center", color: "#666" }}>
-                    Loading operational snapshot...
+            <OpsLayout title="Control Center" subtitle="Auto-refreshes every 60s">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                    {[...Array(4)].map((_, i) => (
+                        <OpsCard key={i}>
+                            <div className="animate-pulse">
+                                <div className="h-4 bg-gray-200 rounded mb-3 w-2/3" />
+                                <div className="h-8 bg-gray-200 rounded w-1/2" />
+                            </div>
+                        </OpsCard>
+                    ))}
                 </div>
             </OpsLayout>
         );
@@ -127,66 +156,57 @@ export const AdminControlCenter: React.FC = () => {
 
     if (error) {
         return (
-            <OpsLayout title="Control Center">
-                <div style={{ padding: "2rem", color: "red", fontWeight: "bold" }}>
-                    {error}
-                </div>
+            <OpsLayout title="Control Center" subtitle="Auto-refreshes every 60s">
+                <OpsCard className="border-red-200 bg-red-50">
+                    <p className="text-red-600 font-semibold">{error}</p>
+                </OpsCard>
             </OpsLayout>
         );
     }
 
     const formatReason = (reason: string) => {
-        // Simple formatting for display
         return reason.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
     };
 
     return (
-        <OpsLayout title="Control Center">
-            <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+        <OpsLayout title="Control Center" subtitle="Auto-refreshes every 60s">
+            <div className="flex flex-col gap-8">
 
                 {/* PANEL 1: SNAPSHOT */}
                 <section>
-                    <h2 style={{ fontSize: "1.1rem", marginBottom: "1rem", color: "#2d3748" }}>Today's Operations Snapshot</h2>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem" }}>
-                        <OpsCard>
-                            <div style={{ fontSize: "0.85rem", color: "#718096", marginBottom: "0.5rem" }}>Clean Events</div>
-                            <div style={{ fontSize: "2rem", fontWeight: "bold", color: "#2b6cb0" }}>
-                                {summary?.clean_events ?? 0}
-                            </div>
-                        </OpsCard>
-                        <OpsCard>
-                            <div style={{ fontSize: "0.85rem", color: "#718096", marginBottom: "0.5rem" }}>Observed Minutes</div>
-                            <div style={{ fontSize: "2rem", fontWeight: "bold" }}>
-                                {Math.round(summary?.total_clean_minutes ?? 0)}m
-                            </div>
-                        </OpsCard>
-                        <OpsCard>
-                            <div style={{ fontSize: "0.85rem", color: "#718096", marginBottom: "0.5rem" }}>Hazards Reported</div>
-                            <div style={{ fontSize: "2rem", fontWeight: "bold", color: "#2f855a" }}>
-                                {summary?.hazards_reported ?? 0}
-                            </div>
-                        </OpsCard>
-                        <OpsCard>
-                            <div style={{ fontSize: "0.85rem", color: "#718096", marginBottom: "0.5rem" }}>High Severity</div>
-                            <div style={{ fontSize: "2rem", fontWeight: "bold", color: "#c53030" }}>
-                                {summary?.high_severity_hazards ?? 0}
-                            </div>
-                        </OpsCard>
+                    <h2 className="text-base font-semibold text-gray-800 mb-4">Today's Operations Snapshot</h2>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <StatCard
+                            label="Clean Events"
+                            value={summary?.clean_events ?? 0}
+                            valueClassName="text-4xl font-bold text-blue-700"
+                        />
+                        <StatCard
+                            label="Observed Minutes"
+                            value={`${Math.round(summary?.total_clean_minutes ?? 0)}m`}
+                        />
+                        <StatCard
+                            label="Hazards Reported"
+                            value={summary?.hazards_reported ?? 0}
+                            valueClassName="text-4xl font-bold text-green-700"
+                        />
+                        <StatCard
+                            label="High Severity"
+                            value={summary?.high_severity_hazards ?? 0}
+                            valueClassName="text-4xl font-bold text-red-700"
+                        />
                     </div>
                 </section>
 
-
                 {/* PANEL 2: ROUTE STATUS */}
                 <section>
-                    <h2 style={{ fontSize: "1.1rem", marginBottom: "1rem", color: "#2d3748" }}>Route Status</h2>
+                    <h2 className="text-base font-semibold text-gray-800 mb-4">Route Status</h2>
                     <OpsTable headers={["Route ID", "Pool", "Assignee", "Progress", "Workload", "Deviations"]}>
                         {routes.map((r) => {
                             const planned = Number(r.planned_stops);
                             const emergency = Number(r.emergency_stops);
                             const resolved = Number(r.resolved_stops);
-
                             const totalExpected = planned + emergency;
-
                             const pct =
                                 totalExpected > 0
                                     ? Math.min(100, (resolved / totalExpected) * 100)
@@ -194,135 +214,173 @@ export const AdminControlCenter: React.FC = () => {
                             return (
                                 <OpsTableRow key={r.route_run_id}>
                                     <OpsTableCell>#{r.route_run_id}</OpsTableCell>
-                                    <OpsTableCell>{r.pool_id || "-"}</OpsTableCell>
+                                    <OpsTableCell>{r.pool_id || "—"}</OpsTableCell>
                                     <OpsTableCell>{r.assigned_ul_name || "Unassigned"}</OpsTableCell>
                                     <OpsTableCell>
-                                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                                            <div style={{ width: "60px", background: "#edf2f7", height: "8px", borderRadius: "4px", overflow: "hidden" }}>
-                                                <div style={{ width: `${pct}%`, background: "#48bb78", height: "100%" }}></div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-[60px] bg-gray-100 h-2 rounded overflow-hidden">
+                                                {/* Progress fill width is data-driven — documented exception */}
+                                                <div
+                                                    style={{ width: `${pct}%` }}
+                                                    className="bg-green-400 h-full"
+                                                />
                                             </div>
-                                            <span style={{ fontSize: "0.85rem" }}>{Math.round(pct)}%</span>
+                                            <span className="text-sm text-gray-700">{Math.round(pct)}%</span>
                                         </div>
                                     </OpsTableCell>
                                     <OpsTableCell>{Math.round(r.observed_minutes)}m</OpsTableCell>
                                     <OpsTableCell>
-                                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                                        <div className="flex gap-2">
                                             {r.has_emergency_additions && <span title="Emergency Additions">🚨</span>}
                                             {r.high_skip_count && <span title="High Skip Count">⏭️</span>}
-                                            {!r.has_emergency_additions && !r.high_skip_count && <span style={{ color: "#cbd5e0" }}>-</span>}
+                                            {!r.has_emergency_additions && !r.high_skip_count && (
+                                                <span className="text-gray-300">—</span>
+                                            )}
                                         </div>
                                     </OpsTableCell>
                                 </OpsTableRow>
                             );
                         })}
+                        {routes.length === 0 && (
+                            <OpsTableRow>
+                                <OpsTableCell
+                                    className="text-center text-gray-400 italic"
+                                    colSpan={6}
+                                >
+                                    No active routes today
+                                </OpsTableCell>
+                            </OpsTableRow>
+                        )}
                     </OpsTable>
                 </section>
 
+                {/* PANELS 3 + 4: 2×2 grid — stacked on mobile, side-by-side on desktop */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem" }}>
                     {/* PANEL 3: EXCEPTIONS & BREAKS */}
                     <section>
-                        <h2 style={{ fontSize: "1.1rem", marginBottom: "1rem", color: "#2d3748" }}>Exceptions & Breaks</h2>
+                        <h2 className="text-base font-semibold text-gray-800 mb-4">Exceptions & Breaks</h2>
                         <OpsCard>
                             {/* Key Indicators */}
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem", marginBottom: "1.5rem", borderBottom: "1px solid #edf2f7", paddingBottom: "1rem" }}>
-                                <div style={{ textAlign: "center" }}>
-                                    <div style={{ fontSize: "1.5rem", fontWeight: "bold", color: "#c53030" }}>{stats?.total_hazards ?? 0}</div>
-                                    <div style={{ fontSize: "0.75rem", color: "#718096" }}>Hazards</div>
+                            <div className="grid grid-cols-3 gap-4 mb-6 pb-4 border-b border-gray-100">
+                                <div className="text-center">
+                                    <div className="text-2xl font-bold text-red-700">{stats?.total_hazards ?? 0}</div>
+                                    <div className="text-xs text-gray-500 mt-1">Hazards</div>
                                 </div>
-                                <div style={{ textAlign: "center" }}>
-                                    <div style={{ fontSize: "1.5rem", fontWeight: "bold", color: "#d69e2e" }}>{stats?.total_infra_issues ?? 0}</div>
-                                    <div style={{ fontSize: "0.75rem", color: "#718096" }}>Infra Issues</div>
+                                <div className="text-center">
+                                    <div className="text-2xl font-bold text-yellow-600">{stats?.total_infra_issues ?? 0}</div>
+                                    <div className="text-xs text-gray-500 mt-1">Infra Issues</div>
                                 </div>
-                                <div style={{ textAlign: "center" }}>
-                                    <div style={{ fontSize: "1.5rem", fontWeight: "bold", color: "#3182ce" }}>{stats?.emergency_count ?? 0}</div>
-                                    <div style={{ fontSize: "0.75rem", color: "#718096" }}>Emergencies</div>
+                                <div className="text-center">
+                                    <div className="text-2xl font-bold text-blue-600">{stats?.emergency_count ?? 0}</div>
+                                    <div className="text-xs text-gray-500 mt-1">Emergencies</div>
                                 </div>
                             </div>
 
-                            <div style={{ fontSize: "0.85rem", fontWeight: "bold", color: "#2d3748", marginBottom: "0.5rem" }}>Skips by Reason</div>
+                            <div className="text-sm font-semibold text-gray-700 mb-2">Skips by Reason</div>
                             {(!stats?.skips_by_reason || stats.skips_by_reason.length === 0) ? (
-                                <div style={{ padding: "1rem", color: "#cbd5e0", textAlign: "center", fontStyle: "italic" }}>No skips recorded today</div>
+                                <div className="py-4 text-center text-gray-300 italic text-sm">No skips recorded today</div>
                             ) : (
-                                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-                                    <tbody>
-                                        {stats?.skips_by_reason.map((s, i) => (
-                                            <tr key={i} style={{ borderBottom: i < stats.skips_by_reason.length - 1 ? "1px solid #f7fafc" : "none" }}>
-                                                <td style={{ padding: "0.5rem 0" }}>{formatReason(s.reason)}</td>
-                                                <td style={{ padding: "0.5rem 0", textAlign: "right", fontWeight: "bold" }}>{s.count}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                <div className="divide-y divide-gray-50">
+                                    {stats.skips_by_reason.map((s, i) => (
+                                        <div key={i} className="flex justify-between items-center py-2 text-sm">
+                                            <span className="text-gray-700">{formatReason(s.reason)}</span>
+                                            <span className="font-bold text-gray-900">{s.count}</span>
+                                        </div>
+                                    ))}
+                                </div>
                             )}
                         </OpsCard>
                     </section>
 
                     {/* PANEL 4: DIFFICULTY INDICATORS */}
                     <section>
-                        <h2 style={{ fontSize: "1.1rem", marginBottom: "1rem", color: "#2d3748" }}>Asset Difficulty Indicators</h2>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                        <h2 className="text-base font-semibold text-gray-800 mb-4">Asset Difficulty Indicators</h2>
+                        <div className="flex flex-col gap-4">
 
                             {/* Hotspot Areas */}
                             <OpsCard>
-                                <div style={{ fontSize: "0.9rem", color: "#718096", marginBottom: "0.75rem", fontWeight: "600" }}>System Hotspots</div>
+                                <div className="text-sm font-semibold text-gray-500 mb-3">System Hotspots</div>
                                 {(!difficulty?.hotspot_areas || difficulty.hotspot_areas.length === 0) ? (
-                                    <div style={{ color: "#cbd5e0", fontStyle: "italic", fontSize: "0.85rem" }}>None detected today</div>
+                                    <div className="text-sm text-gray-300 italic">None detected today</div>
                                 ) : (
-                                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                                    <div className="flex flex-wrap gap-2">
                                         {difficulty.hotspot_areas.map((h, i) => (
-                                            <div key={i} style={{ background: "#ebf8ff", border: "1px solid #bee3f8", color: "#2c5282", padding: "0.25rem 0.5rem", borderRadius: "4px", fontSize: "0.85rem", fontWeight: "500" }}>
-                                                {h.pool_label}: <span style={{ fontWeight: "bold" }}>{h.heavy_stop_count}</span>
+                                            <div
+                                                key={i}
+                                                className="px-2 py-1 bg-blue-50 border border-blue-200 text-blue-800 text-sm font-medium rounded"
+                                            >
+                                                {h.pool_label}: <span className="font-bold">{h.heavy_stop_count}</span>
                                             </div>
                                         ))}
                                     </div>
                                 )}
                             </OpsCard>
 
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
                                 {/* Heavy Stops */}
                                 <OpsCard>
-                                    <div style={{ fontSize: "0.9rem", color: "#718096", marginBottom: "0.5rem", borderBottom: "1px solid #edf2f7", paddingBottom: "0.25rem" }}>Heavier Than Median</div>
-                                    <div style={{ maxHeight: "200px", overflowY: "auto" }}>
+                                    <div className="text-sm font-semibold text-gray-500 mb-2 pb-1 border-b border-gray-100">
+                                        Heavier Than Median
+                                    </div>
+                                    <div className="max-h-48 overflow-y-auto">
                                         {difficulty?.heavy_stops.map((s) => (
-                                            <div key={s.location_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.8rem", padding: "0.3rem 0", borderBottom: "1px solid #f7fafc" }}>
-                                                <span style={{ maxWidth: "60%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.label}</span>
-                                                <span style={{
-                                                    fontSize: "0.7rem", padding: "2px 4px", borderRadius: "3px", fontWeight: "bold",
-                                                    background: s.difficulty_band === 'very_heavy' ? '#FED7D7' : '#FEEBC8',
-                                                    color: s.difficulty_band === 'very_heavy' ? '#C53030' : '#C05621'
-                                                }}>
-                                                    {s.difficulty_band === 'very_heavy' ? 'Very Heavy' : 'Heavy'}
+                                            <div
+                                                key={s.location_id}
+                                                className="flex justify-between items-center text-xs py-1.5 border-b border-gray-50 last:border-0"
+                                            >
+                                                <span className="max-w-[60%] overflow-hidden text-ellipsis whitespace-nowrap">
+                                                    {s.label}
+                                                </span>
+                                                <span className={cn(
+                                                    "px-1.5 py-0.5 rounded font-bold text-xs",
+                                                    s.difficulty_band === "very_heavy"
+                                                        ? "bg-red-100 text-red-700"
+                                                        : "bg-orange-100 text-orange-700"
+                                                )}>
+                                                    {s.difficulty_band === "very_heavy" ? "Very Heavy" : "Heavy"}
                                                 </span>
                                             </div>
                                         ))}
-                                        {(!difficulty?.heavy_stops || difficulty.heavy_stops.length === 0) && <div style={{ fontSize: "0.8rem", color: "#cbd5e0" }}>Normal Load</div>}
+                                        {(!difficulty?.heavy_stops || difficulty.heavy_stops.length === 0) && (
+                                            <div className="text-xs text-gray-300">Normal Load</div>
+                                        )}
                                     </div>
                                 </OpsCard>
 
                                 {/* Heavy Routes */}
                                 <OpsCard>
-                                    <div style={{ fontSize: "0.9rem", color: "#718096", marginBottom: "0.5rem", borderBottom: "1px solid #edf2f7", paddingBottom: "0.25rem" }}>Route Density</div>
-                                    <div style={{ maxHeight: "200px", overflowY: "auto" }}>
+                                    <div className="text-sm font-semibold text-gray-500 mb-2 pb-1 border-b border-gray-100">
+                                        Route Density
+                                    </div>
+                                    <div className="max-h-48 overflow-y-auto">
                                         {difficulty?.heavy_routes.map((r) => (
-                                            <div key={r.route_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.8rem", padding: "0.3rem 0", borderBottom: "1px solid #f7fafc" }}>
+                                            <div
+                                                key={r.route_id}
+                                                className="flex justify-between items-center text-xs py-1.5 border-b border-gray-50 last:border-0"
+                                            >
                                                 <span>#{r.route_id} ({r.pool_label})</span>
-                                                <span style={{
-                                                    fontSize: "0.7rem", padding: "2px 4px", borderRadius: "3px", fontWeight: "bold",
-                                                    background: r.difficulty_density_band === 'high' ? '#FED7D7' : '#FEEBC8',
-                                                    color: r.difficulty_density_band === 'high' ? '#C53030' : '#C05621'
-                                                }}>
-                                                    {r.difficulty_density_band === 'high' ? 'High' : 'Elevated'}
+                                                <span className={cn(
+                                                    "px-1.5 py-0.5 rounded font-bold text-xs",
+                                                    r.difficulty_density_band === "high"
+                                                        ? "bg-red-100 text-red-700"
+                                                        : "bg-orange-100 text-orange-700"
+                                                )}>
+                                                    {r.difficulty_density_band === "high" ? "High" : "Elevated"}
                                                 </span>
                                             </div>
                                         ))}
-                                        {(!difficulty?.heavy_routes || difficulty.heavy_routes.length === 0) && <div style={{ fontSize: "0.8rem", color: "#cbd5e0" }}>Balanced</div>}
+                                        {(!difficulty?.heavy_routes || difficulty.heavy_routes.length === 0) && (
+                                            <div className="text-xs text-gray-300">Balanced</div>
+                                        )}
                                     </div>
                                 </OpsCard>
-                            </div>
 
+                            </div>
                         </div>
                     </section>
+
                 </div>
 
             </div>

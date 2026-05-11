@@ -3,7 +3,7 @@
 > Orchestration layer for the product refinement track.
 > Runs alongside and after the DB Refactor (Tiers 1–6).
 > Each item has its own handoff file. This document tracks ordering, dependencies, and status.
-> Last updated: 2026-05-10
+> Last updated: 2026-05-11
 
 ---
 
@@ -24,7 +24,7 @@ These are two parallel workstreams. Several refinement items can begin before al
 | R2 | Arrival Observations — Real Prior State | Tier 1 done | R1, R3, R4 | 🟠 In Review |
 | R3 | Frontend Router | — (unblocked) | R1, R2, R4, R10 | 🟢 Done |
 | R4 | Offline UX — Worker Feedback Layer | — (unblocked) | R1, R2, R3 | 🟢 Done |
-| R5 | Enterprise UI/UX Rebuild | R3 done | R6 | 🟡 In progress (Surfaces 1–5 done) |
+| R5 | Enterprise UI/UX Rebuild | R3 done | R6 | 🟢 Done |
 | R6 | Control Center — Live Updates | Tier 3 done | R5 | 🟡 Unblocked |
 | R7 | Historical Backfill Framework (Scale Asset) | Tier 1 done | R6, R8 | 🔴 Not started — low priority, post-pilot |
 | R8 | CI Pipeline | Tier 6 Sub-task C done | R7 | ⛔ Blocked by Tier 6C |
@@ -95,7 +95,7 @@ The offline queue and replay engine are production-quality but entirely invisibl
 
 Replace the dev-grade inline-style UI with an enterprise-standard design system. Mobile-first for UL workers. Responsive for Leads (tablet) and Admins (desktop). Consistent component library, typography, spacing, color, loading states, error states, and empty states across the full application surface.
 
-**Surface progress**: Surface 1 (shell) 🟢, Surface 2 (UL stop list) 🟢, Surface 3 (stop wizard) 🟢, Surface 4 (Lead routes) 🟢, Surface 5 (Admin Dashboard/Pools/Stops) 🟢, Surface 6 (AdminControlCenter) 🔴 not started
+**Surface progress**: All six surfaces complete ✅ — consolidated changelog at `docs/changelog/2026-05-11-r5-enterprise-ui.md`
 
 ---
 

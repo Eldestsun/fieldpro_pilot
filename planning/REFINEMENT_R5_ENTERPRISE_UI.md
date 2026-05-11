@@ -199,32 +199,35 @@ Desktop-primary. Operational real-time view.
 
 R5 is complete when ALL of the following are true across all six surfaces, **and a changelog entry has been written**:
 
-- [ ] Zero inline `style={{}}` props remain in any component (App.tsx or below)
+- [x] Zero inline `style={{}}` props remain in any component (App.tsx or below)
   - ✅ All UL worker surfaces (Surfaces 1–3): App.tsx, UlLayout, RouteHeader, StopList, StopListItem, TodayRouteView, StopChecklist, StopDetail
   - ✅ All Lead surfaces (Surface 4): OpsLayout, OpsCard, OpsButton, OpsTable, OpsBadge, LeadRoutesPanel, LeadRouteDetail, LeadCompletedRouteDetail, RouteSummary, RouteCreatePanel
-  - ✅ All Admin surfaces (Surface 5): AdminDashboard, AdminPoolsPanel, AdminStopsPanel; deprecated style/padding props removed from OpsCard and OpsTable
+  - ✅ All Admin surfaces (Surfaces 5–6): AdminDashboard, AdminPoolsPanel, AdminStopsPanel, AdminControlCenter; deprecated style/padding props removed from OpsCard and OpsTable
   - ✅ New primitives: DataTable, ConfirmDialog — zero inline styles
-  - Remaining: AdminControlCenter.tsx (Surface 6)
-  - Two documented exceptions carry forward: `RouteHeader.tsx` dynamic progress bar width; `StopDetail → ULRouteMap` component-API style prop
-- [ ] shadcn/ui component library initialized and in use
+  - Three documented exceptions (all intentional, all carry forward):
+    1. `RouteHeader.tsx` — dynamic progress bar fill width (runtime-computed from server data)
+    2. `StopDetail → ULRouteMap` — component-API prop, not a DOM inline style
+    3. `AdminControlCenter.tsx` — dynamic route progress bar fill width (same pattern as exception 1)
+- [x] shadcn/ui component library initialized and in use
   - ✅ `cn()` utility live; DataTable follows shadcn DataTable pattern (manual, no TanStack dep at this data scale)
 - [x] Design tokens defined and applied consistently — `src/styles/tokens.css` live
-- [ ] All six surfaces rebuilt to spec — Surfaces 1–5 done, Surface 6 remaining
+- [x] All six surfaces rebuilt to spec — all done ✅
 - [x] Every surface has explicit loading, empty, and error states
   - ✅ Surfaces 1–2: skeleton loading, styled error, empty state with CTA
   - ✅ Surface 3: all wizard states (not-started, read-only, wizard flow with sync/resume/modal states)
   - ✅ Surface 4: loading/error states on detail views; empty-state rows in tables
   - ✅ Surface 5: skeleton loading cards on Dashboard; error card; DataTable empty/loading states
+  - ✅ Surface 6: animate-pulse skeleton grid; OpsCard error state; empty state row in route table
 - [x] UL stop list and stop wizard are fully usable on a 375px mobile viewport
 - [x] Lead routes panel is usable on a 768px tablet viewport
-- [ ] Admin views are usable on a 1280px desktop viewport
-  - ✅ Surface 5 done: responsive stat grid, sortable DataTable, ConfirmDialog, 44px targets
-  - Surface 6 (AdminControlCenter) remaining
+- [x] Admin views are usable on a 1280px desktop viewport
+  - ✅ Surface 5: responsive stat grid, sortable DataTable, ConfirmDialog, 44px targets
+  - ✅ Surface 6: 4-col snapshot grid, route table, lg:grid-cols-2 bottom panels, responsive difficulty sub-grid
 - [x] No worker-identifying UI elements on any surface
   - ✅ Fixed: removed `UID:{user_id}` from LeadRouteDetail
-- [ ] Changelog entry written to `docs/changelog/YYYY-MM-DD-r5-enterprise-ui.md`
-  - ✅ Per-surface changelogs: surfaces 1–5 written
-  - Final consolidated entry to be written when Surface 6 done
+- [x] Changelog entry written to `docs/changelog/YYYY-MM-DD-r5-enterprise-ui.md`
+  - ✅ Per-surface changelogs: all six written
+  - ✅ Final consolidated entry: `docs/changelog/2026-05-11-r5-enterprise-ui.md`
 
 ---
 
@@ -246,7 +249,7 @@ Desktop-primary (1280px). Data tables with sort/filter. shadcn DataTable via man
 Confirmation dialogs for destructive actions. Do not start Surface 6 in this session.
 ```
 
-### Surface 6 — Admin Control Center
+### Surface 6 — Admin Control Center ✅ done 2026-05-11
 ```
 Refinement task. Read CLAUDE.md, then planning/REFINEMENT_R5_ENTERPRISE_UI.md, Surface 6 only.
 Primary file: AdminControlCenter.tsx.
