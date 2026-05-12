@@ -2,7 +2,7 @@
 
 > **Goal**: Give the codebase a migration runner, integration test coverage for canonical write paths, production Dockerfiles, and a documented CI setup — so the refactor can be verified automatically and the application can be deployed outside of local dev.
 >
-> **Status**: 🟡 In progress — Sub-tasks A and D complete; B and C pending
+> **Status**: 🟢 Done — all sub-tasks complete (2026-05-12)
 > **Depends on**: Nothing (unblocked)
 > **Runs alongside**: Every other tier — write tests as each tier completes, not all at the end
 
@@ -67,7 +67,7 @@ Add to `backend/package.json` scripts:
 
 ---
 
-## Sub-task B — Integration Tests for Canonical Write Paths
+## Sub-task B — Integration Tests for Canonical Write Paths 🟢 Done
 
 ### Why
 
@@ -123,14 +123,16 @@ assignments.test.ts (write after Tier 5):
 ```
 
 ### Done criteria
-- `npm test` in `backend/` runs the test suite and all tests pass
-- Tests run against the real local DB (not mocked)
-- Each Tier 1 and Tier 5 canonical write path has at least one passing test
-- Test cleanup leaves no fixture data in the DB
+- [x] `npm test` in `backend/` runs the test suite and all tests pass
+- [x] Tests run against the real local DB (not mocked)
+- [x] Each Tier 1 and Tier 5 canonical write path has at least one passing test
+- [x] Test cleanup leaves no fixture data in the DB
+
+**Verified 2026-05-12.** 20 integration tests across `backend/tests/canonical/` pass against the real local DB; fixture cleanup verified clean. Changelog: `docs/changelog/2026-05-12-tier-6-infrastructure.md`
 
 ---
 
-## Sub-task C — Production Dockerfiles
+## Sub-task C — Production Dockerfiles 🟢 Done
 
 ### Why
 
@@ -184,10 +186,12 @@ CMD ["nginx", "-g", "daemon off;"]
 The `nginx.conf` must handle SPA routing (`try_files $uri /index.html`) and proxy `/api` to the backend.
 
 ### Done criteria
-- `docker compose up --build` starts all services including frontend and backend
-- Frontend is reachable at `localhost:80` (or configured port)
-- Backend API is reachable at `localhost:4000`
-- Auth flow works through the containerised setup
+- [x] `docker compose up --build` starts all services including frontend and backend
+- [x] Frontend is reachable at `localhost:80` (or configured port)
+- [x] Backend API is reachable at `localhost:4000`
+- [x] Auth flow works through the containerised setup
+
+**Verified 2026-05-12.** Changelog: `docs/changelog/2026-05-12-tier-6-infrastructure.md`
 
 ---
 
@@ -219,12 +223,12 @@ The `nginx.conf` must handle SPA routing (`try_files $uri /index.html`) and prox
 Tier 6 is complete when ALL of the following are true, **and a changelog entry has been written to `docs/changelog/`**:
 
 - [x] Sub-task A: `npm run migrate` applies all pending migrations idempotently
-- [ ] Sub-task B: `npm test` runs and all canonical write path tests pass
-- [ ] Sub-task B: Tier 1 and Tier 5 canonical paths each have at least one test
-- [ ] Sub-task C: `docker compose up --build` starts the full stack
+- [x] Sub-task B: `npm test` runs and all canonical write path tests pass
+- [x] Sub-task B: Tier 1 and Tier 5 canonical paths each have at least one test
+- [x] Sub-task C: `docker compose up --build` starts the full stack
 - [x] Sub-task D: No hardcoded `localhost` in backend source
 - [x] Sub-task D: `.env.example` documents all required env vars
-- [ ] Changelog entry written to `docs/changelog/YYYY-MM-DD-tier-6-infrastructure.md`
+- [x] Changelog entry written to `docs/changelog/2026-05-12-tier-6-infrastructure.md`
 
 ---
 

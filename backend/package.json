@@ -8,7 +8,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "migrate": "ts-node scripts/migrate.ts",
-    "test": "echo \"No tests yet\" && exit 0"
+    "test": "ts-node --transpile-only tests/run.ts"
   },
   "keywords": [],
   "author": "",
