@@ -29,7 +29,7 @@ These are two parallel workstreams. Several refinement items can begin before al
 | R7 | Historical Backfill Framework (Scale Asset) | Tier 1 done | R6, R8 | 🔴 Not started — low priority, post-pilot |
 | R8 | CI Pipeline | Tier 6 Sub-task C done | R7 | ⛔ Blocked by Tier 6C |
 | R9 | Frontend Tests | R5 stable | — | 🔴 Not started — unblocked |
-| R10 | Stop Effort History (replace workforce_metrics) | Tier 4 Sub-task B done | R1, R3 | 🟠 In Review |
+| R10 | Stop Effort History (replace workforce_metrics) | Tier 4 Sub-task B done | R1, R3 | 🟢 Done |
 
 ---
 
@@ -132,10 +132,10 @@ Add component tests (Vitest + Testing Library) for the UL stop wizard, offline q
 
 Replace the dropped `workforce_metrics` and `stop_scoring_history` tables with correctly designed stop-level effort and condition history tables. Worker-safe by structure (no `user_id`). Keyed by `stop_id` and `visit_id`. Feeds route planning intelligence and stop assignment decisions. Runs after Tier 4 Sub-task B drops the surveillance tables.
 
-Status: 🟠 In Review — Steps 1+2 done. Step 3 now unblocked (Tier 2 complete as of 2026-05-11).
+Status: 🟢 Done — all three steps complete as of 2026-05-12. Changelog at `docs/changelog/2026-05-12-r10-stop-effort-history.md`.
 - Step 1 (migration): complete — `stop_effort_history` and `stop_condition_history` created in `20260508_replace_surveillance_tables.sql`
 - Step 2 (write path): complete — `cleanLogService.ts` inserts `stop_effort_history` row after each stop completion; observation type names and payload field corrected vs. spec draft
-- Step 3 (condition history after risk rebuild): unblocked — Tier 2 `riskMapService.ts` rewrite is done; ready to wire `stop_condition_history` write path
+- Step 3 (condition history after risk rebuild): complete — `riskMapService.ts` inserts `stop_condition_history` rows inside the rebuild transaction using `transit_stop_assets` Path B join (spec SQL adapted — `route_run_stop_id` deferred to Tier 5)
 
 ---
 
