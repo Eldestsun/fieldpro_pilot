@@ -3,7 +3,7 @@
 > Orchestration layer for the product refinement track.
 > Runs alongside and after the DB Refactor (Tiers 1–6).
 > Each item has its own handoff file. This document tracks ordering, dependencies, and status.
-> Last updated: 2026-05-11
+> Last updated: 2026-05-12
 
 ---
 
@@ -28,7 +28,7 @@ These are two parallel workstreams. Several refinement items can begin before al
 | R6 | Control Center — Live Updates | Tier 3 done | R5 | 🟢 Done |
 | R7 | Historical Backfill Framework (Scale Asset) | Tier 1 done | R6, R8 | 🔴 Not started — low priority, post-pilot |
 | R8 | CI Pipeline | Tier 6 Sub-task C done | R7 | ⛔ Blocked by Tier 6C |
-| R9 | Frontend Tests | R5 stable | — | ⛔ Blocked by R5 |
+| R9 | Frontend Tests | R5 stable | — | 🔴 Not started — unblocked |
 | R10 | Stop Effort History (replace workforce_metrics) | Tier 4 Sub-task B done | R1, R3 | 🟠 In Review |
 
 ---
@@ -132,10 +132,10 @@ Add component tests (Vitest + Testing Library) for the UL stop wizard, offline q
 
 Replace the dropped `workforce_metrics` and `stop_scoring_history` tables with correctly designed stop-level effort and condition history tables. Worker-safe by structure (no `user_id`). Keyed by `stop_id` and `visit_id`. Feeds route planning intelligence and stop assignment decisions. Runs after Tier 4 Sub-task B drops the surveillance tables.
 
-Status: 🟠 In Review — Steps 1+2 done and correct. Step 3 remains deferred on Tier 2.
+Status: 🟠 In Review — Steps 1+2 done. Step 3 now unblocked (Tier 2 complete as of 2026-05-11).
 - Step 1 (migration): complete — `stop_effort_history` and `stop_condition_history` created in `20260508_replace_surveillance_tables.sql`
 - Step 2 (write path): complete — `cleanLogService.ts` inserts `stop_effort_history` row after each stop completion; observation type names and payload field corrected vs. spec draft
-- Step 3 (condition history after risk rebuild): deferred — depends on Tier 2 `riskMapService.ts` rewrite
+- Step 3 (condition history after risk rebuild): unblocked — Tier 2 `riskMapService.ts` rewrite is done; ready to wire `stop_condition_history` write path
 
 ---
 
