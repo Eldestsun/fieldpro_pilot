@@ -28,7 +28,7 @@
 - `backend/Dockerfile`
 - `frontend/Dockerfile`
 - `docker-compose.yml`
-- `nginx.conf`
+- `frontend/nginx.conf`
 - `backend/src/osrmClient.ts`
 - `backend/src/db.ts`
 - `backend/.env.example`

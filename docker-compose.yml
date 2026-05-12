@@ -99,6 +99,10 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: fieldpro
       MINIO_SECRET_KEY: fieldpro_minio_pass
+      # Auth — backend refuses to boot without these. Pass through from host env.
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID:?AZURE_TENANT_ID must be set}
+      AZURE_API_AUDIENCE: ${AZURE_API_AUDIENCE:?AZURE_API_AUDIENCE must be set}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
     ports:
       - "4000:4000"
 
