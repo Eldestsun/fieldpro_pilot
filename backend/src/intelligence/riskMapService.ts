@@ -250,6 +250,29 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
 
         const result = await client.query(query);
 
+        // R10 Change 3 — write stop_condition_history for stops with a visit in the last day.
+        // route_run_stop_id is not yet on core.visits (Tier 5), so we use the transit_stop_assets
+        // one-hop translation (Path B/C, tolerated per ADAPTER_BOUNDARY.md §5).
+        await client.query(`
+            INSERT INTO stop_condition_history (stop_id, visit_id, scored_at, cleanliness_score, safety_score, infra_score, asset_id)
+            SELECT
+                srs.stop_id,
+                v.id,
+                NOW(),
+                srs.cleanliness_score,
+                srs.safety_score,
+                srs.infrastructure_score,
+                tsa.asset_id
+            FROM stop_risk_snapshot srs
+            JOIN transit_stop_assets tsa
+              ON tsa.stop_id = srs.stop_id
+             AND tsa.active = TRUE
+             AND tsa.role = 'primary'
+            JOIN core.visits v ON v.primary_asset_id = tsa.asset_id
+            WHERE v.ended_at >= NOW() - INTERVAL '1 day'
+            ON CONFLICT (stop_id, visit_id) DO NOTHING
+        `);
+
         await client.query("COMMIT");
         console.log(`[riskMap] stop_risk_snapshot rebuilt with ${result.rowCount} rows`);
         return result.rowCount ?? 0;
