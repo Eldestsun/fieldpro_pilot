@@ -27,7 +27,7 @@ import { saveTodayRouteCache, loadTodayRouteCache } from "../offline/todayRouteC
 export interface SafetyState {
     hasConcern: boolean | null;
     hazardTypes?: string[]; // Multi-select
-    severity?: number;
+    severity?: string;
     notes?: string;
     wantsToSkip?: boolean;
     safetyPhotoKey?: string; // Key of the uploaded safety photo
@@ -184,7 +184,7 @@ export function useTodayRoute() {
         setIsStartingStop(false);
     };
 
-    const handleSkipStop = async (stopId: number) => {
+    const handleSkipStop = async (stopId: number, hazardTypes: string[]) => {
         setIsCompletingStop(true);
 
         const safety = safetyState[stopId];
@@ -196,20 +196,21 @@ export function useTodayRoute() {
             return;
         }
 
-        if (!safety.hazardTypes || safety.hazardTypes.length === 0) {
+        // AND gate: both hazard types AND photo evidence are required
+        const hasHazards = hazardTypes.length > 0;
+        const hasPhoto = !!safety.safetyPhotoKey ||
+            !!(routeRun && getHasQueuedUploadForStop(tenantId, oid, routeRun.id, stopId, "safety"));
+
+        if (!hasHazards) {
             console.warn("[handleSkipStop] No hazard types selected for stop", stopId);
             setIsCompletingStop(false);
             return;
         }
 
-        // Check for photo (uploaded or queued)
-        if (!safety.safetyPhotoKey) {
-            const hasQueued = routeRun && getHasQueuedUploadForStop(tenantId, oid, routeRun.id, stopId, "safety");
-            if (!hasQueued) {
-                console.warn("[handleSkipStop] Safety photo required to skip stop", stopId);
-                setIsCompletingStop(false);
-                return;
-            }
+        if (!hasPhoto) {
+            console.warn("[handleSkipStop] Safety photo required to skip stop", stopId);
+            setIsCompletingStop(false);
+            return;
         }
 
         if (!routeRun) {
@@ -218,7 +219,7 @@ export function useTodayRoute() {
         }
 
         const payload = {
-            hazard_types: safety.hazardTypes || [],
+            hazard_types: hazardTypes,
             severity: safety.severity,
             notes: safety.notes,
             safety_photo_key: safety.safetyPhotoKey,
@@ -274,7 +275,7 @@ export function useTodayRoute() {
         if (safety?.hasConcern && safety.wantsToSkip) {
             // Delegate to skip handler
             setIsCompletingStop(false);
-            await handleSkipStop(stopId);
+            await handleSkipStop(stopId, safety.hazardTypes || []);
             return;
         }
 
@@ -308,7 +309,7 @@ export function useTodayRoute() {
             trashVolume: checklist.trashVolume,
             safety: safetyState[stopId]?.hasConcern ? {
                 hazard_types: safetyState[stopId]?.hazardTypes || [],
-                severity: 1,
+                severity: safetyState[stopId]?.severity,
                 notes: safetyState[stopId]?.notes || "",
                 safety_photo_key: safetyState[stopId]?.safetyPhotoKey,
             } : undefined,

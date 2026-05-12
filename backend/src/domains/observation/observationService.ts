@@ -18,6 +18,11 @@ export type StopUiPayload = {
         | "other"
     )[];
 
+    // Optional severity for hazards reported in this visit. Written into
+    // core.observations.severity on every hazard-type observation emitted
+    // from this payload. Consumed by riskMapService hazard scoring.
+    hazard_severity?: string | number;
+
     skipForSafety?: boolean;
 
     // Cleaning
@@ -54,6 +59,7 @@ export type StopUiPayload = {
 export type ObservationInsert = {
     observation_type: string;
     payload: Record<string, any>;
+    severity?: string | null;
 };
 
 // PUBLIC API
@@ -178,13 +184,15 @@ function submitObservations(ui: StopUiPayload): ObservationInsert[] {
     const obs: ObservationInsert[] = [];
 
     // Safety
+    const hazardSeverity = ui.hazard_severity != null ? String(ui.hazard_severity) : null;
     if (ui.safetyConcern) {
-        obs.push({ observation_type: "safety_concern_present", payload: {} });
+        obs.push({ observation_type: "safety_concern_present", payload: {}, severity: hazardSeverity });
 
         ui.safetyHazards?.forEach(h => {
             obs.push({
                 observation_type: mapSafetyHazard(h),
-                payload: {}
+                payload: {},
+                severity: hazardSeverity,
             });
         });
     }
@@ -328,9 +336,10 @@ async function insertObservations(
         asset_id,
         observation_type,
         payload,
+        severity,
         created_by_oid
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
       `,
             [
                 context.orgId,
@@ -339,6 +348,7 @@ async function insertObservations(
                 context.assetId,
                 o.observation_type,
                 o.payload,
+                o.severity ?? null,
                 context.actorOid
             ]
         );

@@ -7,6 +7,7 @@ import { ImagePreviewModal } from "../common/ImagePreviewModal";
 import { useAuth } from "../../auth/AuthContext";
 import { getQueuedUploadCountForStop, subscribe, hasPendingStartStopForStop, hasPendingSkipStopForStop } from "../../offline/offlineQueue";
 import { saveStopDraft, loadStopDraft, clearStopDraft } from "../../offline/stopDraftStore";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 
 const CHECKLIST_ITEMS: { key: keyof ChecklistState; label: string }[] = [
     { key: 'picked_up_litter', label: 'Picked up litter' },
@@ -65,7 +66,7 @@ interface StopDetailProps {
     infra?: InfraState;
     onSetSafety?: (data: SafetyState) => void;
     onSetInfra?: (data: InfraState) => void;
-    onSkipStop?: () => void;
+    onSkipStop?: (hazardTypes: string[]) => void;
     currentStep?: WizardStep;
     onNextStep?: () => void;
     onSetStep?: (step: WizardStep) => void;
@@ -300,8 +301,9 @@ export function StopDetail({
     }, [isReadOnly, stop.route_run_stop_id]);
 
 
-    // Skip Modal State
+    // Skip confirm + error state
     const [showSkipModal, setShowSkipModal] = useState(false);
+    const [skipError, setSkipError] = useState<string | null>(null);
 
     // Local state for Infra multi-select
     // We initialize this from props if available, or empty
@@ -322,6 +324,7 @@ export function StopDetail({
     useEffect(() => {
         if (isReportSafetyOpen) {
             setLocalSafety(safety || { hasConcern: true }); // Default to concern=true when opening report
+            setSkipError(null);
         }
     }, [isReportSafetyOpen, safety]);
 
@@ -879,6 +882,40 @@ export function StopDetail({
                                 })}
                             </div>
 
+                            {(localSafety.hazardTypes?.length ?? 0) > 0 && (
+                                <div className="mb-6">
+                                    <label className="block mb-2 font-bold text-gray-700">Severity:</label>
+                                    <div className="flex gap-2">
+                                        {(["low", "medium", "high"] as const).map((level) => {
+                                            const isSelected = localSafety.severity === level;
+                                            const colorClass = isSelected
+                                                ? level === "low"
+                                                    ? "bg-yellow-100 border-yellow-500 text-yellow-800"
+                                                    : level === "medium"
+                                                        ? "bg-orange-100 border-orange-500 text-orange-800"
+                                                        : "bg-red-100 border-red-600 text-red-800"
+                                                : "bg-white border-gray-300 text-gray-600";
+                                            return (
+                                                <button
+                                                    key={level}
+                                                    type="button"
+                                                    onClick={() => setLocalSafety(prev => ({
+                                                        ...prev,
+                                                        severity: isSelected ? undefined : level,
+                                                    }))}
+                                                    className={cn(
+                                                        "flex-1 py-3 rounded-lg border-2 font-bold text-sm capitalize min-h-[44px] cursor-pointer transition-colors",
+                                                        colorClass
+                                                    )}
+                                                >
+                                                    {level.charAt(0).toUpperCase() + level.slice(1)}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
                             <label className="block mb-2 font-bold text-gray-700">Safety Photo (For Skipping):</label>
                             <div className="mb-6">
                                 <input
@@ -918,10 +955,14 @@ export function StopDetail({
                             />
                         </div>
 
+                        {skipError && (
+                            <p className="text-red-600 text-sm text-center px-4 pt-3 m-0">{skipError}</p>
+                        )}
+
                         {/* Footer / Actions */}
                         <div className="p-4 border-t border-gray-200 bg-white flex gap-3">
                             {(() => {
-                                const hasHazards = localSafety.hazardTypes && localSafety.hazardTypes.length > 0;
+                                const hasHazards = !!(localSafety.hazardTypes && localSafety.hazardTypes.length > 0);
                                 const isOtherOnly = localSafety.hazardTypes?.length === 1 && localSafety.hazardTypes[0] === "other";
                                 const hasNotes = !!(localSafety.notes && localSafety.notes.trim().length > 0);
                                 const isContentValid = hasHazards && (!isOtherOnly || hasNotes);
@@ -929,18 +970,26 @@ export function StopDetail({
 
                                 return (
                                     <>
-                                        {/* Skip Button - Gated by Hazard AND Photo (AND Notes if Other only) */}
+                                        {/* Skip Button — validation AND gate: hazard AND photo both required */}
                                         <button
                                             onClick={() => {
+                                                setSkipError(null);
+                                                if (!isContentValid) {
+                                                    setSkipError("Select a hazard type to skip this stop");
+                                                    return;
+                                                }
+                                                if (!hasPhoto) {
+                                                    setSkipError("Add a photo before skipping");
+                                                    return;
+                                                }
                                                 onSetSafety?.({ ...localSafety, wantsToSkip: true, hasConcern: true });
-                                                onSkipStop?.();
+                                                setShowSkipModal(true);
                                             }}
-                                            disabled={!(isContentValid && hasPhoto)}
                                             className={cn(
-                                                "flex-1 py-4 rounded-lg border-0 font-bold min-h-[44px]",
+                                                "flex-1 py-4 rounded-lg border-0 font-bold min-h-[44px] cursor-pointer",
                                                 (isContentValid && hasPhoto)
-                                                    ? "bg-red-700 text-white cursor-pointer"
-                                                    : "bg-red-100 text-red-400 cursor-not-allowed"
+                                                    ? "bg-red-700 text-white"
+                                                    : "bg-red-100 text-red-400"
                                             )}
                                         >
                                             Skip Stop
@@ -1287,27 +1336,19 @@ export function StopDetail({
 
             <ImagePreviewModal isOpen={!!previewUrl} imageUrl={previewUrl} onClose={() => setPreviewUrl(null)} />
 
-            {showSkipModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
-                    <div className="bg-white p-6 rounded-xl w-full max-w-sm shadow-2xl">
-                        <h3 className="mt-0 mb-4 text-lg font-bold text-gray-900">Confirm Skip?</h3>
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => setShowSkipModal(false)}
-                                className="flex-1 py-3 bg-white border border-gray-300 rounded-lg text-gray-700 font-medium min-h-[44px] cursor-pointer"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={() => onSkipStop?.()}
-                                className="flex-1 py-3 bg-red-700 text-white border-0 rounded-lg font-bold min-h-[44px] cursor-pointer"
-                            >
-                                Skip
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <ConfirmDialog
+                isOpen={showSkipModal}
+                title="Skip this stop?"
+                message="This stop will be recorded as skipped due to a safety hazard. This cannot be undone."
+                confirmLabel="Skip Stop"
+                cancelLabel="Cancel"
+                variant="danger"
+                onConfirm={() => {
+                    setShowSkipModal(false);
+                    onSkipStop?.(localSafety.hazardTypes || []);
+                }}
+                onCancel={() => setShowSkipModal(false)}
+            />
         </UlLayout>
     );
 }

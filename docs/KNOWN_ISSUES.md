@@ -71,7 +71,7 @@ Wherever `route_stop` ID is rendered in Control Center components, join or look 
 ---
 
 ## ISSUE-004 — Skip stop: "No hazard selected" fires on first attempt despite hazard being selected
-**Status:** Deferred  
+**Status:** Fixed 2026-05-11  
 **Discovered:** 2026-05-10  
 **Area:** frontend — UL skip stop workflow / `handleSkipStop`  
 **Severity:** high  
@@ -137,16 +137,14 @@ Edge case for pilot (requires simultaneous offline session + tab crash). Existin
 ---
 
 ## ISSUE-007 — Hazard severity not captured in canonical observations
-core.observations.severity is never written by cleanLogService.ts
-or observationService.ts. riskMapService.ts hazard CTE uses
-presence-only scoring (hardcoded 1.0) as a result. Risk scores
-will underweight high-severity hazard stops until severity is
-emitted at write time.
-Affects: stop_risk_snapshot.hazard_score
-Fix: update observationService.ts to write severity from
-StopUiPayload.safety.hazard_severity (or equivalent field)
-into core.observations.severity at stop completion.
-Priority: before pilot go-live.
+**Status:** Fixed 2026-05-11
+Backend write path: `observationService.ts` writes `core.observations.severity` from
+`StopUiPayload.hazard_severity`. Frontend: severity pill selector (Low/Medium/High)
+added to safety modal in `StopDetail.tsx`; value wired through `SafetyState.severity`
+→ `handleCompleteStop`/`handleSkipStop` → queue action payload → route handler →
+`cleanLogService` → `observationService` → `core.observations.severity`.
+Changelogs: `2026-05-11-fix-007-hazard-severity-write.md`,
+`2026-05-11-issue-007-severity-frontend.md`.
 
 ---
 

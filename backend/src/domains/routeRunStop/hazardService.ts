@@ -1,13 +1,21 @@
 import { PoolClient } from "pg";
 import { ensureVisitForRouteRunStop } from "../../domains/visit/visitService";
 
+function toNumericSeverity(s: string | number | undefined | null): number {
+    if (typeof s === "number") return s;
+    if (s === "low") return 1;
+    if (s === "medium") return 2;
+    if (s === "high") return 3;
+    return 1; // default
+}
+
 export async function createHazardForRouteRunStop(
     client: PoolClient,
     params: {
         routeRunStopId: number | string;
         userId: number;
         hazardTypes: string[];
-        severity?: number;
+        severity?: string | number;
         notes?: string;
         photoKey?: string; // Singular column for primary photo
         photoKeys?: string[]; // Kept for backward compatibility or extra photos in details
@@ -78,7 +86,7 @@ export async function createHazardForRouteRunStop(
         userId,
         hazardType,
         photoKey || null,
-        severity || 1, // Default severity
+        toNumericSeverity(severity), // Convert string label to smallint
         notes || null, // Store UL notes in notes column
         details,
     ]);

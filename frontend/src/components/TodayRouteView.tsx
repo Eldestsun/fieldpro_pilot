@@ -206,7 +206,7 @@ export function TodayRouteView() {
                 infra={infraState[stop.route_run_stop_id]}
                 onSetSafety={(data) => setSafetyForStop(stop.route_run_stop_id, data)}
                 onSetInfra={(data) => setInfraForStop(stop.route_run_stop_id, data)}
-                onSkipStop={() => handleSkipStop(stop.route_run_stop_id)}
+                onSkipStop={(hazardTypes) => handleSkipStop(stop.route_run_stop_id, hazardTypes)}
                 uploadPhotos={uploadPhotos}
                 fetchPhotos={fetchPhotos}
                 routeRunId={routeRun.id}

@@ -138,7 +138,7 @@ export interface InfraIssuePayload {
 
 export interface HazardPayload {
     hazard_types: string[];
-    severity?: number;
+    severity?: string;
     notes?: string;
     safety_photo_key?: string;
     photo_keys: string[];
@@ -146,7 +146,7 @@ export interface HazardPayload {
 
 export interface SafetyPayload {
     hazard_types: string[];
-    severity?: number;
+    severity?: string;
     notes?: string;
     safety_photo_key?: string;
 }

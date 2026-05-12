@@ -24,7 +24,7 @@ export async function completeStop(
         infraIssues?: InfraIssueInput[];
         trashVolume?: number;
         actorOid?: string;
-        safety?: { hazard_types: string[]; safetyConcern?: boolean };
+        safety?: { hazard_types: string[]; safetyConcern?: boolean; severity?: string | number };
         spotCheck?: boolean;
     }
 ): Promise<{ cleanLogId: number; routeRunId: number } | null> {
@@ -153,6 +153,7 @@ export async function completeStop(
         infrastructureIssues:  infraNames,
         safetyConcern: (data.safety?.hazard_types?.length ?? 0) > 0,
         safetyHazards: data.safety?.hazard_types as StopUiPayload['safetyHazards'],
+        hazard_severity: data.safety?.severity,
     };
 
     await emitObservationsForStop({

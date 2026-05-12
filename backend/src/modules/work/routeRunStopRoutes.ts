@@ -161,6 +161,7 @@ routeRunStopRoutes.post(
                 skipForSafety: true,
                 safetyConcern: true,
                 safetyHazards: hazard_types,
+                hazard_severity: severity,
                 // No cleaning or infra actions on skip
             };
 

@@ -29,7 +29,7 @@ export function useSyncStatus() {
         };
     }, [tenantId, oid]);
 
-    let statusKind = "synced";
+    let statusKind: "synced" | "conflict" | "syncing" | "offline-queued" = "synced";
     let label = "All changes synced";
 
     if (summary.totalConflict > 0) {
