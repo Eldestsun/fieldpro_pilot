@@ -74,21 +74,13 @@ Wherever `route_stop` ID is rendered in Control Center components, join or look 
 **Status:** Fixed 2026-05-11  
 **Discovered:** 2026-05-10  
 **Area:** frontend — UL skip stop workflow / `handleSkipStop`  
-**Severity:** high  
 
-**Symptom:**  
-On the skip stop flow, the validation gate fires "No hazard selected" (now `console.warn` post-R4B) on the first attempt even when the worker has selected a hazard type. Worker must deselect and reselect the hazard for the second attempt to succeed. Online path threw a visible error; offline path swallows it silently but still requires double-tap.
-
-**Root cause (if known):**  
-State update from hazard selection is async. `handleSkipStop` reads `safetyState[stopId].hazardTypes` before the React re-render cycle has committed the selection, so it sees stale state on first invocation.
-
-**Deferred because:**  
-Does not cause data loss — second attempt succeeds. R4B removed the visible `alert()` so the error is now silent. Full fix requires careful state timing work best done in a dedicated session.
-
-**Fix hint:**  
-Either (a) move the hazard validation to fire after state settles using a `useEffect` or `useCallback` with the correct dependency, or (b) pass hazard selection directly as an argument to `handleSkipStop` rather than reading from `safetyState` at call time, eliminating the async read entirely. Option (b) is cleaner.
-
-**Target:** Post-R4 triage (before R4 final sign-off)
+**Resolution:**  
+Hazard selection is now passed directly as an argument to `handleSkipStop` from the
+confirm dialog `onConfirm` callback, eliminating the async state read entirely.
+`localSafety.hazardTypes` is read at the time the worker taps "Skip Stop" in the
+safety modal, not deferred to the confirm step where stale state could be read.  
+Changelog: `2026-05-11-fix-004-skip-hazard-double-tap.md`
 
 ---
 
@@ -137,14 +129,22 @@ Edge case for pilot (requires simultaneous offline session + tab crash). Existin
 ---
 
 ## ISSUE-007 — Hazard severity not captured in canonical observations
-**Status:** Fixed 2026-05-11
-Backend write path: `observationService.ts` writes `core.observations.severity` from
-`StopUiPayload.hazard_severity`. Frontend: severity pill selector (Low/Medium/High)
-added to safety modal in `StopDetail.tsx`; value wired through `SafetyState.severity`
-→ `handleCompleteStop`/`handleSkipStop` → queue action payload → route handler →
-`cleanLogService` → `observationService` → `core.observations.severity`.
+**Status:** Fixed 2026-05-12  
+**Discovered:** 2026-05-10  
+**Area:** backend — `observationService.ts` / frontend — `StopDetail.tsx`, `useTodayRoute.ts`  
+
+**Resolution:**  
+Backend: `observationService.ts` now writes `core.observations.severity` (text) from
+`StopUiPayload.hazard_severity`. `cleanLogService.ts` passes `safety.severity` through
+as `hazard_severity` in the `uiPayload`. `hazardService.ts` converts string labels
+(`"low"/"medium"/"high"`) to smallint (1/2/3) via `toNumericSeverity()` for the
+`hazards.severity` column. Skip path `uiPayload` now includes `hazard_severity`.  
+Frontend: severity pill selector (Low/Medium/High) added to safety modal in
+`StopDetail.tsx`; value wired through `SafetyState.severity` → queue action payload →
+route handler → `cleanLogService` → `observationService` → `core.observations.severity`.  
 Changelogs: `2026-05-11-fix-007-hazard-severity-write.md`,
-`2026-05-11-issue-007-severity-frontend.md`.
+`2026-05-11-issue-007-severity-frontend.md`,
+`2026-05-12-fix-hazard-severity-backend-bugs.md`.
 
 ---
 
