@@ -15,7 +15,7 @@
 | 3 | Reconnect Control Center | — (unblocked) | 1, 4, 6 | 🟢 Done |
 | 4 | Schema Cleanup | — (unblocked) | 1, 3, 6 | 🟢 Done |
 | 5 | Assignment Layer | Tier 1 must be stable | 3, 4, 6 | 🟢 Done |
-| 6 | Infrastructure | — (unblocked) | 1, 3, 4, 5 | 🟡 In progress |
+| 6 | Infrastructure | — (unblocked) | 1, 3, 4, 5 | 🟢 Done |
 | 7 | Row Level Security & Tenant Isolation | Tier 1 done | 8 | 🔴 Not started — unblocked |
 | 8 | Asset Type Abstraction | Tier 7 done | — | ⛔ Blocked by Tier 7 |
 
@@ -114,6 +114,8 @@ Add integration tests for the canonical write paths introduced in Tier 1. Create
 
 Can proceed in parallel with Tiers 1, 3, and 4.
 
+Status: Complete — changelog written 2026-05-12. Sub-task A (migration runner, 43 baseline migrations stamped) and Sub-task D (hardcoded localhost removed, `.env.example` written) verified 2026-05-08. Sub-task B (20 integration tests across `backend/tests/canonical/` against the real local DB, cleanup verified) and Sub-task C (backend + frontend Dockerfiles, `frontend/nginx.conf` with SPA routing + `/api` proxy, compose services for the full stack) verified 2026-05-12. The `docker compose up --build` validation pass caught three spec gaps — nginx.conf path, pnpm version pin, and missing Azure env vars in compose — all fixed; details in the tier file's Sub-task C "Deltas from the spec" section.
+
 ---
 
 ### Tier 7 — Row Level Security & Tenant Isolation
@@ -126,7 +128,7 @@ Enforce org-level data isolation at the DB layer using Postgres Row Level Securi
 ---
 
 ### Tier 8 — Asset Type Abstraction
-**File**: `planning/TIER_8_ASSET_TYPE_ABSTRACTION`
+**File**: `planning/TIER_8_ASSET_TYPE_ABSTRACTION.md`
 
 Abstract the stop-centric data model to support multiple asset types (stops, restrooms, shelters, facilities). Enables BASELINE to operate across asset classes without schema duplication. Should run on an RLS-enforced schema (Tier 7 done).
 

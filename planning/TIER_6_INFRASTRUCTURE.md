@@ -187,11 +187,19 @@ The `nginx.conf` must handle SPA routing (`try_files $uri /index.html`) and prox
 
 ### Done criteria
 - [x] `docker compose up --build` starts all services including frontend and backend
-- [x] Frontend is reachable at `localhost:80` (or configured port)
+- [x] Frontend is reachable at `localhost:80` (or configured port — compose maps to `localhost:8080`)
 - [x] Backend API is reachable at `localhost:4000`
-- [x] Auth flow works through the containerised setup
+- [x] Auth flow works through the containerised setup (Azure env vars wired through compose)
 
-**Verified 2026-05-12.** Changelog: `docs/changelog/2026-05-12-tier-6-infrastructure.md`
+### Deltas from the spec above
+
+The spec snippets in this section are still correct as a *shape*, but the build-verification pass on 2026-05-12 surfaced three issues that the spec didn't anticipate. All three were only discoverable by actually running `docker compose up --build` — neither spec review nor `docker compose config` would have caught them.
+
+1. **`nginx.conf` location.** The spec leaves the path implicit and a literal reading puts it at the repo root, but the frontend build context is `./frontend`, so `COPY nginx.conf ...` from inside `frontend/Dockerfile` cannot reach it. **Fix:** the file lives at `frontend/nginx.conf`.
+2. **pnpm version drift.** Using `corepack enable` alone gives you corepack's current default (pnpm 11), which crashes on Node 20 with `ERR_UNKNOWN_BUILTIN_MODULE` during `pnpm install`. The repo's `packageManager` field pins `pnpm@10.14.0`, but corepack only honors that field when run from inside the project — not in a Dockerfile layer that pre-fetches deps. **Fix:** both Dockerfiles pin explicitly via `RUN corepack enable && corepack prepare pnpm@10.14.0 --activate`.
+3. **Missing `AZURE_*` env vars in compose.** The backend refuses to boot without `AZURE_TENANT_ID` and `AZURE_API_AUDIENCE` (auth is mandatory), and the spec's service block doesn't pass them through. The container crash-looped on first start. **Fix:** `docker-compose.yml` now passes the Azure vars through from the host env using `${AZURE_TENANT_ID:?...}` syntax so compose fails fast with a clear message if they're unset.
+
+**Verified 2026-05-12.** End-to-end smoke against the built images: backend `/api/health` → 200, frontend `/` and SPA deep-path → 200, `/api/health` via the nginx proxy → 200. Changelog: `docs/changelog/2026-05-12-tier-6-infrastructure.md`
 
 ---
 
