@@ -2,7 +2,7 @@
 
 > **Goal**: Every completed or skipped stop writes `outcome`, `reason_code`, `washed_can`, and a `core.evidence` row. Visit lifecycle opens at stop-start, not photo upload.
 >
-> **Status**: 🟠 In review — online path verified; offline path pending
+> **Status**: 🟢 Done — 2026-05-10. Changelog: `docs/changelog/2026-05-10-tier-1-canonical-completeness.md`
 > **Depends on**: Nothing (unblocked)
 > **Blocks**: Tier 2, Tier 5
 

@@ -2,8 +2,8 @@
 
 > **Goal**: Add component tests for the UL stop wizard and offline queue UI, and E2E tests for the full UL stop completion and Lead route creation flows.
 >
-> **Status**: ⛔ Blocked by R5
-> **Depends on**: R5 stable (no value in testing markup that's being rebuilt)
+> **Status**: 🔴 Not started — unblocked (R5 done 2026-05-11)
+> **Depends on**: R5 stable (no value in testing markup that's being rebuilt) — satisfied
 > **Blocks**: Nothing
 
 ---

@@ -2,7 +2,7 @@
 
 > **Goal**: Wire `core.assignments` into the route creation path so every planned stop has a canonical assignment record, and wire `assignment_id` onto `core.visits` so the "planned vs. actual" question is answerable at the canonical level.
 >
-> **Status**: 🟡 Unblocked
+> **Status**: 🟢 Done — 2026-05-10. Changelogs: `docs/changelog/2026-05-10-tier-5-assignment-layer.md`, `docs/changelog/2026-05-10-tier-5-closure-docs.md`
 > **Depends on**: Tier 1 must be stable (visit lifecycle must be correct — visit opens at stop-start)
 > **Blocks**: Nothing (feeds Tier 2 completeness but does not gate it)
 

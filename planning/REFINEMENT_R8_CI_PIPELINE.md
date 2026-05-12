@@ -2,8 +2,8 @@
 
 > **Goal**: Wire a GitHub Actions pipeline that runs backend tests, builds Docker images, and deploys to a staging environment on every push to `main`.
 >
-> **Status**: 🔴 Not started
-> **Depends on**: Tier 6 Sub-task C (Dockerfiles must exist first)
+> **Status**: 🔴 Not started — unblocked (Tier 6 Sub-task C done 2026-05-12)
+> **Depends on**: Tier 6 Sub-task C (Dockerfiles must exist first) — satisfied
 > **Blocks**: Nothing
 
 ---

@@ -2,7 +2,7 @@
 
 > **Goal**: Replace the dev-grade inline-style UI with an enterprise-standard design system — mobile-first for UL workers, responsive for Leads and Admins — with consistent components, states, and interaction patterns across the full application.
 >
-> **Status**: 🟡 In progress
+> **Status**: 🟢 Done — 2026-05-11. All six surfaces shipped; consolidated changelog: `docs/changelog/2026-05-11-r5-enterprise-ui.md`
 > **Depends on**: R3 done (router must be in place — UI rebuild defines navigation structure)
 > **Blocks**: R9 (Frontend Tests — test the stable UI, not the one being rebuilt)
 

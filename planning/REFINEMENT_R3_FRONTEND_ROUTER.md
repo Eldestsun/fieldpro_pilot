@@ -2,7 +2,7 @@
 
 > **Goal**: Replace `App.tsx`'s flat view-switch state machine with `react-router-dom` v6, enabling deeplinking, browser back/forward, and a scalable navigation foundation for the UI rebuild.
 >
-> **Status**: 🔴 Not started
+> **Status**: 🟢 Done — 2026-05-10. Changelog: `docs/changelog/2026-05-10-r3-frontend-router.md`
 > **Depends on**: Nothing (unblocked)
 > **Blocks**: R5 (Enterprise UI rebuild — must not redesign navigation on top of a state machine)
 

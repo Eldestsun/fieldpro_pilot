@@ -27,7 +27,7 @@ These are two parallel workstreams. Several refinement items can begin before al
 | R5 | Enterprise UI/UX Rebuild | R3 done | R6 | 🟢 Done |
 | R6 | Control Center — Live Updates | Tier 3 done | R5 | 🟢 Done |
 | R7 | Historical Backfill Framework (Scale Asset) | Tier 1 done | R6, R8 | 🔴 Not started — low priority, post-pilot |
-| R8 | CI Pipeline | Tier 6 Sub-task C done | R7 | ⛔ Blocked by Tier 6C |
+| R8 | CI Pipeline | Tier 6 Sub-task C done | R7 | 🔴 Not started — unblocked |
 | R9 | Frontend Tests | R5 stable | — | 🔴 Not started — unblocked |
 | R10 | Stop Effort History (replace workforce_metrics) | Tier 4 Sub-task B done | R1, R3 | 🟢 Done |
 
