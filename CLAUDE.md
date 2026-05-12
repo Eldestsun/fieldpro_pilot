@@ -74,6 +74,7 @@ Analysis-only tasks (no code or schema changes) do not require a changelog entry
 - The DB is the source of truth — UI and API are adapters
 - Assignments are intent only — they are not truth
 - Do not reintroduce transit-first design patterns
+-After completion of a task create a changelog in docs/changelog and then commit and push to git
 
 ## Labor Safety Guardrails (hard constraints)
 

@@ -2,7 +2,7 @@
 
 > **Goal**: Add near-real-time data refresh to the Control Center so dispatchers see route status, exceptions, and stop completions update without manually refreshing the page.
 >
-> **Status**: 🔴 Not started
+> **Status**: 🟢 Done — 2026-05-12. Changelog: `docs/changelog/2026-05-12-r6-control-center-live.md`
 > **Depends on**: Tier 3 done (Control Center must be mounted before live updates make sense)
 > **Blocks**: Nothing
 
@@ -107,13 +107,13 @@ useEffect(() => {
 
 R6 is complete when ALL of the following are true, **and a changelog entry has been written**:
 
-- [ ] All four Control Center sections refresh every 30 seconds
-- [ ] "Last updated" timestamp visible in the header
-- [ ] Live indicator (pulsing dot) visible while polling
-- [ ] Polling pauses when the browser tab is not visible
-- [ ] Polling resumes and immediately refreshes when tab becomes visible again
-- [ ] No backend changes required or made
-- [ ] Changelog entry written to `docs/changelog/YYYY-MM-DD-r6-control-center-live.md`
+- [x] All four Control Center sections refresh every 30 seconds
+- [x] "Last updated" timestamp visible in the header
+- [x] Live indicator (pulsing dot) visible while polling
+- [x] Polling pauses when the browser tab is not visible
+- [x] Polling resumes and immediately refreshes when tab becomes visible again
+- [x] No backend changes required or made
+- [x] Changelog entry written to `docs/changelog/2026-05-12-r6-control-center-live.md`
 
 ---
 

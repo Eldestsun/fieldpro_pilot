@@ -1,11 +1,30 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { OpsLayout } from "../ui/OpsLayout";
 import { OpsCard } from "../ui/OpsCard";
 import { OpsTable, OpsTableRow, OpsTableCell } from "../ui/OpsTable";
 import { cn } from "../../lib/utils";
 
-// ── Types ───────────────────────────────────────────────────────────────────
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const POLL_INTERVAL_MS = 30_000;
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatRelativeTime(date: Date): string {
+    const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (diffSec < 30) return "just now";
+    if (diffSec < 60) return `${diffSec}s ago`;
+    return `${Math.floor(diffSec / 60)}m ago`;
+}
+
+// v_locations_transit may return "(route_stop)" for locations without a resolved name
+function sanitizeStopLabel(label: string | null | undefined): string {
+    if (!label || label === "(route_stop)") return "Transit Stop";
+    return label;
+}
+
+// ── Types ────────────────────────────────────────────────────────────────────
 
 interface SummaryStats {
     clean_events: number;
@@ -80,6 +99,32 @@ function StatCard({ label, value, valueClassName }: StatCardProps) {
     );
 }
 
+interface LiveIndicatorProps {
+    lastUpdatedAt: Date | null;
+    fetchFailed: boolean;
+}
+
+function LiveIndicator({ lastUpdatedAt, fetchFailed }: LiveIndicatorProps) {
+    if (fetchFailed) {
+        return (
+            <div className="flex items-center gap-1.5 text-sm text-amber-600">
+                <span className="text-amber-500 font-bold text-base leading-none">!</span>
+                <span>Live · Update failed</span>
+            </div>
+        );
+    }
+    return (
+        <div className="flex items-center gap-1.5 text-sm text-gray-500">
+            <span className="w-2 h-2 rounded-full bg-[var(--color-success)] animate-pulse shrink-0" />
+            <span>
+                Live · {lastUpdatedAt
+                    ? `Updated ${formatRelativeTime(lastUpdatedAt)}`
+                    : "Loading..."}
+            </span>
+        </div>
+    );
+}
+
 // ── Component ───────────────────────────────────────────────────────────────
 
 export const AdminControlCenter: React.FC = () => {
@@ -93,6 +138,12 @@ export const AdminControlCenter: React.FC = () => {
     const [stats, setStats] = useState<ExceptionStats | null>(null);
     const [difficulty, setDifficulty] = useState<DifficultyResponse | null>(null);
 
+    const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+    const [fetchFailed, setFetchFailed] = useState(false);
+
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const hasLoadedRef = useRef(false);
+
     const fetchData = useCallback(async () => {
         if (!authReady) return;
 
@@ -102,7 +153,6 @@ export const AdminControlCenter: React.FC = () => {
 
             const headers = { Authorization: `Bearer ${token}` };
 
-            // Parallel Fetch
             const [sumRes, routesRes, excRes, diffRes] = await Promise.all([
                 fetch("/api/admin/control-center/overview", { headers }),
                 fetch("/api/admin/control-center/routes", { headers }),
@@ -116,30 +166,69 @@ export const AdminControlCenter: React.FC = () => {
 
             setSummary(await sumRes.json());
             const rData = await routesRes.json();
-            setRoutes(rData || []); // Direct array return now
+            setRoutes(rData || []);
             setStats(await excRes.json());
             setDifficulty(await diffRes.json());
+
             setError(null);
+            setFetchFailed(false);
+            setLastUpdatedAt(new Date());
+            hasLoadedRef.current = true;
         } catch (err: any) {
             console.error("Control Center Load Error:", err);
-            setError("Failed to load operational data");
+            setFetchFailed(true);
+            // Only replace the page with an error on the initial load failure
+            if (!hasLoadedRef.current) {
+                setError("Failed to load operational data");
+            }
         } finally {
             setLoading(false);
         }
     }, [authReady, getAccessToken]);
 
-    // Initial Load + Interval
+    // Initial fetch + 30s polling
     useEffect(() => {
         if (!authReady) return;
 
         fetchData();
-        const interval = setInterval(fetchData, 60000); // 60s Refresh
-        return () => clearInterval(interval);
+        intervalRef.current = setInterval(fetchData, POLL_INTERVAL_MS);
+
+        return () => {
+            if (intervalRef.current !== null) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
+        };
     }, [authReady, fetchData]);
+
+    // Pause polling when tab is hidden; resume and immediately refresh when visible
+    useEffect(() => {
+        const handleVisibility = () => {
+            if (document.visibilityState === "visible") {
+                fetchData();
+                if (intervalRef.current !== null) clearInterval(intervalRef.current);
+                intervalRef.current = setInterval(fetchData, POLL_INTERVAL_MS);
+            } else {
+                if (intervalRef.current !== null) {
+                    clearInterval(intervalRef.current);
+                    intervalRef.current = null;
+                }
+            }
+        };
+
+        document.addEventListener("visibilitychange", handleVisibility);
+        return () => {
+            document.removeEventListener("visibilitychange", handleVisibility);
+        };
+    }, [fetchData]);
+
+    const liveIndicator = (
+        <LiveIndicator lastUpdatedAt={lastUpdatedAt} fetchFailed={fetchFailed} />
+    );
 
     if (loading && !summary) {
         return (
-            <OpsLayout title="Control Center" subtitle="Auto-refreshes every 60s">
+            <OpsLayout title="Control Center" rightActions={liveIndicator}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                     {[...Array(4)].map((_, i) => (
                         <OpsCard key={i}>
@@ -156,7 +245,7 @@ export const AdminControlCenter: React.FC = () => {
 
     if (error) {
         return (
-            <OpsLayout title="Control Center" subtitle="Auto-refreshes every 60s">
+            <OpsLayout title="Control Center" rightActions={liveIndicator}>
                 <OpsCard className="border-red-200 bg-red-50">
                     <p className="text-red-600 font-semibold">{error}</p>
                 </OpsCard>
@@ -169,7 +258,7 @@ export const AdminControlCenter: React.FC = () => {
     };
 
     return (
-        <OpsLayout title="Control Center" subtitle="Auto-refreshes every 60s">
+        <OpsLayout title="Control Center" rightActions={liveIndicator}>
             <div className="flex flex-col gap-8">
 
                 {/* PANEL 1: SNAPSHOT */}
@@ -199,17 +288,19 @@ export const AdminControlCenter: React.FC = () => {
                 </section>
 
                 {/* PANEL 2: ROUTE STATUS */}
+                {/* "Visited" = completed + skipped stops (worker was present either way) */}
                 <section>
                     <h2 className="text-base font-semibold text-gray-800 mb-4">Route Status</h2>
-                    <OpsTable headers={["Route ID", "Pool", "Assignee", "Progress", "Workload", "Deviations"]}>
+                    <OpsTable headers={["Route ID", "Pool", "Assignee", "Visited", "Workload", "Deviations"]}>
                         {routes.map((r) => {
                             const planned = Number(r.planned_stops);
                             const emergency = Number(r.emergency_stops);
-                            const resolved = Number(r.resolved_stops);
+                            // resolved_stops = done + skipped (worker visited either way)
+                            const visited = Number(r.resolved_stops);
                             const totalExpected = planned + emergency;
                             const pct =
                                 totalExpected > 0
-                                    ? Math.min(100, (resolved / totalExpected) * 100)
+                                    ? Math.min(100, (visited / totalExpected) * 100)
                                     : 0;
                             return (
                                 <OpsTableRow key={r.route_run_id}>
@@ -225,7 +316,7 @@ export const AdminControlCenter: React.FC = () => {
                                                     className="bg-green-400 h-full"
                                                 />
                                             </div>
-                                            <span className="text-sm text-gray-700">{Math.round(pct)}%</span>
+                                            <span className="text-sm text-gray-700">{Math.round(pct)}% visited</span>
                                         </div>
                                     </OpsTableCell>
                                     <OpsTableCell>{Math.round(r.observed_minutes)}m</OpsTableCell>
@@ -320,6 +411,8 @@ export const AdminControlCenter: React.FC = () => {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
                                 {/* Heavy Stops */}
+                                {/* TODO(ISSUE-003): /difficulty endpoint needs stop_id + on_street_name + intersection_loc */}
+                                {/* to enable full "#stop_id · street — cross" display format. Backend follow-up required. */}
                                 <OpsCard>
                                     <div className="text-sm font-semibold text-gray-500 mb-2 pb-1 border-b border-gray-100">
                                         Heavier Than Median
@@ -331,7 +424,7 @@ export const AdminControlCenter: React.FC = () => {
                                                 className="flex justify-between items-center text-xs py-1.5 border-b border-gray-50 last:border-0"
                                             >
                                                 <span className="max-w-[60%] overflow-hidden text-ellipsis whitespace-nowrap">
-                                                    {s.label}
+                                                    {sanitizeStopLabel(s.label)}
                                                 </span>
                                                 <span className={cn(
                                                     "px-1.5 py-0.5 rounded font-bold text-xs",

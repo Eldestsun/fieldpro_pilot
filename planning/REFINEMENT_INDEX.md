@@ -25,7 +25,7 @@ These are two parallel workstreams. Several refinement items can begin before al
 | R3 | Frontend Router | — (unblocked) | R1, R2, R4, R10 | 🟢 Done |
 | R4 | Offline UX — Worker Feedback Layer | — (unblocked) | R1, R2, R3 | 🟢 Done |
 | R5 | Enterprise UI/UX Rebuild | R3 done | R6 | 🟢 Done |
-| R6 | Control Center — Live Updates | Tier 3 done | R5 | 🟡 Unblocked |
+| R6 | Control Center — Live Updates | Tier 3 done | R5 | 🟢 Done |
 | R7 | Historical Backfill Framework (Scale Asset) | Tier 1 done | R6, R8 | 🔴 Not started — low priority, post-pilot |
 | R8 | CI Pipeline | Tier 6 Sub-task C done | R7 | ⛔ Blocked by Tier 6C |
 | R9 | Frontend Tests | R5 stable | — | ⛔ Blocked by R5 |
