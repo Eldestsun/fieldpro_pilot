@@ -326,10 +326,9 @@ export async function runReplay(
     tenantId: string | undefined,
     oid: string | undefined,
     executorMap: Record<string, (action: OfflineAction) => Promise<void>>,
-    onAfterReplay?: () => void
-): Promise<void> {
+): Promise<boolean> {
     if (!tenantId || !oid) {
-        return;
+        return false;
     }
 
     const pending = getPendingActions(tenantId, oid);
@@ -435,9 +434,7 @@ export async function runReplay(
         }
     }
 
-    if (anyCompleteStopSucceeded && onAfterReplay) {
-        onAfterReplay();
-    }
+    return anyCompleteStopSucceeded;
 }
 export function hasPendingCompleteStopForStop(
     tenantId: string | undefined,

@@ -121,26 +121,29 @@ export function OfflineSyncManager({ children }: Props) {
             },
         };
 
-        const onAfterReplay = () => {
-            window.dispatchEvent(new Event('baseline:after-replay'));
-        };
-
-        const attemptReplay = () => {
+        const attemptReplay = async () => {
             if (typeof navigator !== "undefined" && !navigator.onLine) return;
             if (isReplayingRef.current) return;
             isReplayingRef.current = true;
 
             setSyncState(prev => ({ ...prev, syncStatus: 'syncing' }));
 
-            runReplay(tenantId, oid, executors, onAfterReplay)
-                .finally(() => {
-                    isReplayingRef.current = false;
-                    setSyncState(prev => ({ ...prev, syncStatus: 'success' }));
-                    if (successTimerRef.current) clearTimeout(successTimerRef.current);
-                    successTimerRef.current = setTimeout(() => {
-                        setSyncState(prev => ({ ...prev, syncStatus: 'idle' }));
-                    }, 3000);
-                });
+            try {
+                // Only fire the route-refresh event when a terminal stop action
+                // (COMPLETE_STOP or SKIP_STOP_WITH_HAZARD) succeeded — prevents the
+                // fetchRoute → replay → event → fetchRoute loop on empty or upload-only runs.
+                const processed = await runReplay(tenantId, oid, executors);
+                if (processed) {
+                    window.dispatchEvent(new Event('baseline:after-replay'));
+                }
+            } finally {
+                isReplayingRef.current = false;
+                setSyncState(prev => ({ ...prev, syncStatus: 'success' }));
+                if (successTimerRef.current) clearTimeout(successTimerRef.current);
+                successTimerRef.current = setTimeout(() => {
+                    setSyncState(prev => ({ ...prev, syncStatus: 'idle' }));
+                }, 3000);
+            }
         };
 
         const onOnline = () => attemptReplay();

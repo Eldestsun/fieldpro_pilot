@@ -27,46 +27,37 @@ Investigate spot check action type handling in queue state derivation inside `Of
 ---
 
 ## ISSUE-002 — Control Center progress bar counts completed-only, should count visited
-**Status:** Deferred  
+**Status:** Fixed 2026-05-12  
 **Discovered:** 2026-05-10  
 **Area:** frontend — Control Center progress bar component  
-**Severity:** medium  
 
-**Symptom:**  
-Progress bar reflects only `completed` stops. Skipped stops (which represent a real worker visit with a documented safety hazard) are excluded, making coverage look lower than it is.
-
-**Root cause (if known):**  
-Progress calculation filters on `outcome = 'completed'` only. Skipped stops have `outcome = 'skipped'` and are not counted.
-
-**Deferred because:**  
-Control Center live data wiring is deferred to R6.
-
-**Fix hint:**  
-Update progress calculation to count `outcome IN ('completed', 'skipped')` as visited. Update label from "completed" to "visited" wherever the bar is rendered.
-
-**Target:** R6 (Control Center Live Updates) or post-R4 triage
+**Resolution:**  
+The backend `/routes` endpoint already computed `resolved_stops` as
+`COUNT(*) FILTER (WHERE rrs.status IN ('done', 'skipped'))` — both completed and
+skipped stops were already counted at the data layer. Frontend: the "Progress" column
+header was renamed to "Visited", the progress percentage label now reads `{N}% visited`,
+and the local variable was renamed from `resolved` to `visited` for clarity.  
+No backend change required.  
+Changelog: `2026-05-12-r6-control-center-live.md`
 
 ---
 
 ## ISSUE-003 — Control Center surfaces raw database identifiers instead of stop names
-**Status:** Deferred  
+**Status:** Fixed 2026-05-12 (partial — backend follow-up open)  
 **Discovered:** 2026-05-10  
 **Area:** frontend — Control Center stop display  
-**Severity:** medium  
 
-**Symptom:**  
-`"route_stop: 4"` and `"(route_stop)"` appear in several Control Center UI locations instead of the human-readable stop name or address.
-
-**Root cause (if known):**  
-Stop display name is not being resolved from the stops table. Raw `route_run_stop_id` values are rendered directly.
-
-**Deferred because:**  
-Control Center live data wiring is deferred to R6.
-
-**Fix hint:**  
-Wherever `route_stop` ID is rendered in Control Center components, join or look up the stop display name from the stops table (use `on_street_name` + `intersection_loc` from the `stops` view as the display string).
-
-**Target:** R6 (Control Center Live Updates) or post-R4 triage
+**Resolution:**  
+Added `sanitizeStopLabel()` helper in `AdminControlCenter.tsx` — maps `null`, empty
+string, or the `"(route_stop)"` DB placeholder from `core.v_locations_transit` to
+`"Transit Stop"`. Applied to `difficulty.heavy_stops[].label` (the only per-stop
+display surface in the current component).  
+**Backend follow-up required:** the `/api/admin/control-center/difficulty` heavy_stops
+query must JOIN to the `stops` table and return `stop_id + on_street_name +
+intersection_loc` to enable the full `"#{stop_id} · street — cross"` display format.
+A `TODO(ISSUE-003)` comment marks the render site. The routes and exceptions endpoints
+return only route-level aggregates — no per-stop identifiers to fix there.  
+Changelog: `2026-05-12-r6-control-center-live.md`
 
 ---
 
@@ -85,24 +76,13 @@ Changelog: `2026-05-11-fix-004-skip-hazard-double-tap.md`
 ---
 
 ## ISSUE-005 — baseline:after-replay fires on empty replays, causing fetchRoute loop
-**Status:** Deferred  
+**Status:** Fixed 2026-05-11  
 **Discovered:** 2026-05-10  
 **Area:** frontend — `OfflineSyncManager.tsx` / `useTodayRoute.ts`  
-**Severity:** medium  
 
-**Symptom:**  
-`window.dispatchEvent(new Event('baseline:after-replay'))` fires on every `runReplay` call, including runs where there were no queued actions. When the app loads offline, `useTodayRoute` listens for this event and calls `fetchRoute`, which immediately fails (network unavailable), triggering another replay attempt, which fires the event again — loop. Results in UI flicker and excessive failed network calls on reconnect.
-
-**Root cause (if known):**  
-`onAfterReplay` is dispatched unconditionally in `OfflineSyncManager.attemptReplay` via `.finally()`. The guard inside `runReplay` (`anyCompleteStopSucceeded`) only gates the `onAfterReplay` callback passed into `runReplay`, but the DOM event is dispatched by `OfflineSyncManager` outside that guard.
-
-**Fix hint:**  
-Gate the `window.dispatchEvent` in `OfflineSyncManager` so it only fires when `runReplay` actually processed and succeeded at least one action. Investigate whether `anyCompleteStopSucceeded` is the right guard or whether any successful action (START_STOP, UPLOAD_STOP_PHOTOS, etc.) should trigger the route refresh. `runReplay` could return a boolean or a count of successful actions to make this decision at the call site.
-
-**Deferred because:**  
-Does not cause data loss. Loop self-terminates once online. Fix requires a small but careful interface change to `runReplay`'s return type.
-
-**Target:** Post-R4 triage
+**Resolution:**  
+`runReplay` now returns `Promise<boolean>` — `true` when at least one terminal stop action (`COMPLETE_STOP` or `SKIP_STOP_WITH_HAZARD`) succeeded. `OfflineSyncManager.attemptReplay` is now `async` and gates `window.dispatchEvent(new Event('baseline:after-replay'))` on that return value. Empty-queue and upload-only replay runs no longer fire the event.  
+Changelog: `2026-05-11-fix-005-after-replay-guard.md`
 
 ---
 
