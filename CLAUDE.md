@@ -31,8 +31,9 @@ It captures truth as a byproduct of work, not as the work itself.
 |------|---------------|------|--------|
 | Analysis | `planning/CONTEXT.md` → architecture files | workspace CONTEXT.md files | spec in `planning/specs/` + changelog entry |
 | Architecture | `planning/architecture/target_architecture.md` + `current_state.md` | specs, workspace files | updated architecture doc + changelog entry |
-| Refactor | `planning/REFACTOR_INDEX.md` → relevant `planning/TIER_N_*.md` | unrelated tiers, frontend files | code changes per tier done-criteria + changelog entry |
-| Refinement | `planning/REFINEMENT_INDEX.md` → relevant `planning/REFINEMENT_R*.md` | unrelated items, refactor tiers | code changes per item done-criteria + changelog entry |
+| Refactor | `planning/REFACTOR_INDEX.md` → relevant `planning/refactor/TIER_N_*.md` | unrelated tiers, frontend files | code changes per tier done-criteria + changelog entry |
+| Refinement | `planning/REFINEMENT_INDEX.md` → relevant `planning/refinement/REFINEMENT_R*.md` | unrelated items, refactor tiers | code changes per item done-criteria + changelog entry |
+| Security hardening | `planning/REFINEMENT_INDEX.md` + `planning/REFACTOR_INDEX.md` → `planning/security/SECURITY_SPRINT_INDEX.md` → relevant sprint file | unrelated tracks | code/docs per sprint done-criteria + changelog entry |
 | Feature / Bug | `planning/REFACTOR_INDEX.md` + `planning/REFINEMENT_INDEX.md` (check both for in-flight work) → `frontend/CONTEXT.md` and/or `backend/CONTEXT.md` | unrelated workspaces | plan or code changes + changelog entry |
 | Documentation | `docs/CONTEXT.md` | all others | doc update |
 | Ops | `ops/CONTEXT.md` | all others | runbook or script + changelog entry |

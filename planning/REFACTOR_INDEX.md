@@ -53,7 +53,7 @@ Tier 6 (infrastructure/tests) should run alongside each completed tier, not as a
 ## Tier Summaries
 
 ### Tier 1 — Canonical Completeness
-**File**: `planning/TIER_1_CANONICAL_COMPLETENESS.md`
+**File**: `planning/refactor/TIER_1_CANONICAL_COMPLETENESS.md`
 
 Close the gaps between the transit execution layer and the canonical DB model. After Tier 1, every completed or skipped stop writes `outcome`, `reason_code`, `washed_can`, and `core.evidence` rows. Visit lifecycle is corrected to open on stop-start, not photo upload.
 
@@ -62,7 +62,7 @@ Key constraint: additive only. Every new canonical write happens alongside exist
 ---
 
 ### Tier 2 — Intelligence Migration
-**File**: `planning/TIER_2_INTELLIGENCE_MIGRATION.md`
+**File**: `planning/refactor/TIER_2_INTELLIGENCE_MIGRATION.md`
 
 Migrate `riskMapService.ts` and all intelligence derivations to read from `core.observations` and `core.visits` instead of `level3_logs`, `hazards`, and `infrastructure_issues`. After Tier 2, the intelligence layer reads canonical state only.
 
@@ -75,7 +75,7 @@ Status: Complete — changelog written 2026-05-11. Change 1 (canonical CTEs in `
 ---
 
 ### Tier 3 — Reconnect Control Center
-**File**: `planning/TIER_3_CONTROL_CENTER.md`
+**File**: `planning/refactor/TIER_3_CONTROL_CENTER.md`
 
 Mount the fully-built `AdminControlCenter.tsx` component into `App.tsx`. The component exists and is complete (331 lines); it is simply not mounted. After Tier 3, Control Center is reachable by Admin-role users.
 
@@ -84,7 +84,7 @@ No backend changes required. Frontend-only.
 ---
 
 ### Tier 4 — Schema Cleanup
-**File**: `planning/TIER_4_SCHEMA_CLEANUP.md`
+**File**: `planning/refactor/TIER_4_SCHEMA_CLEANUP.md`
 
 Three sub-tasks:
 
@@ -97,7 +97,7 @@ Three sub-tasks:
 ---
 
 ### Tier 5 — Assignment Layer
-**File**: `planning/TIER_5_ASSIGNMENT_LAYER.md`
+**File**: `planning/refactor/TIER_5_ASSIGNMENT_LAYER.md`
 
 Wire `core.assignments` into the write path so that every route run stop execution has a corresponding canonical assignment record. After Tier 5, `core.visits.assignment_id` is populated for all new visits. `core.assignments` moves from 0-row schema-only to active.
 
@@ -108,7 +108,7 @@ Status: Complete — changelog written 2026-05-10. Change 2 (assignment_id on ne
 ---
 
 ### Tier 6 — Infrastructure
-**File**: `planning/TIER_6_INFRASTRUCTURE.md`
+**File**: `planning/refactor/TIER_6_INFRASTRUCTURE.md`
 
 Add integration tests for the canonical write paths introduced in Tier 1. Create a migration runner script. Document Docker/CI setup gaps. After Tier 6, the canonical write paths have test coverage and the build pipeline is documented.
 
@@ -119,7 +119,7 @@ Status: Complete — changelog written 2026-05-12. Sub-task A (migration runner,
 ---
 
 ### Tier 7 — Row Level Security & Tenant Isolation
-**File**: `planning/TIER_7_ROW_LEVEL_SECURITY_&_TENANT_ISOLATION.MD`
+**File**: `planning/refactor/TIER_7_ROW_LEVEL_SECURITY_&_TENANT_ISOLATION.MD`
 
 Enforce org-level data isolation at the DB layer using Postgres Row Level Security. Policies on all five canonical tables filter every query by `app.current_org_id` session variable, set via a `withOrgContext()` wrapper in `db.ts`. A bad query missing a WHERE clause cannot leak cross-tenant data. Includes a verification script that proves cross-tenant isolation.
 
@@ -130,7 +130,7 @@ Status: Complete — changelog written 2026-05-12. Migration `20260512_row_level
 ---
 
 ### Tier 8 — Asset Type Abstraction
-**File**: `planning/TIER_8_ASSET_TYPE_ABSTRACTION.md`
+**File**: `planning/refactor/TIER_8_ASSET_TYPE_ABSTRACTION.md`
 
 Abstract the stop-centric data model to support multiple asset types (stops, restrooms, shelters, facilities). Enables BASELINE to operate across asset classes without schema duplication. Should run on an RLS-enforced schema (Tier 7 done).
 

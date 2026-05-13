@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(PGPASSWORD=fieldpro_pass psql -h localhost -U fieldpro -d fieldpro_db -c ' *)",
+      "Bash(PGPASSWORD=fieldpro_pass psql -h localhost -U fieldpro -d fieldpro_db)",
+      "Bash(PGPASSWORD=fieldpro_pass psql -h localhost -U fieldpro -d fieldpro_db -c \"SELECT COUNT\\(*\\) FROM core.assignments WHERE source_ref IS NOT NULL;\")",
+      "Bash(git -C /Users/adamyu/Documents/Projects/fieldpro_pilot add planning/REFACTOR_INDEX.md planning/architecture/ADAPTER_BOUNDARY.md docs/changelog/2026-05-10-tier-5-closure-docs.md)",
+      "Bash(git -C /Users/adamyu/Documents/Projects/fieldpro_pilot commit -m ' *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}

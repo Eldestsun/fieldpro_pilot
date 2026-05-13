@@ -1,0 +1,22 @@
+name: Deploy to Staging
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to staging
+        # Implementation depends on hosting choice:
+        # - Fly.io: fly deploy --config fly.staging.toml
+        # - Railway: railway up
+        # - AWS ECS: aws ecs update-service ...
+        # - DigitalOcean App Platform: doctl apps update ...
+        run: echo "Configure deploy step for chosen hosting provider"
