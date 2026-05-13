@@ -4,7 +4,7 @@ import { LogLevel } from "@azure/msal-browser";
 // Values pulled from your .env.local
 const tenant = import.meta.env.VITE_AZURE_TENANT_ID!;
 const clientId = import.meta.env.VITE_AZURE_CLIENT_ID!;
-const redirectUri = import.meta.env.VITE_REDIRECT_URI || "http://localhost:5173";
+const redirectUri = import.meta.env.VITE_REDIRECT_URI || window.location.origin;
 const apiAppIdUri = import.meta.env.VITE_API_APP_ID_URI!;
 
 export const msalConfig: Configuration = {
