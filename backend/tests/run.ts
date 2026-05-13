@@ -5,6 +5,7 @@ import "./canonical/visits.test";
 import "./canonical/observations.test";
 import "./canonical/evidence.test";
 import "./canonical/assignments.test";
+import "./canonical/auditLog.test";
 
 (async () => {
   console.log("canonical integration tests — real local DB, no mocking\n");
