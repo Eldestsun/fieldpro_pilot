@@ -74,7 +74,6 @@ Analysis-only tasks (no code or schema changes) do not require a changelog entry
 - The DB is the source of truth — UI and API are adapters
 - Assignments are intent only — they are not truth
 - Do not reintroduce transit-first design patterns
--After completion of a task create a changelog in docs/changelog and then commit and push to git
 
 ## Labor Safety Guardrails (hard constraints)
 
@@ -85,6 +84,20 @@ Analysis-only tasks (no code or schema changes) do not require a changelog entry
 - No worker comparison surfaces of any kind
 
 See `planning/architecture/target_architecture.md` §8 for the intelligence constraints that enforce these at the architecture level.
+
+---
+
+## Git Commit Convention
+
+Every task that produces code, schema, or configuration changes must follow this branch pattern — no exceptions:
+
+1. Make all changes on `refactor/baseline`
+2. Commit on `refactor/baseline`
+3. Merge `refactor/baseline` into `main`
+4. Push `main` to `origin/main`
+5. Push `refactor/baseline` to `origin/refactor/baseline` to keep remote in sync
+
+Do not commit directly to `main`. Do not cherry-pick. Do not leave `refactor/baseline` ahead of its remote after a merge.
 
 ---
 
