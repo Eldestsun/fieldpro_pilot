@@ -44,6 +44,7 @@ tmp/
 
 # Local agent / CLI tool state (per-session, do not commit)
 .claude/worktrees/
+.claude/settings.json
 .codex/
 .gemini/
 *.jpg
