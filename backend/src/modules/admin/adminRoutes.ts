@@ -549,6 +549,9 @@ ccRouter.get("/difficulty", async (_req: Request, res: Response) => {
                 SELECT
                   c.location_id,
                   l.label,
+                  l.stop_id,
+                  s.on_street_name,
+                  s.intersection_loc,
                   CASE
                     WHEN c.avg_minutes >= b.median_minutes * 1.5 THEN 'very_heavy'
                     WHEN c.avg_minutes >= b.median_minutes * 1.2 THEN 'heavy'
@@ -558,6 +561,8 @@ ccRouter.get("/difficulty", async (_req: Request, res: Response) => {
                 CROSS JOIN baseline b
                 JOIN core.v_locations_transit l
                   ON l.location_id = c.location_id
+                LEFT JOIN public.stops s
+                  ON s.stop_id = l.stop_id
                 WHERE c.avg_minutes >= b.median_minutes * 1.2
                 LIMIT 25;
             `,

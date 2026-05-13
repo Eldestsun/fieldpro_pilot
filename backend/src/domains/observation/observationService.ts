@@ -1,5 +1,5 @@
 import { PoolClient } from "pg";
-import { pool } from "../../db";
+import { withOrgContext } from "../../db";
 
 // Raw UI payload from UL
 export type StopUiPayload = {
@@ -83,12 +83,9 @@ export async function emitObservationsForStop(params: {
             if (passedClient) {
                 observations = await arrivalObservations(stopId, passedClient);
             } else {
-                const lookupClient = await pool.connect();
-                try {
-                    observations = await arrivalObservations(stopId, lookupClient);
-                } finally {
-                    lookupClient.release();
-                }
+                observations = await withOrgContext(orgId, (lookupClient) =>
+                    arrivalObservations(stopId, lookupClient)
+                );
             }
         } else {
             observations = arrivalObservationDefaults();
@@ -101,12 +98,9 @@ export async function emitObservationsForStop(params: {
         if (passedClient) {
             await insertObservations(passedClient, { orgId, visitId, locationId, assetId, actorOid }, observations);
         } else {
-            const ownClient = await pool.connect();
-            try {
-                await insertObservations(ownClient, { orgId, visitId, locationId, assetId, actorOid }, observations);
-            } finally {
-                ownClient.release();
-            }
+            await withOrgContext(orgId, (ownClient) =>
+                insertObservations(ownClient, { orgId, visitId, locationId, assetId, actorOid }, observations)
+            );
         }
     }
 }
