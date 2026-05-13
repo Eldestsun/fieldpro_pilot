@@ -5,8 +5,6 @@
 - Replaced `const PILOT_DEV_UL_USER_ID = 123` with `const LEGACY_TRANSIT_USER_ID = 0` in `routeRunRoutes.ts`
 - Added explanatory comments on all replacements noting the legacy status of `user_id`, the canonical field (`core.visits.captured_by_oid`), and the removal condition (post-Tier-2 `clean_logs` deprecation)
 - Verified `route_runs.assigned_user_oid` is already correctly wired from `req.body.ul_id` — no change needed
-- **Fix:** removed `user_id` from `req.body` destructure in the route creation handler — callers can no longer override the legacy placeholder via the request body
-- **Fix:** replaced `user_id: user_id` with `user_id: LEGACY_TRANSIT_USER_ID` in the `createRouteRun` call — the initial R1 patch had left this as a body passthrough
 
 ## Why
 - `user_id = 123` looked like a real identity; `0` is unambiguously a placeholder and will never match a real record
@@ -16,3 +14,7 @@
 ## Files touched
 - `backend/src/modules/work/routeRunStopRoutes.ts`
 - `backend/src/modules/routes/routeRunRoutes.ts`
+
+### Notes
+-During test for some reason after first attempt to submit the skip stop for safety hazard i get an error message saying that no hazard is selected even though it is selected. Works on second try.
+
