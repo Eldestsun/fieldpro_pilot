@@ -9,6 +9,7 @@ import { devRoutes } from "./routes/devRoutes";
 import { adminRoutes } from "./modules/admin/adminRoutes";
 import { stopRoutes } from "./modules/work/stopRoutes";
 import { resourceRoutes } from "./modules/admin/resourceRoutes";
+import { tenantRoutes } from "./modules/admin/tenantRoutes";
 
 import { routeOverrideRoutes } from "./modules/routeOverrides/routeOverrideRoutes";
 import { opsRoutes } from "./modules/ops/opsRoutes";
@@ -38,3 +39,4 @@ app.use("/api", stopRoutes);
 app.use("/api", resourceRoutes);
 app.use("/api", opsRoutes);
 app.use("/api/route-overrides", routeOverrideRoutes);
+app.use("/api/admin/tenant", tenantRoutes);
