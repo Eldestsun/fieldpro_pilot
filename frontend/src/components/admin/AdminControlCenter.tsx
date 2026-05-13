@@ -65,6 +65,9 @@ interface DifficultyResponse {
     heavy_stops: Array<{
         location_id: number;
         label: string;
+        stop_id: string | null;
+        on_street_name: string | null;
+        intersection_loc: string | null;
         difficulty_band: "normal" | "heavy" | "very_heavy";
     }>;
     heavy_routes: Array<{
@@ -411,8 +414,6 @@ export const AdminControlCenter: React.FC = () => {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
                                 {/* Heavy Stops */}
-                                {/* TODO(ISSUE-003): /difficulty endpoint needs stop_id + on_street_name + intersection_loc */}
-                                {/* to enable full "#stop_id · street — cross" display format. Backend follow-up required. */}
                                 <OpsCard>
                                     <div className="text-sm font-semibold text-gray-500 mb-2 pb-1 border-b border-gray-100">
                                         Heavier Than Median
@@ -424,7 +425,9 @@ export const AdminControlCenter: React.FC = () => {
                                                 className="flex justify-between items-center text-xs py-1.5 border-b border-gray-50 last:border-0"
                                             >
                                                 <span className="max-w-[60%] overflow-hidden text-ellipsis whitespace-nowrap">
-                                                    {sanitizeStopLabel(s.label)}
+                                                    {s.stop_id && s.on_street_name && s.intersection_loc
+                                                        ? `#${s.stop_id} · ${s.on_street_name} — ${s.intersection_loc}`
+                                                        : sanitizeStopLabel(s.label)}
                                                 </span>
                                                 <span className={cn(
                                                     "px-1.5 py-0.5 rounded font-bold text-xs",

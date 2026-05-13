@@ -43,21 +43,19 @@ Changelog: `2026-05-12-r6-control-center-live.md`
 ---
 
 ## ISSUE-003 — Control Center surfaces raw database identifiers instead of stop names
-**Status:** Fixed 2026-05-12 (partial — backend follow-up open)  
+**Status:** Fixed 2026-05-12 (fully closed)  
 **Discovered:** 2026-05-10  
-**Area:** frontend — Control Center stop display  
+**Area:** frontend + backend — Control Center stop display  
 
 **Resolution:**  
-Added `sanitizeStopLabel()` helper in `AdminControlCenter.tsx` — maps `null`, empty
-string, or the `"(route_stop)"` DB placeholder from `core.v_locations_transit` to
-`"Transit Stop"`. Applied to `difficulty.heavy_stops[].label` (the only per-stop
-display surface in the current component).  
-**Backend follow-up required:** the `/api/admin/control-center/difficulty` heavy_stops
-query must JOIN to the `stops` table and return `stop_id + on_street_name +
-intersection_loc` to enable the full `"#{stop_id} · street — cross"` display format.
-A `TODO(ISSUE-003)` comment marks the render site. The routes and exceptions endpoints
-return only route-level aggregates — no per-stop identifiers to fix there.  
-Changelog: `2026-05-12-r6-control-center-live.md`
+Phase 1 (R6): Added `sanitizeStopLabel()` helper in `AdminControlCenter.tsx` — maps
+`null`, empty string, or the `"(route_stop)"` DB placeholder to `"Transit Stop"`.  
+Phase 2 (this entry): `/api/admin/control-center/difficulty` `heavyStops` query now
+`LEFT JOIN`s `public.stops` via `core.v_locations_transit.stop_id` and returns `stop_id`,
+`on_street_name`, and `intersection_loc` per entry. Frontend renders the full
+`"#{stop_id} · {on_street_name} — {intersection_loc}"` format when all three fields are
+present; falls back to `sanitizeStopLabel(label)` for any null/empty values. The `TODO(ISSUE-003)` comment has been removed from the render site.  
+Changelogs: `2026-05-12-r6-control-center-live.md`, `2026-05-12-issue-003-stop-names-backend.md`
 
 ---
 
