@@ -350,19 +350,9 @@ WITH route_base AS (
     rr.status        AS route_status,
     rr.run_date,
     rr.started_at,
-    rr.finished_at,
-    MAX(idd.display_name) AS assigned_ul_name
-  FROM public.route_runs rr
-  LEFT JOIN public.identity_directory idd
-    ON idd.oid = rr.assigned_user_oid
-  WHERE rr.status IN ('planned', 'in_progress')
-  GROUP BY
-    rr.id,
-    rr.route_pool_id,
-    rr.status,
-    rr.run_date,
-    rr.started_at,
     rr.finished_at
+  FROM public.route_runs rr
+  WHERE rr.status IN ('planned', 'in_progress')
 ),
 
 stop_counts AS (
@@ -412,7 +402,6 @@ deviation_flags AS (
 SELECT
   rb.route_run_id,
   rb.pool_id,
-  rb.assigned_ul_name,
 
   COALESCE(sc.planned_stops, 0)     AS planned_stops,
   COALESCE(sc.emergency_stops, 0)   AS emergency_stops,

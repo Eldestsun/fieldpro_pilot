@@ -36,7 +36,6 @@ interface SummaryStats {
 interface RouteStatus {
     route_run_id: number;
     pool_id: string | null;
-    assigned_ul_name: string | null;
 
     planned_stops: number;
     emergency_stops: number;
@@ -294,7 +293,7 @@ export const AdminControlCenter: React.FC = () => {
                 {/* "Visited" = completed + skipped stops (worker was present either way) */}
                 <section>
                     <h2 className="text-base font-semibold text-gray-800 mb-4">Route Status</h2>
-                    <OpsTable headers={["Route ID", "Pool", "Assignee", "Visited", "Workload", "Deviations"]}>
+                    <OpsTable headers={["Route ID", "Pool", "Visited", "Workload", "Deviations"]}>
                         {routes.map((r) => {
                             const planned = Number(r.planned_stops);
                             const emergency = Number(r.emergency_stops);
@@ -309,7 +308,6 @@ export const AdminControlCenter: React.FC = () => {
                                 <OpsTableRow key={r.route_run_id}>
                                     <OpsTableCell>#{r.route_run_id}</OpsTableCell>
                                     <OpsTableCell>{r.pool_id || "—"}</OpsTableCell>
-                                    <OpsTableCell>{r.assigned_ul_name || "Unassigned"}</OpsTableCell>
                                     <OpsTableCell>
                                         <div className="flex items-center gap-2">
                                             <div className="w-[60px] bg-gray-100 h-2 rounded overflow-hidden">
@@ -339,7 +337,7 @@ export const AdminControlCenter: React.FC = () => {
                             <OpsTableRow>
                                 <OpsTableCell
                                     className="text-center text-gray-400 italic"
-                                    colSpan={6}
+                                    colSpan={5}
                                 >
                                     No active routes today
                                 </OpsTableCell>
