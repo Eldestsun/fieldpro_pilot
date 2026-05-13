@@ -3,7 +3,7 @@
 > Orchestration layer for the product refinement track.
 > Runs alongside and after the DB Refactor (Tiers 1–6).
 > Each item has its own handoff file. This document tracks ordering, dependencies, and status.
-> Last updated: 2026-05-12
+> Last updated: 2026-05-12 (R8 and R9 complete)
 
 ---
 
@@ -27,8 +27,8 @@ These are two parallel workstreams. Several refinement items can begin before al
 | R5 | Enterprise UI/UX Rebuild | R3 done | R6 | 🟢 Done |
 | R6 | Control Center — Live Updates | Tier 3 done | R5 | 🟢 Done |
 | R7 | Historical Backfill Framework (Scale Asset) | Tier 1 done | R6, R8 | 🔴 Not started — low priority, post-pilot |
-| R8 | CI Pipeline | Tier 6 Sub-task C done | R7 | 🔴 Not started — unblocked |
-| R9 | Frontend Tests | R5 stable | — | 🔴 Not started — unblocked |
+| R8 | CI Pipeline | Tier 6 Sub-task C done | R7 | 🟢 Done |
+| R9 | Frontend Tests | R5 stable | — | 🟢 Done |
 | R10 | Stop Effort History (replace workforce_metrics) | Tier 4 Sub-task B done | R1, R3 | 🟢 Done |
 
 ---
@@ -118,12 +118,16 @@ A configurable, org-agnostic backfill framework for future customer organization
 
 Wire a GitHub Actions pipeline: run backend integration tests, build Docker images, push to a container registry, deploy to a staging environment. Requires Tier 6 Sub-task C Dockerfiles to exist first.
 
+Status: 🟢 Done — changelog at `docs/changelog/2026-05-12-r8-ci-pipeline.md`. `.github/workflows/ci.yml` has three jobs: `test-backend` (Postgres 14 service, pnpm, migrations + tests), `build-frontend` (vite build), and `build-docker-images` (main-only). Staging deploy stub in `deploy-staging.yml`. Required secrets documented in `backend/.env.ci`. Deploy step is a placeholder pending hosting choice (S3-1).
+
 ---
 
 ### R9 — Frontend Tests
 **File**: `planning/refinement/REFINEMENT_R9_FRONTEND_TESTS.md`
 
 Add component tests (Vitest + Testing Library) for the UL stop wizard, offline queue status indicator, and role-based navigation. Add E2E tests (Playwright) for the full UL stop completion flow and Lead route creation flow. Should be written after R5 (UI rebuild) is stable — no value in testing markup that's about to be replaced.
+
+Status: 🟢 Done — changelog at `docs/changelog/2026-05-12-r9-frontend-tests.md`. Vitest + Testing Library + jsdom configured in `vite.config.ts`; Playwright configured in `playwright.config.ts`. 18 component tests across `StopWizard`, `OfflineStatusBar`, and `StopListItem`. 3 E2E specs covering UL stop completion and Lead route creation flows.
 
 ---
 

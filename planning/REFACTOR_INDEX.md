@@ -2,7 +2,7 @@
 
 > Orchestration layer for the canonical-model migration.
 > Each tier has its own handoff file. This document tracks ordering, dependencies, and current status.
-> Last updated: 2026-05-12 (Tier 7 complete)
+> Last updated: 2026-05-12 (Tiers 1–7 complete; Tier 8 unblocked)
 
 ---
 
