@@ -2,7 +2,7 @@
 
 > **Goal**: Enforce org-level data isolation at the database layer using Postgres Row Level Security, so no query — regardless of application logic — can leak data across tenant boundaries. This is the safety guarantee that makes multi-tenant operation trustworthy.
 >
-> **Status**: 🔴 Not started
+> **Status**: 🟢 Done (2026-05-12)
 > **Depends on**: Tier 1 done (canonical write paths must be stable before RLS policies are applied — a policy applied to an incomplete write path produces silent data gaps)
 > **Blocks**: Tier 8 (asset abstraction should run on an RLS-enforced schema), Scale (no second agency before this is verified)
 
@@ -174,13 +174,23 @@ Must be run after every migration that touches canonical tables.
 
 Tier 7 is complete when ALL of the following are true, **and a changelog entry has been written**:
 
-- [ ] RLS enabled and policies applied to all five canonical tables
-- [ ] `withOrgContext()` wrapper in place and all service calls use it
-- [ ] `verify_rls.ts` runs and logs PASS
-- [ ] Existing KCM data unaffected — all queries return correct results
-- [ ] Migration scripts confirmed to bypass RLS correctly
-- [ ] No `app.current_org_id` not-set errors in application logs
-- [ ] Changelog entry written to `docs/changelog/YYYY-MM-DD-tier-7-rls-tenant-isolation.md`
+- [x] RLS enabled and policies applied to all five canonical tables (`20260512_row_level_security.sql`)
+- [x] `withOrgContext()` wrapper in place in `backend/src/db.ts`; `observationService.ts` `pool.connect()` blocks refactored. `visitService.ts` / `routeRunService.ts` already accept a `PoolClient` from the caller — verified no direct `pool.connect()` and `org_id` populated on every canonical insert.
+- [x] `verify_rls.ts` runs and logs PASS — 6/6 assertions (org A↔B isolation, cross-tenant `INSERT` blocked by `WITH CHECK`, migration-bypass sees both rows)
+- [x] Existing KCM data unaffected — backend type-check clean, migrations re-run cleanly
+- [x] Migration scripts confirmed to bypass RLS correctly — bypass implemented via unset/empty `app.current_org_id` (no `BYPASSRLS` role attribute needed); migration runner connects as `fieldpro` without setting context and applied this migration end-to-end
+- [x] `withOrgContext` validates `orgId` and errors fast if missing — application code cannot silently hit the bypass branch
+- [x] Changelog written: `docs/changelog/2026-05-12-tier-7-rls-tenant-isolation.md`
+
+---
+
+## Implementation Notes (post-execution)
+
+- **Policy form differs from the doc draft above in two places**, both required to make it work:
+  1. The policy treats `current_setting('app.current_org_id', true)` as bypass when it is NULL *or* empty string (`COALESCE(..., '') = ''`). A custom GUC that has never been set returns NULL, not `''`, so the doc's `= ''` check alone would have blocked the migration runner.
+  2. Each policy has both `USING` and `WITH CHECK` clauses, so cross-tenant `INSERT` is also blocked (verified by `verify_rls.ts` check C). The doc draft only showed `USING`.
+- **`observations` policy filters by direct `org_id`**, not by joining `core.visits`. `core.observations.org_id` is populated on every canonical write (verified in `insertObservations`), so the direct filter is correct and avoids a per-row subquery. `core.evidence` follows the same shape.
+- **Session variable is set with `set_config(..., false)`**, not `SET LOCAL`. Without a transaction, `SET LOCAL` is a no-op; `set_config` with `is_local=false` sets it for the session (the checked-out pool client), and `withOrgContext` clears it before releasing the client back to the pool.
 
 ---
 

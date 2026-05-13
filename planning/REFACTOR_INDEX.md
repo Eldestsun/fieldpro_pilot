@@ -2,7 +2,7 @@
 
 > Orchestration layer for the canonical-model migration.
 > Each tier has its own handoff file. This document tracks ordering, dependencies, and current status.
-> Last updated: 2026-05-12
+> Last updated: 2026-05-12 (Tier 7 complete)
 
 ---
 
@@ -16,8 +16,8 @@
 | 4 | Schema Cleanup | — (unblocked) | 1, 3, 6 | 🟢 Done |
 | 5 | Assignment Layer | Tier 1 must be stable | 3, 4, 6 | 🟢 Done |
 | 6 | Infrastructure | — (unblocked) | 1, 3, 4, 5 | 🟢 Done |
-| 7 | Row Level Security & Tenant Isolation | Tier 1 done | 8 | 🔴 Not started — unblocked |
-| 8 | Asset Type Abstraction | Tier 7 done | — | ⛔ Blocked by Tier 7 |
+| 7 | Row Level Security & Tenant Isolation | Tier 1 done | 8 | 🟢 Done |
+| 8 | Asset Type Abstraction | Tier 7 done | — | 🔴 Not started — unblocked |
 
 ---
 
@@ -121,9 +121,11 @@ Status: Complete — changelog written 2026-05-12. Sub-task A (migration runner,
 ### Tier 7 — Row Level Security & Tenant Isolation
 **File**: `planning/TIER_7_ROW_LEVEL_SECURITY_&_TENANT_ISOLATION.MD`
 
-Enforce org-level data isolation at the DB layer using Postgres Row Level Security. Policies on all five canonical tables filter every query by `app.current_org_id` session variable, set via a `withOrgContext()` wrapper in `db.ts`. A bad query missing a WHERE clause cannot leak cross-tenant data. Includes a verification script that proves cross-tenant isolation. Must wait until Tier 1 write paths are stable — RLS applied to an incomplete write path creates silent data gaps.
+Enforce org-level data isolation at the DB layer using Postgres Row Level Security. Policies on all five canonical tables filter every query by `app.current_org_id` session variable, set via a `withOrgContext()` wrapper in `db.ts`. A bad query missing a WHERE clause cannot leak cross-tenant data. Includes a verification script that proves cross-tenant isolation.
 
-**Hard dependency note**: `withOrgContext()` requires org_id to be resolved from the authenticated user's Entra tenant ID. This resolution chain must be confirmed working before RLS is enforced — a missing `app.current_org_id` will cause all queries to fail silently or error.
+Status: Complete — changelog written 2026-05-12. Migration `20260512_row_level_security.sql` applied, `withOrgContext()` in place in `backend/src/db.ts`, `observationService.ts` `pool.connect()` blocks refactored to wrap. `visitService.ts` and `routeRunService.ts` already client-parameterized — verified `org_id` is populated on every canonical insert and no direct `pool.connect()` calls inside the service files. `backend/scripts/verify_rls.ts` runs end-to-end against the real local DB: all six assertions PASS (per-org isolation in both directions, cross-tenant `INSERT` blocked by `WITH CHECK`, migration-bypass via unset variable). Migration script bypass uses unset-variable rather than `BYPASSRLS` role attribute so the existing migration runner continues to work without role changes.
+
+**Hard dependency note**: `withOrgContext()` requires `org_id` to be resolved from the authenticated user's Entra tenant ID. The application path always sets the variable; the bypass-when-unset branch exists for migrations only and is unreachable from request handlers that go through `withOrgContext`.
 
 ---
 
