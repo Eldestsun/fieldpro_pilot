@@ -81,10 +81,10 @@ export async function emitObservationsForStop(params: {
     if (phase === "arrival") {
         if (stopId) {
             if (passedClient) {
-                observations = await arrivalObservations(stopId, passedClient);
+                observations = await arrivalObservations(stopId, assetId, orgId, passedClient);
             } else {
                 observations = await withOrgContext(orgId, (lookupClient) =>
-                    arrivalObservations(stopId, lookupClient)
+                    arrivalObservations(stopId, assetId, orgId, lookupClient)
                 );
             }
         } else {
@@ -107,14 +107,49 @@ export async function emitObservationsForStop(params: {
 
 // ARRIVAL PHASE LOGIC
 
-const ARRIVAL_OBSERVATION_TYPES = [
-    "ground_condition",
-    "trash_can_condition",
-    "shelter_condition",
-    "pad_condition",
-] as const;
+// Queries core.observation_type_registry for the required observation types for this
+// org + asset type. Returns keys ordered by sort_order.
+async function getArrivalObservationTypes(
+    coreAssetTypeId: number,
+    orgId: number,
+    client: PoolClient
+): Promise<string[]> {
+    const result = await client.query<{ observation_key: string }>(
+        `SELECT observation_key
+         FROM core.observation_type_registry
+         WHERE org_id = $1
+           AND asset_type_id = $2
+           AND is_required = true
+           AND is_active = true
+         ORDER BY sort_order`,
+        [orgId, coreAssetTypeId]
+    );
+    return result.rows.map(r => r.observation_key);
+}
 
-// Hardcoded pessimistic defaults — used when stopId is unavailable or no prior visit exists
+// Resolves the core.asset_types.id for the given public.assets.id within an org.
+// Bridges public.assets → public.asset_types (via asset_type_id) →
+// core.asset_types (via type_key = code, within org_id).
+// Returns null when core.asset_types has no matching row (e.g., seeder not yet run).
+async function resolveCoreAssetTypeId(
+    assetId: number,
+    orgId: number,
+    client: PoolClient
+): Promise<number | null> {
+    const result = await client.query<{ id: number }>(
+        `SELECT cat.id
+         FROM core.asset_types cat
+         JOIN public.asset_types pat ON pat.code = cat.type_key
+         JOIN public.assets a ON a.asset_type_id = pat.id
+         WHERE a.id = $1 AND cat.org_id = $2
+         LIMIT 1`,
+        [assetId, orgId]
+    );
+    return result.rows[0]?.id ?? null;
+}
+
+// Hardcoded pessimistic defaults — used when stopId is unavailable, no prior visit
+// exists, or the observation_type_registry has not been seeded for this org/asset type.
 function arrivalObservationDefaults(): ObservationInsert[] {
     return [
         { observation_type: "ground_condition", payload: { state: "dirty" } },
@@ -124,7 +159,9 @@ function arrivalObservationDefaults(): ObservationInsert[] {
     ];
 }
 
-// Looks up the most recent observation of each arrival type at this stop.
+// Looks up the most recent observation of each required arrival type at this stop.
+// Types come from core.observation_type_registry via getArrivalObservationTypes();
+// falls back to arrivalObservationDefaults() when the registry is not yet seeded.
 //
 // Path B (1 adapter hop — tolerated as a vertical identifier translation):
 //   core.observations.asset_id → transit_stop_assets.asset_id WHERE stop_id = $1
@@ -132,17 +169,25 @@ function arrivalObservationDefaults(): ObservationInsert[] {
 // translates the transit stop_id to a canonical asset_id at the boundary — one hop,
 // not embedded adapter logic.
 //
-// Path F (fully canonical) activates in Tier 8: asset_id will be passed directly by
-// the caller, and transit_stop_assets is no longer referenced at all.
-//
 // Do NOT use clean_logs as the bridge (Path A — 3 adapter hops, deprecated by Tier 2).
 // See planning/architecture/ADAPTER_BOUNDARY.md for the full join map.
 //
 // Falls back to dirty defaults for any type with no prior history.
 async function arrivalObservations(
     stopId: string,
+    assetId: number,
+    orgId: number,
     client: PoolClient
 ): Promise<ObservationInsert[]> {
+    const coreAssetTypeId = await resolveCoreAssetTypeId(assetId, orgId, client);
+    const types = coreAssetTypeId !== null
+        ? await getArrivalObservationTypes(coreAssetTypeId, orgId, client)
+        : [];
+
+    if (types.length === 0) {
+        return arrivalObservationDefaults();
+    }
+
     const result = await client.query<{ observation_type: string; payload: Record<string, any> }>(
         `
         SELECT DISTINCT ON (o.observation_type)
@@ -157,18 +202,18 @@ async function arrivalObservations(
           AND o.observation_type = ANY($2)
         ORDER BY o.observation_type, o.observed_at DESC
         `,
-        [stopId, ARRIVAL_OBSERVATION_TYPES]
+        [stopId, types]
     );
 
     const priorState = new Map(result.rows.map(r => [r.observation_type, r.payload]));
 
-    return ARRIVAL_OBSERVATION_TYPES.map(type => ({
+    return types.map(type => ({
         observation_type: type,
         payload: priorState.get(type) ?? arrivalDefault(type),
     }));
 }
 
-function arrivalDefault(type: typeof ARRIVAL_OBSERVATION_TYPES[number]): Record<string, any> {
+function arrivalDefault(type: string): Record<string, any> {
     if (type === "trash_can_condition") return { state: "has_trash" };
     return { state: "dirty" };
 }
