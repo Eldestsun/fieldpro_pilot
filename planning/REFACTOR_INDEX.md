@@ -2,7 +2,7 @@
 
 > Orchestration layer for the canonical-model migration.
 > Each tier has its own handoff file. This document tracks ordering, dependencies, and current status.
-> Last updated: 2026-05-12 (Tiers 1–7 complete; Tier 8 unblocked)
+> Last updated: 2026-05-13 (Tiers 1–8 complete)
 
 ---
 
@@ -17,7 +17,7 @@
 | 5 | Assignment Layer | Tier 1 must be stable | 3, 4, 6 | 🟢 Done |
 | 6 | Infrastructure | — (unblocked) | 1, 3, 4, 5 | 🟢 Done |
 | 7 | Row Level Security & Tenant Isolation | Tier 1 done | 8 | 🟢 Done |
-| 8 | Asset Type Abstraction | Tier 7 done | — | 🔴 Not started — unblocked |
+| 8 | Asset Type Abstraction | Tier 7 done | — | 🟢 Done |
 
 ---
 
@@ -133,6 +133,8 @@ Status: Complete — changelog written 2026-05-12. Migration `20260512_row_level
 **File**: `planning/refactor/TIER_8_ASSET_TYPE_ABSTRACTION.md`
 
 Abstract the stop-centric data model to support multiple asset types (stops, restrooms, shelters, facilities). Enables BASELINE to operate across asset classes without schema duplication. Should run on an RLS-enforced schema (Tier 7 done).
+
+Status: Complete — changelogs written 2026-05-12/13. Migration `20260512_tier8_asset_abstraction.sql` applied: `core.asset_types`, `core.observation_type_registry` created; `public.assets` promoted with `external_id`, `display_name`, `lat`, `lon`, `attributes`, `active` columns. Transit asset seeder (`backend/scripts/seed_transit_assets.ts`) populates `core.asset_types` (`transit_stop` for KCM), `core.observation_type_registry` (all transit observation types), and `public.assets` from `transit_stops`. `observationService.ts` refactored to read arrival observation types from `core.observation_type_registry` via `getArrivalObservationTypes()` — no hardcoded type lists. Tenant configuration API added at `/api/admin/tenant` (5 endpoints: GET/POST asset-types, GET/POST observation-types, POST seed-assets CSV upload) via new `assetService.ts` + `tenantRoutes.ts`; all canonical writes go through `assetService.ts`.
 
 ---
 
