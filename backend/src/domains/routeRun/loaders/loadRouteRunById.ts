@@ -56,6 +56,13 @@ export async function loadRouteRunById(id: number | string) {
       cl.washed_can
     FROM route_runs rr
     LEFT JOIN route_pools rp ON rp.id = rr.route_pool_id
+    -- CONTROLLED EXCEPTION — identity_directory JOIN
+    -- This is the only permitted JOIN to identity_directory in the codebase.
+    -- Purpose: route detail view shows the Lead who assigned the route and
+    -- the UL it was assigned to — operational necessity for route management.
+    -- Constraint: this display name MUST NOT flow into any intelligence surface
+    -- (risk maps, condition history, effort history, Control Center dashboards).
+    -- Any new JOIN to identity_directory requires explicit review. See R11 spec.
     LEFT JOIN identity_directory id_dir ON id_dir.oid = rr.assigned_user_oid
     LEFT JOIN identity_directory creator ON creator.oid = rr.created_by_oid
     JOIN route_run_stops rrs ON rrs.route_run_id = rr.id
