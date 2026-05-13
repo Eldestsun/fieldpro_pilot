@@ -59,7 +59,7 @@ Tier 4B ──► R10 (drop surveillance tables, then rebuild correctly)
 ## Item Summaries
 
 ### R1 — Auth Identity Cleanup
-**File**: `planning/REFINEMENT_R1_AUTH_IDENTITY.md`
+**File**: `planning/refinement/REFINEMENT_R1_AUTH_IDENTITY.md`
 
 Replace `user_id = 123` and `PILOT_DEV_UL_USER_ID = 123` stubs in backend write paths with the real OID from the authenticated request context. OID is already available on `req.user.oid` after `requireAuth` middleware. This is a targeted 3-file backend pass.
 
@@ -68,14 +68,14 @@ Status: Complete — LEGACY_TRANSIT_USER_ID = 0 replacing all stubs. Changelog w
 ---
 
 ### R2 — Arrival Observations — Real Prior State
-**File**: `planning/REFINEMENT_R2_ARRIVAL_OBSERVATIONS.md`
+**File**: `planning/refinement/REFINEMENT_R2_ARRIVAL_OBSERVATIONS.md`
 
 `arrivalObservations()` in `observationService.ts` always returns hardcoded dirty states regardless of actual stop condition. Replace with a lookup of the most recent `core.observations` for the stop. Workers arrive at a stop and see its last known condition, not a pessimistic assumption.
 
 ---
 
 ### R3 — Frontend Router
-**File**: `planning/REFINEMENT_R3_FRONTEND_ROUTER.md`
+**File**: `planning/refinement/REFINEMENT_R3_FRONTEND_ROUTER.md`
 
 Replace `App.tsx`'s flat view-switch state machine with `react-router-dom` v6. Enables deeplinking, browser back/forward, shareable URLs, and a scalable navigation foundation for the UI rebuild. Must precede the enterprise UI rebuild.
 
@@ -84,14 +84,14 @@ Status: Complete — react-router-dom v7 installed, BrowserRouter wrapping App, 
 ---
 
 ### R4 — Offline UX — Worker Feedback Layer
-**File**: `planning/REFINEMENT_R4_OFFLINE_UX.md`
+**File**: `planning/refinement/REFINEMENT_R4_OFFLINE_UX.md`
 
 The offline queue and replay engine are production-quality but entirely invisible to the worker. Add a queue status indicator (pending action count), conflict resolution UI (surfaces ROUTE_REASSIGNED and ROUTE_NOT_FOUND conflicts), and replay feedback (success/failure notification). All built on the existing `offlineQueue` subscription API.
 
 ---
 
 ### R5 — Enterprise UI/UX Rebuild
-**File**: `planning/REFINEMENT_R5_ENTERPRISE_UI.md`
+**File**: `planning/refinement/REFINEMENT_R5_ENTERPRISE_UI.md`
 
 Replace the dev-grade inline-style UI with an enterprise-standard design system. Mobile-first for UL workers. Responsive for Leads (tablet) and Admins (desktop). Consistent component library, typography, spacing, color, loading states, error states, and empty states across the full application surface.
 
@@ -100,35 +100,35 @@ Replace the dev-grade inline-style UI with an enterprise-standard design system.
 ---
 
 ### R6 — Control Center — Live Updates
-**File**: `planning/REFINEMENT_R6_CONTROL_CENTER_LIVE.md`
+**File**: `planning/refinement/REFINEMENT_R6_CONTROL_CENTER_LIVE.md`
 
 Once Control Center is mounted (Tier 3), it loads data once on mount and goes stale. Add polling or server-sent events so dispatchers see route status, exceptions, and stop completion update in near-real-time without refreshing.
 
 ---
 
 ### R7 — Historical Backfill Framework (Scale Asset)
-**File**: `planning/REFINEMENT_R7_HISTORICAL_BACKFILL.md`
+**File**: `planning/refinement/REFINEMENT_R7_HISTORICAL_BACKFILL.md`
 
 A configurable, org-agnostic backfill framework for future customer organizations that have existing operational history to import. KCM pilot does not use this — KCM has no paper data and the canonical layer will fill organically through shadow-mode UL usage. Built as a scale and sales asset. Dependency on R1 removed. Low priority — do not start until pilot is in flight.
 
 ---
 
 ### R8 — CI Pipeline
-**File**: `planning/REFINEMENT_R8_CI_PIPELINE.md`
+**File**: `planning/refinement/REFINEMENT_R8_CI_PIPELINE.md`
 
 Wire a GitHub Actions pipeline: run backend integration tests, build Docker images, push to a container registry, deploy to a staging environment. Requires Tier 6 Sub-task C Dockerfiles to exist first.
 
 ---
 
 ### R9 — Frontend Tests
-**File**: `planning/REFINEMENT_R9_FRONTEND_TESTS.md`
+**File**: `planning/refinement/REFINEMENT_R9_FRONTEND_TESTS.md`
 
 Add component tests (Vitest + Testing Library) for the UL stop wizard, offline queue status indicator, and role-based navigation. Add E2E tests (Playwright) for the full UL stop completion flow and Lead route creation flow. Should be written after R5 (UI rebuild) is stable — no value in testing markup that's about to be replaced.
 
 ---
 
 ### R10 — Stop Effort History
-**File**: `planning/REFINEMENT_R10_STOP_EFFORT_HISTORY.md`
+**File**: `planning/refinement/REFINEMENT_R10_STOP_EFFORT_HISTORY.md`
 
 Replace the dropped `workforce_metrics` and `stop_scoring_history` tables with correctly designed stop-level effort and condition history tables. Worker-safe by structure (no `user_id`). Keyed by `stop_id` and `visit_id`. Feeds route planning intelligence and stop assignment decisions. Runs after Tier 4 Sub-task B drops the surveillance tables.
 

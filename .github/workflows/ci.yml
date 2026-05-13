@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: fieldpro
+          POSTGRES_PASSWORD: fieldpro_pass
+          POSTGRES_DB: fieldpro_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: backend/pnpm-lock.yaml
+
+      - name: Install backend dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: backend
+
+      - name: Run migrations
+        run: pnpm run migrate
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://fieldpro:fieldpro_pass@localhost:5432/fieldpro_test
+
+      - name: Run tests
+        run: pnpm test
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://fieldpro:fieldpro_pass@localhost:5432/fieldpro_test
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_API_AUDIENCE: ${{ secrets.AZURE_API_AUDIENCE }}
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: frontend
+
+      - name: Build frontend
+        run: pnpm run build
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: /api
+
+  build-docker-images:
+    needs: [test-backend, build-frontend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -t baseline-backend:${{ github.sha }} ./backend
+
+      - name: Build frontend image
+        run: docker build -t baseline-frontend:${{ github.sha }} ./frontend
