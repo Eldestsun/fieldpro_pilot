@@ -80,16 +80,19 @@ export default function App() {
 
   const userName = me?.user?.name || me?.user?.preferred_username || "";
 
-  if (isLoading) {
+  if (!isSignedIn) {
+    return <LoginPage onSignIn={signIn} />;
+  }
+
+  // Gate Routes on `me`, not just `isLoading`: MSAL hydrates `isSignedIn` from
+  // localStorage synchronously while `me` arrives via effect, so the first render
+  // would otherwise see empty roles and RequireRole would bounce deep links to "/".
+  if (isLoading || !me) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <p className="text-gray-500 text-lg">Loading identity…</p>
       </div>
     );
-  }
-
-  if (!isSignedIn) {
-    return <LoginPage onSignIn={signIn} />;
   }
 
   const closeMenu = () => setMenuOpen(false);
