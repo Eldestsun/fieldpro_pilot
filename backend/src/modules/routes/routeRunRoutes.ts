@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { requireAuth, requireAnyRole } from "../../authz";
 import { pool } from "../../db";
+import { auditWrite, reqOrgId } from "../../middleware/auditWrite";
 import { planRouteWithOsrm, OsrmStop } from "../../osrmClient";
 import {
     createRouteRun,
@@ -329,6 +330,16 @@ routeRunRoutes.post(
                 run_date,
             });
 
+            auditWrite({
+                actor_oid: createdByOid,
+                org_id: reqOrgId(req),
+                action: 'assignment.create',
+                resource_type: 'route',
+                resource_id: String(routeRunId),
+                detail: { assigned_user_oid: assignedUserOid ?? null, pool_id: targetPoolId },
+                ip_address: req.ip,
+            });
+
             return res.json({
                 ok: true,
                 route_run_id: routeRunId,
@@ -497,8 +508,42 @@ routeRunRoutes.patch(
                 return res.status(400).json({ error: "assigned_user_oid cannot be empty string" });
             }
 
+            // Read previous assignment before update so we can log the correct action.
+            const prevRes = await client.query(
+                `SELECT assigned_user_oid FROM route_runs WHERE id = $1`,
+                [id]
+            );
+            const prevOid: string | null = prevRes.rows[0]?.assigned_user_oid ?? null;
+
             // Execute Assignment
             await assignRouteRun(client, id, assigned_user_oid);
+
+            // Determine audit action based on old/new state.
+            const actorOid: string = (req as any).user?.oid ?? 'unknown';
+            if (assigned_user_oid == null) {
+                auditWrite({
+                    actor_oid: actorOid,
+                    org_id: reqOrgId(req),
+                    action: 'assignment.cancel',
+                    resource_type: 'route',
+                    resource_id: String(id),
+                    detail: { previous_assigned_user_oid: prevOid },
+                    ip_address: req.ip,
+                });
+            } else {
+                auditWrite({
+                    actor_oid: actorOid,
+                    org_id: reqOrgId(req),
+                    action: prevOid ? 'assignment.reassign' : 'assignment.create',
+                    resource_type: 'route',
+                    resource_id: String(id),
+                    detail: {
+                        previous_assigned_user_oid: prevOid,
+                        new_assigned_user_oid: assigned_user_oid,
+                    },
+                    ip_address: req.ip,
+                });
+            }
 
             // Reload & Return
             const routeRun = await loadRouteRunById(id);

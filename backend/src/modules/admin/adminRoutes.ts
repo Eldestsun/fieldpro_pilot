@@ -3,6 +3,7 @@ import { requireAuth, requireAnyRole } from "../../authz";
 import { pool } from "../../db";
 import * as poolService from "../../services/adminPoolService";
 import * as stopService from "../../services/adminStopService";
+import { auditWrite, reqOrgId } from "../../middleware/auditWrite";
 
 export const adminRoutes = Router();
 
@@ -68,6 +69,15 @@ adminRoutes.post("/admin/pools", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "id and label are required" });
     }
     const newPool = await poolService.createPool(req.body);
+    auditWrite({
+      actor_oid: (req as any).user?.oid ?? 'unknown',
+      org_id: reqOrgId(req),
+      action: 'admin.config_change',
+      resource_type: 'route_pool',
+      resource_id: String(id),
+      detail: { change: 'pool_created', label },
+      ip_address: req.ip,
+    });
     res.json({ pool: newPool });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -78,6 +88,15 @@ adminRoutes.patch("/admin/pools/:id", async (req: Request, res: Response) => {
   try {
     const updated = await poolService.updatePool(req.params.id, req.body);
     if (!updated) return res.status(404).json({ error: "Pool not found" });
+    auditWrite({
+      actor_oid: (req as any).user?.oid ?? 'unknown',
+      org_id: reqOrgId(req),
+      action: 'admin.config_change',
+      resource_type: 'route_pool',
+      resource_id: String(req.params.id),
+      detail: { change: 'pool_updated', fields: Object.keys(req.body) },
+      ip_address: req.ip,
+    });
     res.json({ pool: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -88,6 +107,15 @@ adminRoutes.delete("/admin/pools/:id", async (req: Request, res: Response) => {
   try {
     const updated = await poolService.softDeletePool(req.params.id);
     if (!updated) return res.status(404).json({ error: "Pool not found" });
+    auditWrite({
+      actor_oid: (req as any).user?.oid ?? 'unknown',
+      org_id: reqOrgId(req),
+      action: 'admin.config_change',
+      resource_type: 'route_pool',
+      resource_id: String(req.params.id),
+      detail: { change: 'pool_soft_deleted' },
+      ip_address: req.ip,
+    });
     res.json({ pool: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -113,6 +141,15 @@ adminRoutes.patch("/admin/stops/:id", async (req: Request, res: Response) => {
   try {
     const updated = await stopService.updateStop(req.params.id, req.body);
     if (!updated) return res.status(404).json({ error: "Stop not found" });
+    auditWrite({
+      actor_oid: (req as any).user?.oid ?? 'unknown',
+      org_id: reqOrgId(req),
+      action: 'admin.stop_edit',
+      resource_type: 'stop',
+      resource_id: String(req.params.id),
+      detail: { fields: Object.keys(req.body) },
+      ip_address: req.ip,
+    });
     res.json({ stop: updated });
   } catch (err: any) {
     if (err.message.includes("does not exist")) {
@@ -129,6 +166,15 @@ adminRoutes.post("/admin/stops/bulk", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "stop_ids array is required" });
     }
     const result = await stopService.bulkUpdateStops(stop_ids, data);
+    auditWrite({
+      actor_oid: (req as any).user?.oid ?? 'unknown',
+      org_id: reqOrgId(req),
+      action: 'admin.stop_edit',
+      resource_type: 'stop',
+      resource_id: stop_ids.join(','),
+      detail: { bulk: true, count: stop_ids.length, fields: Object.keys(data) },
+      ip_address: req.ip,
+    });
     res.json(result);
   } catch (err: any) {
     if (err.message.includes("does not exist")) {

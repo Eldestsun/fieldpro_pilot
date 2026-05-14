@@ -3,6 +3,7 @@ import jwksClient from "jwks-rsa";
 import jwt, { JwtHeader, JwtPayload, VerifyErrors } from "jsonwebtoken";
 import { NextFunction, Request, Response } from "express";
 import { pool } from "./db";
+import { writeAuditLog } from "./middleware/auditLog";
 
 type AuthedRequest = Request & { user?: JwtPayload; roles?: string[] };
 
@@ -92,6 +93,17 @@ function upsertIdentity(user: JwtPayload, roles: string[]) {
   })();
 }
 
+// Non-blocking audit write for auth events. Same fire-and-forget pattern as upsertIdentity.
+function writeAuthAudit(action: string, actorOid: string, orgId: string, ipAddress: string | undefined) {
+  (async () => {
+    try {
+      await writeAuditLog({ actor_oid: actorOid, org_id: orgId, action, ip_address: ipAddress });
+    } catch (err) {
+      console.warn('[AUTHZ] audit write failed:', err);
+    }
+  })();
+}
+
 /** ===== MIDDLEWARES ===== */
 export function requireAuth(req: AuthedRequest, res: Response, next: NextFunction) {
   const auth = req.headers.authorization || "";
@@ -122,6 +134,7 @@ export function requireAuth(req: AuthedRequest, res: Response, next: NextFunctio
     (err: VerifyErrors | null, decoded?: jwt.JwtPayload | string) => {
       if (err) {
         auditWarn("invalid_token", { path: req.path, ip: req.ip, err: err.message });
+        writeAuthAudit('auth.login_failed', 'unknown', process.env.AZURE_TENANT_ID ?? 'unknown', req.ip);
         return res.status(401).json({ error: "invalid token" });
       }
       const payload = typeof decoded === "string" ? undefined : decoded;
@@ -134,6 +147,14 @@ export function requireAuth(req: AuthedRequest, res: Response, next: NextFunctio
 
       // Enterprise Identity: Upsert to directory cache (non-blocking)
       upsertIdentity(req.user, req.roles);
+
+      // S1-2: Audit successful authentication (non-blocking)
+      writeAuthAudit(
+        'auth.login',
+        (payload as any).oid ?? 'unknown',
+        (payload as any).tid ?? process.env.AZURE_TENANT_ID ?? 'unknown',
+        req.ip,
+      );
 
       next();
     }

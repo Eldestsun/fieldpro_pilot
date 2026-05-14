@@ -126,6 +126,26 @@ Changelogs: `2026-05-11-fix-007-hazard-severity-write.md`,
 
 ---
 
+## ISSUE-010 — S1-2: two trigger points have no hookable code yet
+**Status:** Deferred  
+**Discovered:** 2026-05-13  
+**Area:** backend — S1-2 audit wiring  
+**Severity:** low (compliance gap, no runtime breakage)
+
+`export.data_export` and `admin.user_role_change` audit writes are not wired because neither trigger point exists in the codebase — the data-export endpoint is S1-4 and no user-role-change endpoint has been built. Both will be wired when their respective endpoints land.
+
+---
+
+## ISSUE-009 — Four canonical test files are red: stop_id → location_id mapping broken in fixture
+**Status:** Deferred  
+**Discovered:** 2026-05-13  
+**Area:** backend — `tests/canonical/` — visits, observations, evidence, assignments  
+**Severity:** medium  
+
+`visits.test.ts` (4/6 red), `observations.test.ts` (5/5 red), `evidence.test.ts` (3/4 red), `assignments.test.ts` (3/5 red) — all fail with `getVisitContext: missing location_id for route_run_stop N (stop_id mapping failed)`; root cause is the fixture stop (`FIXTURE_STOP_ID = "31150"`) no longer resolving through `core.v_locations_transit` after the R11 schema changes.
+
+---
+
 ## ISSUE-008 — complexity_score not computed in stop_effort_history
 stop_effort_history.complexity_score is always NULL. The spec intended 
 a count of non-clean observations but payload key varies by observation 
