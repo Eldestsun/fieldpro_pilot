@@ -1,0 +1,75 @@
+{
+  "audit_date": "2026-05-14",
+  "tool": "@axe-core/playwright",
+  "standard": "WCAG 2.1 AA",
+  "surfaces": {
+    "login_auth_flow": {
+      "surface": "Login / Auth Flow",
+      "url": "http://localhost:5174/",
+      "role": null,
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "tags": [
+            "cat.color",
+            "wcag2aa",
+            "wcag143",
+            "TTv5",
+            "TT13.c",
+            "EN-301-549",
+            "EN-9.1.4.3",
+            "ACT",
+            "RGAAv4",
+            "RGAA-3.2.1"
+          ],
+          "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.11/color-contrast?application=playwright",
+          "nodes": [
+            {
+              "any": [
+                {
+                  "id": "color-contrast",
+                  "data": {
+                    "fgColor": "#94a3b8",
+                    "bgColor": "#ffffff",
+                    "contrastRatio": 2.56,
+                    "fontSize": "9.0pt (12px)",
+                    "fontWeight": "normal",
+                    "messageKey": null,
+                    "expectedContrastRatio": "4.5:1"
+                  },
+                  "relatedNodes": [
+                    {
+                      "html": "<div style=\"width: 100%; max-width: 520px; background: rgb(255, 255, 255); border: 1px solid rgb(226, 232, 240); border-radius: 12px; box-shadow: rgba(15, 23, 42, 0.08) 0px 8px 24px; padding: 2rem;\">",
+                      "target": [
+                        "#root > div > div"
+                      ]
+                    }
+                  ],
+                  "impact": "serious",
+                  "message": "Element has insufficient color contrast of 2.56 (foreground color: #94a3b8, background color: #ffffff, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+                }
+              ],
+              "all": [],
+              "none": [],
+              "impact": "serious",
+              "html": "<div style=\"margin-top: 1.25rem; font-size: 12px; color: rgb(148, 163, 184); text-align: center;\">v0.9.6</div>",
+              "target": [
+                "div:nth-child(4)"
+              ],
+              "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.56 (foreground color: #94a3b8, background color: #ffffff, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ]
+        }
+      ],
+      "passes_count": 10,
+      "incomplete_count": 0,
+      "inapplicable_count": 51
+    }
+  },
+  "total_violations": 1,
+  "critical_violations": 0,
+  "serious_violations": 1
+}
