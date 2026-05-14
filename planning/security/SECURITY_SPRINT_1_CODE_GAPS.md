@@ -11,7 +11,7 @@
 | S1-1 Admin Action Audit Log | ✅ Complete | 2026-05-13 |
 | S1-2 Wire Audit Writes | ✅ Complete | 2026-05-13 |
 | S1-3 Audit Log Query Endpoint | ✅ Complete | 2026-05-13 |
-| S1-4 Export-and-Delete Endpoint | 🔴 Not started | — |
+| S1-4 Export-and-Delete Endpoint | ✅ Complete | 2026-05-13 |
 | S1-5 OpenAPI 3.0 Specification | 🔴 Not started | — |
 | S1-6 SFTP Export Writer | 🔴 Not started | — |
 | S1-7 EAM Bridge Route Log | ✅ Complete | 2026-05-13 |
@@ -237,6 +237,7 @@ The query must use `withOrgContext()` so the Admin can only see their own org's 
 
 **Type**: Code
 **Depends on**: None
+**Status**: Complete — 2026-05-13 | Changelog: `docs/changelog/2026-05-13-s1-4-export-and-delete.md`
 
 ### What to build
 
