@@ -27,7 +27,7 @@ const client = jwksClient({
   jwksUri: `https://login.microsoftonline.com/${tenantId}/discovery/v2.0/keys`,
   cache: true,
   cacheMaxEntries: 5,
-  cacheMaxAge: 10 * 60 * 1000,
+  cacheMaxAge: 60 * 60 * 1000,  // S1-11: 1 hour per sprint spec (was 10 min)
   rateLimit: true,
   jwksRequestsPerMinute: 10,
 });
@@ -104,6 +104,28 @@ function writeAuthAudit(action: string, actorOid: string, orgId: string, ipAddre
   })();
 }
 
+/** ===== CLAIM VALIDATION ===== */
+export function assertClaims(payload: JwtPayload): void {
+  // aud — must be one of the configured audience values (jwt.verify already checks this,
+  // but we assert explicitly so the shape is testable and the check is auditable)
+  const aud = payload.aud;
+  const audValues = Array.isArray(aud) ? aud : aud ? [aud] : [];
+  const audOk = audValues.some(
+    (a) => a === apiAudienceClientId || a === `api://${apiAudienceClientId}`
+  );
+  if (!audOk) throw new Error("Invalid aud claim");
+
+  // iss — v2.0 only (stricter than jwt.verify, which also accepts sts.windows.net)
+  const expectedIss = `https://login.microsoftonline.com/${tenantId}/v2.0`;
+  if (payload.iss !== expectedIss) throw new Error("Invalid iss claim");
+
+  // exp — validated by jwt.verify (clockTolerance: 60, ignoreExpiration not set); no action needed
+
+  // oid — NOT validated by jwt.verify; must be a non-empty string
+  const oid = (payload as any).oid;
+  if (!oid || typeof oid !== "string") throw new Error("Missing or invalid oid claim");
+}
+
 /** ===== MIDDLEWARES ===== */
 export function requireAuth(req: AuthedRequest, res: Response, next: NextFunction) {
   const auth = req.headers.authorization || "";
@@ -142,6 +164,16 @@ export function requireAuth(req: AuthedRequest, res: Response, next: NextFunctio
         auditWarn("invalid_payload", { path: req.path, ip: req.ip });
         return res.status(401).json({ error: "invalid token payload" });
       }
+
+      // S1-11: explicit claim validation after JWKS signature check
+      try {
+        assertClaims(payload as JwtPayload);
+      } catch (claimErr: any) {
+        auditWarn("invalid_claims", { path: req.path, ip: req.ip, reason: claimErr.message });
+        writeAuthAudit("auth.login_failed", "unknown", process.env.AZURE_TENANT_ID ?? "unknown", req.ip);
+        return res.status(401).json({ error: "invalid token" });
+      }
+
       req.user = payload as JwtPayload;
       req.roles = extractRolesFromClaims(payload as JwtPayload);
 
