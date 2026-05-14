@@ -20,7 +20,7 @@
 | S1-10 Dependency Vulnerability Scan | 🔴 Not started | — |
 | S1-11 Auth Token Validation Hardening | ✅ Complete | 2026-05-13 |
 | S1-12 File Upload Path Traversal & Validation | ✅ Complete | 2026-05-13 |
-| S1-13 KMS-Encrypted captured_by_oid on core.visits | 🔴 Not started | — |
+| S1-13 KMS-Encrypted captured_by_oid on core.visits | ✅ Complete | 2026-05-13 |
 
 ---
 
@@ -704,6 +704,7 @@ function sanitizeFilename(name: string): string {
 **Type**: Code (schema + service)
 **Depends on**: None
 **Blocks**: Nothing in Sprint 1; informs S2-1 (NIST SC-13, SC-28)
+**Status**: Complete — 2026-05-13 | Changelog: `docs/changelog/2026-05-13-s1-13-oid-encryption.md`
 
 ### Background
 

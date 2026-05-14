@@ -2,6 +2,7 @@
 
 import type { PoolClient } from "pg";
 import { v5 as uuidv5 } from "uuid";
+import { encrypt as encryptOid } from "../../lib/oidCipher";
 
 const ROUTE_RUN_STOP_NAMESPACE = "4c5e1b10-1f0a-4ce4-9a6b-3b9b6a0f8b9c"; // stable constant UUID
 
@@ -102,7 +103,11 @@ export async function ensureVisitForRouteRunStop(client: PoolClient, params: Ens
   );
   const assignmentId: number | null = assignmentResult.rows[0]?.id ?? null;
 
-  // 3) Insert (idempotent + race-safe)
+  // 3) Encrypt actor OID before insert (S1-13 dual-write)
+  const { ciphertext: oidCiphertext, keyId: oidKeyId } =
+    await encryptOid(params.actorOid, "visit_create");
+
+  // 4) Insert (idempotent + race-safe)
   const insert = await client.query(
     `
     INSERT INTO core.visits (
@@ -114,9 +119,11 @@ export async function ensureVisitForRouteRunStop(client: PoolClient, params: Ens
       visit_type,
       outcome,
       client_visit_id,
-      started_at
+      started_at,
+      captured_by_oid_ciphertext,
+      captured_by_oid_key_id
     )
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8, NOW())
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8, NOW(), $9, $10)
     ON CONFLICT (client_visit_id) DO NOTHING
     RETURNING id
     `,
@@ -125,10 +132,12 @@ export async function ensureVisitForRouteRunStop(client: PoolClient, params: Ens
       locationId,
       assetId,
       assignmentId,
-      params.actorOid,
+      params.actorOid,        // plaintext retained during dual-write period
       params.visitType,
       params.outcome ?? null,
       visitClientId,
+      oidCiphertext,
+      oidKeyId,
     ]
   );
 

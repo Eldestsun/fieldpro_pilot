@@ -9,6 +9,7 @@ import "./canonical/auditLog.test";
 import "./canonical/authClaims.test";
 import "./canonical/eamBridge.test";
 import "./canonical/uploadValidation.test";
+import "./canonical/oidCipher.test";
 
 (async () => {
   console.log("canonical integration tests — real local DB, no mocking\n");
