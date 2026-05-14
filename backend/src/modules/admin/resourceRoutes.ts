@@ -4,7 +4,52 @@ import { pool } from "../../db";
 
 export const resourceRoutes = Router();
 
-/** ── Get Route Pools: GET /api/pools ──────────────────────────────────── */
+/**
+ * @openapi
+ * /pools:
+ *   get:
+ *     summary: List active route pools
+ *     description: Returns all active route pools available for assignment. Used by the Lead create-route flow.
+ *     tags: [Resources]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Lead, Admin]
+ *     responses:
+ *       200:
+ *         description: List of active pools
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 pools:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id: { type: string }
+ *                       name: { type: string }
+ *                       label: { type: string }
+ *                       trfDistrict: { type: string }
+ *                       defaultMaxMinutes: { type: integer }
+ *                       active: { type: boolean }
+ *             example:
+ *               ok: true
+ *               pools:
+ *                 - id: POOL-001
+ *                   name: "North Sector"
+ *                   label: "North Sector"
+ *                   trfDistrict: "TRF-1"
+ *                   defaultMaxMinutes: 480
+ *                   active: true
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 resourceRoutes.get(
   "/pools",
   requireAuth,
@@ -39,7 +84,52 @@ resourceRoutes.get(
   }
 );
 
-/** ── Get Assignable Users: GET /api/users ──────────────────────────────── */
+/**
+ * @openapi
+ * /users:
+ *   get:
+ *     summary: List assignable users (UL and Lead roles)
+ *     description: Returns users from the identity directory who hold UL or Lead roles. Used by the Lead assignment UI.
+ *     tags: [Resources]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Lead, Admin]
+ *     responses:
+ *       200:
+ *         description: List of assignable users
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 users:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                         description: Azure Entra OID
+ *                       displayName: { type: string }
+ *                       email: { type: string }
+ *                       role:
+ *                         type: string
+ *                         enum: [UL, Lead]
+ *             example:
+ *               ok: true
+ *               users:
+ *                 - id: "abc123-oid"
+ *                   displayName: "Jane Smith"
+ *                   email: "jsmith@kcmetro.gov"
+ *                   role: UL
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 resourceRoutes.get(
   "/users",
   requireAuth,

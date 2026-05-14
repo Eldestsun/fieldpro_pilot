@@ -19,12 +19,84 @@ const upload = multer({
 
 export const ulRoutes = Router();
 
+/**
+ * @openapi
+ * /ul/inbox:
+ *   get:
+ *     summary: UL inbox placeholder
+ *     description: Returns a confirmation that the caller has the UL role. Reserved for future inbox features.
+ *     tags: [UL]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [UL]
+ *     responses:
+ *       200:
+ *         description: Caller is a UL
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 scope: { type: string }
+ *             example:
+ *               ok: true
+ *               scope: UL
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ */
 // UL-only inbox
 ulRoutes.get("/ul/inbox", requireAuth, requireAnyRole(["UL"]), (_req, res) => {
     res.json({ ok: true, scope: "UL" });
 });
 
-/** ── Get Today's Run for UL: GET /api/ul/todays-run ───────────────────── */
+/**
+ * @openapi
+ * /ul/todays-run:
+ *   get:
+ *     summary: Get today's active route run for the authenticated UL
+ *     description: >
+ *       Looks up the most recent planned or in_progress route run assigned to the
+ *       caller's Azure Entra OID. Returns the full route run with stop details.
+ *       Also accessible to Lead and Admin for supervisory views.
+ *     tags: [UL]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [UL, Lead, Admin]
+ *     responses:
+ *       200:
+ *         description: Active route run found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 route_run:
+ *                   type: object
+ *                   description: Full route run with stops
+ *             example:
+ *               ok: true
+ *               route_run:
+ *                 id: 42
+ *                 status: in_progress
+ *                 route_pool_id: POOL-001
+ *                 stops: []
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         description: No active assigned route run found
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *             example: { error: "No active assigned route run found" }
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 ulRoutes.get(
     "/ul/todays-run",
     requireAuth,
@@ -69,7 +141,77 @@ ulRoutes.get(
     }
 );
 
-/** ── Upload Photos for Stop: POST /api/route-runs/:runId/stops/:stopId/photos ── */
+/**
+ * @openapi
+ * /route-runs/{runId}/stops/{stopId}/photos:
+ *   post:
+ *     summary: Upload photos for a route run stop
+ *     description: >
+ *       Accepts up to 10 image files via multipart/form-data. Each file is
+ *       validated for MIME type (JPEG, PNG, WebP, HEIC) and size (≤25 MB).
+ *       Files are stored in S3 and references saved to the database.
+ *     tags: [UL]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [UL, Lead, Admin]
+ *     x-audit-action: upload.rejected
+ *     parameters:
+ *       - in: path
+ *         name: runId
+ *         required: true
+ *         schema: { type: integer }
+ *         description: Route run ID
+ *         example: 42
+ *       - in: path
+ *         name: stopId
+ *         required: true
+ *         schema: { type: integer }
+ *         description: Route run stop ID
+ *         example: 7
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               photos:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 description: Up to 10 image files
+ *               kind:
+ *                 type: string
+ *                 enum: [safety, cleaning, infrastructure, completion, skip_after]
+ *                 default: completion
+ *                 description: Photo category
+ *     responses:
+ *       200:
+ *         description: Photos uploaded and saved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 photos:
+ *                   type: array
+ *                   items: { type: object }
+ *             example:
+ *               ok: true
+ *               photos: [{ id: 1, s3_key: "runs/42/stops/7/uuid.jpg", kind: "completion" }]
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       413:
+ *         $ref: '#/components/responses/PayloadTooLarge'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 ulRoutes.post(
     "/route-runs/:runId/stops/:stopId/photos",
     requireAuth,
@@ -161,7 +303,53 @@ ulRoutes.post(
     }
 );
 
-/** ── Get Photos for Stop: GET /api/route-runs/:runId/stops/:stopId/photos ── */
+/**
+ * @openapi
+ * /route-runs/{runId}/stops/{stopId}/photos:
+ *   get:
+ *     summary: List photos for a route run stop
+ *     description: Returns all photos attached to the specified route run stop.
+ *     tags: [UL]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [UL, Lead, Admin]
+ *     parameters:
+ *       - in: path
+ *         name: runId
+ *         required: true
+ *         schema: { type: integer }
+ *         description: Route run ID
+ *         example: 42
+ *       - in: path
+ *         name: stopId
+ *         required: true
+ *         schema: { type: integer }
+ *         description: Route run stop ID
+ *         example: 7
+ *     responses:
+ *       200:
+ *         description: List of photos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 photos:
+ *                   type: array
+ *                   items: { type: object }
+ *             example:
+ *               ok: true
+ *               photos: [{ id: 1, s3_key: "runs/42/stops/7/uuid.jpg", kind: "completion" }]
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 ulRoutes.get(
     "/route-runs/:runId/stops/:stopId/photos",
     requireAuth,

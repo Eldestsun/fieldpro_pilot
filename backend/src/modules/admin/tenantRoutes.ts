@@ -56,6 +56,52 @@ function requireOrg(req: Request, res: Response): number | null {
     return orgId;
 }
 
+/**
+ * @openapi
+ * /admin/tenant/asset-types:
+ *   get:
+ *     summary: List asset types for a tenant
+ *     description: Returns all asset types configured for the specified org. Org is supplied via X-Org-Id header or ?org_id= query param.
+ *     tags: [Tenant]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     parameters:
+ *       - in: header
+ *         name: X-Org-Id
+ *         schema: { type: integer }
+ *         description: Org ID (alternative to ?org_id=)
+ *         example: 1
+ *       - in: query
+ *         name: org_id
+ *         schema: { type: integer }
+ *         description: Org ID (alternative to X-Org-Id header)
+ *         example: 1
+ *     responses:
+ *       200:
+ *         description: List of asset types
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 asset_types:
+ *                   type: array
+ *                   items: { type: object }
+ *             example:
+ *               asset_types:
+ *                 - id: 1
+ *                   type_key: transit_stop
+ *                   display_name: "Transit Stop"
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 // ── 1. GET /asset-types ──────────────────────────────────────────────────
 
 tenantRoutes.get("/asset-types", async (req: Request, res: Response) => {
@@ -70,6 +116,66 @@ tenantRoutes.get("/asset-types", async (req: Request, res: Response) => {
     }
 });
 
+/**
+ * @openapi
+ * /admin/tenant/asset-types:
+ *   post:
+ *     summary: Create an asset type for a tenant
+ *     description: Registers a new asset type for the org. Used during tenant onboarding.
+ *     tags: [Tenant]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     parameters:
+ *       - in: header
+ *         name: X-Org-Id
+ *         schema: { type: integer }
+ *         description: Org ID
+ *         example: 1
+ *       - in: query
+ *         name: org_id
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [type_key, display_name]
+ *             properties:
+ *               type_key:
+ *                 type: string
+ *                 description: Unique slug for this asset type
+ *                 example: transit_stop
+ *               display_name:
+ *                 type: string
+ *                 example: "Transit Stop"
+ *               description:
+ *                 type: string
+ *           example:
+ *             type_key: transit_stop
+ *             display_name: "Transit Stop"
+ *             description: "Bus shelter or transit stop"
+ *     responses:
+ *       201:
+ *         description: Asset type created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 asset_type: { type: object }
+ *             example:
+ *               asset_type: { id: 1, type_key: transit_stop, display_name: "Transit Stop" }
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 // ── 2. POST /asset-types ─────────────────────────────────────────────────
 
 tenantRoutes.post("/asset-types", async (req: Request, res: Response) => {
@@ -98,6 +204,56 @@ tenantRoutes.post("/asset-types", async (req: Request, res: Response) => {
     }
 });
 
+/**
+ * @openapi
+ * /admin/tenant/observation-types:
+ *   get:
+ *     summary: List observation types for an asset type
+ *     description: Returns all observation types configured for a given asset type within the org.
+ *     tags: [Tenant]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     parameters:
+ *       - in: header
+ *         name: X-Org-Id
+ *         schema: { type: integer }
+ *         example: 1
+ *       - in: query
+ *         name: org_id
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: asset_type_id
+ *         required: true
+ *         schema: { type: integer }
+ *         description: Asset type ID to list observation types for
+ *         example: 1
+ *     responses:
+ *       200:
+ *         description: List of observation types
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 observation_types:
+ *                   type: array
+ *                   items: { type: object }
+ *             example:
+ *               observation_types:
+ *                 - id: 1
+ *                   observation_key: cleanliness
+ *                   display_name: "Cleanliness"
+ *                   value_type: state
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 // ── 3. GET /observation-types?asset_type_id= ─────────────────────────────
 
 tenantRoutes.get("/observation-types", async (req: Request, res: Response) => {
@@ -118,6 +274,80 @@ tenantRoutes.get("/observation-types", async (req: Request, res: Response) => {
     }
 });
 
+/**
+ * @openapi
+ * /admin/tenant/observation-types:
+ *   post:
+ *     summary: Upsert observation types for an asset type
+ *     description: Creates or updates observation type definitions for a given asset type. Used during tenant onboarding.
+ *     tags: [Tenant]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     parameters:
+ *       - in: header
+ *         name: X-Org-Id
+ *         schema: { type: integer }
+ *         example: 1
+ *       - in: query
+ *         name: org_id
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [asset_type_id, types]
+ *             properties:
+ *               asset_type_id:
+ *                 type: integer
+ *                 example: 1
+ *               types:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required: [observation_key, display_name, value_type]
+ *                   properties:
+ *                     observation_key: { type: string }
+ *                     display_name: { type: string }
+ *                     value_type:
+ *                       type: string
+ *                       enum: [state, numeric, boolean]
+ *                     valid_values: { type: array, items: { type: string } }
+ *                     is_required: { type: boolean }
+ *                     sort_order: { type: integer }
+ *           example:
+ *             asset_type_id: 1
+ *             types:
+ *               - observation_key: cleanliness
+ *                 display_name: "Cleanliness"
+ *                 value_type: state
+ *                 valid_values: [clean, dirty, hazardous]
+ *                 is_required: true
+ *                 sort_order: 1
+ *     responses:
+ *       200:
+ *         description: Observation types upserted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 upserted:
+ *                   type: array
+ *                   items: { type: object }
+ *             example:
+ *               upserted: [{ id: 1, observation_key: cleanliness }]
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 // ── 4. POST /observation-types ───────────────────────────────────────────
 // Body: { asset_type_id: number, types: ObservationTypeInput[] }
 
@@ -173,6 +403,67 @@ tenantRoutes.post("/observation-types", async (req: Request, res: Response) => {
     }
 });
 
+/**
+ * @openapi
+ * /admin/tenant/seed-assets:
+ *   post:
+ *     summary: Seed asset inventory from a CSV upload
+ *     description: >
+ *       Accepts a multipart CSV file with required columns: external_id, display_name, lat, lon.
+ *       Additional columns become entries in the asset attributes JSON.
+ *       Used for bulk onboarding of asset inventories (e.g., importing stop data from a GIS export).
+ *     tags: [Tenant]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     parameters:
+ *       - in: header
+ *         name: X-Org-Id
+ *         schema: { type: integer }
+ *         example: 1
+ *       - in: query
+ *         name: org_id
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [file, asset_type_id]
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: CSV file with columns external_id, display_name, lat, lon, and optional extras
+ *               asset_type_id:
+ *                 type: integer
+ *                 description: Asset type to assign to all seeded assets
+ *                 example: 1
+ *     responses:
+ *       200:
+ *         description: Assets seeded
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 rows_received: { type: integer }
+ *                 inserted: { type: integer }
+ *                 updated: { type: integer }
+ *             example:
+ *               rows_received: 450
+ *               inserted: 420
+ *               updated: 30
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 // ── 5. POST /seed-assets ─────────────────────────────────────────────────
 // multipart/form-data:
 //   file:           CSV with header row including external_id, display_name, lat, lon, *

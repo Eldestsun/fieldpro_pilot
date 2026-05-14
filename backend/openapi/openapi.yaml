@@ -1,0 +1,3270 @@
+openapi: 3.0.3
+info:
+  title: BASELINE Field Operations Intelligence API
+  version: 1.0.0
+  description: |-
+    BASELINE captures operational truth through field visits and derives intelligence from that truth.
+    Every endpoint documents its required role, request/response shapes, and applicable audit log action.
+
+    **Role hierarchy**: Admin > Lead > UL (Unit Leader / field worker)
+    **Auth**: Bearer token (Azure Entra JWT) on all non-public endpoints.
+    **Labor safety**: No endpoint exposes per-worker performance metrics or identifiers
+    to Lead/UL roles. `captured_by_oid` is encrypted and Admin-access-only.
+  contact:
+    name: BASELINE Engineering
+servers:
+  - url: http://localhost:3001/api
+    description: Local development
+  - url: /api
+    description: Production (relative)
+tags:
+  - name: Health
+    description: Service status and identity endpoints
+  - name: UL
+    description: Unit Leader (field worker) operations
+  - name: RouteRuns
+    description: Route run creation and lifecycle (Lead/Admin)
+  - name: RouteRunStops
+    description: Route stop progression and completion (UL/Lead/Admin)
+  - name: Uploads
+    description: Pre-signed photo upload URLs
+  - name: Stops
+    description: Stop attribute management
+  - name: Resources
+    description: Shared read-only resources (pools, users)
+  - name: Ops
+    description: Operations read-only dashboards (Lead/Admin)
+  - name: Admin
+    description: Admin-only management and intelligence endpoints
+  - name: ControlCenter
+    description: Live dispatch overview (Admin only)
+  - name: RouteOverrides
+    description: Per-stop route overrides (Lead/Admin)
+  - name: Tenant
+    description: 'Tenant onboarding: asset types, observation types, asset seeding (Admin)'
+  - name: Dev
+    description: Development/testing utilities — not for production
+components:
+  securitySchemes:
+    AzureAD:
+      type: oauth2
+      description: 'Azure Active Directory (Entra) OAuth2. Pass the resulting access token as `Authorization: Bearer <token>`.'
+      flows:
+        authorizationCode:
+          authorizationUrl: https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/authorize
+          tokenUrl: https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token
+          scopes:
+            openid: OpenID Connect
+            profile: User profile
+            email: Email address
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: Resource not found
+  responses:
+    BadRequest:
+      description: Request validation failed — missing or invalid field
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: pool_id is required
+    Unauthorized:
+      description: Authentication required or Bearer token is invalid/expired
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Unauthorized
+    Forbidden:
+      description: Caller lacks the required role for this endpoint
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Forbidden
+    NotFound:
+      description: Requested resource does not exist
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Route run not found
+    Conflict:
+      description: State conflict — e.g. stop already completed or skipped
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: ALREADY_COMPLETE
+    PayloadTooLarge:
+      description: File exceeds the maximum allowed upload size (25 MB)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: File exceeds 25 MB limit
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Internal server error
+paths:
+  /health:
+    get:
+      summary: Service health check
+      description: Public liveness probe. Returns 200 when the backend process is running.
+      tags:
+        - Health
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  service:
+                    type: string
+                    example: fieldpro-backend
+              example:
+                ok: true
+                service: fieldpro-backend
+  /me:
+    get:
+      summary: Identity probe — returns backend-validated token claims
+      description: Validates the Bearer token and returns the caller's sub, name, and roles.
+      tags:
+        - Health
+      security:
+        - AzureAD: []
+      responses:
+        '200':
+          description: Authenticated caller identity
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sub:
+                    type: string
+                    description: Subject claim from JWT
+                  name:
+                    type: string
+                  preferred_username:
+                    type: string
+                  roles:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - UL
+                        - Lead
+                        - Admin
+              example:
+                sub: abc123-oid
+                name: Jane Smith
+                preferred_username: jsmith@kcmetro.gov
+                roles:
+                  - Lead
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /secure/ping:
+    get:
+      summary: Authenticated ping — returns token payload and roles
+      description: Validates the Bearer token and echoes back the decoded payload. Useful for debugging token claims.
+      tags:
+        - Health
+      security:
+        - AzureAD: []
+      responses:
+        '200':
+          description: Token is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  user:
+                    type: object
+                    description: Decoded JWT payload
+                  roles:
+                    type: array
+                    items:
+                      type: string
+              example:
+                ok: true
+                user:
+                  oid: abc123
+                  name: Jane Smith
+                roles:
+                  - Lead
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /admin/secret:
+    get:
+      summary: Admin-only demo endpoint
+      description: Returns a confirmation that the caller has the Admin role. Used for RBAC smoke testing.
+      tags:
+        - Health
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      responses:
+        '200':
+          description: Caller is an Admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  secret:
+                    type: string
+                  sub:
+                    type: string
+                  roles:
+                    type: array
+                    items:
+                      type: string
+              example:
+                secret: admins only
+                sub: abc123
+                roles:
+                  - Admin
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /admin/ops:
+    get:
+      summary: Admin ops probe
+      description: Returns 200 if the caller has Admin role. Used as an RBAC test fixture.
+      tags:
+        - Health
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      responses:
+        '200':
+          description: Caller has Admin role
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  scope:
+                    type: string
+              example:
+                ok: true
+                scope: Admin
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /ul/inbox:
+    get:
+      summary: UL inbox placeholder
+      description: Returns a confirmation that the caller has the UL role. Reserved for future inbox features.
+      tags:
+        - UL
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - UL
+      responses:
+        '200':
+          description: Caller is a UL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  scope:
+                    type: string
+              example:
+                ok: true
+                scope: UL
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /ul/todays-run:
+    get:
+      summary: Get today's active route run for the authenticated UL
+      description: >
+        Looks up the most recent planned or in_progress route run assigned to the caller's Azure Entra OID. Returns the
+        full route run with stop details. Also accessible to Lead and Admin for supervisory views.
+      tags:
+        - UL
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - UL
+        - Lead
+        - Admin
+      responses:
+        '200':
+          description: Active route run found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  route_run:
+                    type: object
+                    description: Full route run with stops
+              example:
+                ok: true
+                route_run:
+                  id: 42
+                  status: in_progress
+                  route_pool_id: POOL-001
+                  stops: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: No active assigned route run found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: No active assigned route run found
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /route-runs/{runId}/stops/{stopId}/photos:
+    post:
+      summary: Upload photos for a route run stop
+      description: >
+        Accepts up to 10 image files via multipart/form-data. Each file is validated for MIME type (JPEG, PNG, WebP,
+        HEIC) and size (≤25 MB). Files are stored in S3 and references saved to the database.
+      tags:
+        - UL
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - UL
+        - Lead
+        - Admin
+      x-audit-action: upload.rejected
+      parameters:
+        - in: path
+          name: runId
+          required: true
+          schema:
+            type: integer
+          description: Route run ID
+          example: 42
+        - in: path
+          name: stopId
+          required: true
+          schema:
+            type: integer
+          description: Route run stop ID
+          example: 7
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                photos:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Up to 10 image files
+                kind:
+                  type: string
+                  enum:
+                    - safety
+                    - cleaning
+                    - infrastructure
+                    - completion
+                    - skip_after
+                  default: completion
+                  description: Photo category
+      responses:
+        '200':
+          description: Photos uploaded and saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  photos:
+                    type: array
+                    items:
+                      type: object
+              example:
+                ok: true
+                photos:
+                  - id: 1
+                    s3_key: runs/42/stops/7/uuid.jpg
+                    kind: completion
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      summary: List photos for a route run stop
+      description: Returns all photos attached to the specified route run stop.
+      tags:
+        - UL
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - UL
+        - Lead
+        - Admin
+      parameters:
+        - in: path
+          name: runId
+          required: true
+          schema:
+            type: integer
+          description: Route run ID
+          example: 42
+        - in: path
+          name: stopId
+          required: true
+          schema:
+            type: integer
+          description: Route run stop ID
+          example: 7
+      responses:
+        '200':
+          description: List of photos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  photos:
+                    type: array
+                    items:
+                      type: object
+              example:
+                ok: true
+                photos:
+                  - id: 1
+                    s3_key: runs/42/stops/7/uuid.jpg
+                    kind: completion
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /lead/hub:
+    get:
+      summary: Lead hub placeholder
+      description: Returns confirmation that the caller has the Lead role.
+      tags:
+        - RouteRuns
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Lead
+      responses:
+        '200':
+          description: Caller is a Lead
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  scope:
+                    type: string
+              example:
+                ok: true
+                scope: Lead
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /lead/todays-runs:
+    get:
+      summary: Get all planned and in-progress route runs for today
+      description: Returns all active route runs across all pools. Used by the Lead dispatch view.
+      tags:
+        - RouteRuns
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Lead
+        - Admin
+      responses:
+        '200':
+          description: Today's active route runs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  route_runs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        status:
+                          type: string
+                        route_pool_id:
+                          type: string
+                        run_date:
+                          type: string
+                          format: date
+                        stop_count:
+                          type: integer
+                        completed_stops:
+                          type: integer
+              example:
+                ok: true
+                route_runs:
+                  - id: 42
+                    status: in_progress
+                    route_pool_id: POOL-001
+                    run_date: '2026-05-13'
+                    stop_count: 25
+                    completed_stops: 12
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /lead/route-runs/{id}:
+    get:
+      summary: Get route run details (Lead view)
+      description: Returns the full route run including all stops. Lead and Admin only.
+      tags:
+        - RouteRuns
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Lead
+        - Admin
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Route run ID
+          example: '42'
+      responses:
+        '200':
+          description: Route run found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  route_run:
+                    type: object
+              example:
+                ok: true
+                route_run:
+                  id: 42
+                  status: in_progress
+                  stops: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /routes/plan:
+    post:
+      summary: Plan an OSRM-optimized route from a list of stop IDs
+      description: >
+        Takes an array of stop IDs, looks up their coordinates, and returns an OSRM-optimized trip order. Does not
+        create a route run. Note: this endpoint currently has no auth guard and is used by the planning UI before
+        authentication completes.
+      tags:
+        - RouteRuns
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - stop_ids
+              properties:
+                stop_ids:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 2
+                  description: At least two stop IDs to route between
+            example:
+              stop_ids:
+                - '1001'
+                - '1002'
+                - '1003'
+      responses:
+        '200':
+          description: Optimized route
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  distance_m:
+                    type: number
+                  duration_s:
+                    type: number
+                  ordered_stops:
+                    type: array
+                    items:
+                      type: object
+                  legs:
+                    type: array
+                    items:
+                      type: object
+              example:
+                ok: true
+                distance_m: 15000
+                duration_s: 3600
+                ordered_stops: []
+                legs: []
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /route-runs/preview:
+    post:
+      summary: Preview an OSRM-optimized route run without creating it
+      description: >
+        Returns the optimized route for a pool or explicit stop list. Does not persist anything. Used by the Lead
+        planning UI to preview before committing. Note: no auth guard; intended for pre-auth planning flow.
+      tags:
+        - RouteRuns
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                stop_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Explicit stop IDs (option A)
+                pool_id:
+                  type: string
+                  description: Pool ID — fetch stops from pool (option B)
+                ul_id:
+                  type: string
+                  description: Azure Entra OID of the intended assignee (optional)
+                run_date:
+                  type: string
+                  format: date
+            example:
+              pool_id: POOL-001
+              ul_id: abc123-oid
+              run_date: '2026-05-13'
+      responses:
+        '200':
+          description: Optimized preview route
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  truncated:
+                    type: boolean
+                  total_stops:
+                    type: integer
+                  used_stops:
+                    type: integer
+                  distance_m:
+                    type: number
+                  duration_s:
+                    type: number
+                  ordered_stops:
+                    type: array
+                    items:
+                      type: object
+                  legs:
+                    type: array
+                    items:
+                      type: object
+              example:
+                ok: true
+                truncated: false
+                total_stops: 20
+                used_stops: 20
+                distance_m: 12000
+                duration_s: 2800
+                ordered_stops: []
+                legs: []
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /route-runs:
+    post:
+      summary: Create a new route run
+      description: >
+        Creates an OSRM-optimized route run and assigns it to a UL. Requires Lead or Admin role. Writes an
+        `assignment.create` audit log entry on success.
+      tags:
+        - RouteRuns
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Lead
+        - Admin
+      x-audit-action: assignment.create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - pool_id
+              properties:
+                pool_id:
+                  type: string
+                  description: Route pool ID (alias route_pool_id)
+                  example: POOL-001
+                route_pool_id:
+                  type: string
+                  description: Route pool ID (preferred form)
+                stop_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Explicit stop IDs (if omitted, pool stops are used)
+                ul_id:
+                  type: string
+                  description: Azure Entra OID of the UL to assign
+                  example: abc123-oid
+                base_id:
+                  type: string
+                  description: Dispatch base identifier
+                  example: NORTH
+                run_date:
+                  type: string
+                  format: date
+                  example: '2026-05-13'
+            example:
+              pool_id: POOL-001
+              ul_id: abc123-oid
+              run_date: '2026-05-13'
+      responses:
+        '200':
+          description: Route run created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  route_run_id:
+                    type: integer
+                  distance_m:
+                    type: number
+                  duration_s:
+                    type: number
+                  ordered_stops:
+                    type: array
+                    items:
+                      type: object
+                  legs:
+                    type: array
+                    items:
+                      type: object
+              example:
+                ok: true
+                route_run_id: 42
+                distance_m: 15000
+                duration_s: 3600
+                ordered_stops: []
+                legs: []
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /route-runs/{id}:
+    get:
+      summary: Get route run details
+      description: >
+        Returns the full route run including all stops and their current status. This transitional endpoint has no auth
+        guard — prefer domain-specific accessors where possible.
+      tags:
+        - RouteRuns
+      security: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Route run ID
+          example: '42'
+      responses:
+        '200':
+          description: Route run found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  route_run:
+                    type: object
+              example:
+                ok: true
+                route_run:
+                  id: 42
+                  status: in_progress
+                  stops: []
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /route-runs/{id}/start:
+    post:
+      summary: Start a route run
+      description: Transitions the route run from planned to in_progress.
+      tags:
+        - RouteRuns
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - UL
+        - Lead
+        - Admin
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Route run ID
+          example: '42'
+      responses:
+        '200':
+          description: Route run started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  route_run:
+                    type: object
+              example:
+                ok: true
+                route_run:
+                  id: 42
+                  status: in_progress
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /route-run-stops/{id}/start:
+    post:
+      summary: Start a route run stop (Lead/Admin variant)
+      description: >
+        Transitions a stop from pending/planned/assigned to in_progress. Also idempotent if already in_progress. The UL
+        variant (in routeRunStopRoutes) only allows pending → in_progress.
+      tags:
+        - RouteRunStops
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - UL
+        - Lead
+        - Admin
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Route run stop ID
+          example: '7'
+      responses:
+        '200':
+          description: Stop started (or already in_progress — idempotent)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  route_run:
+                    type: object
+              example:
+                ok: true
+                route_run:
+                  id: 42
+                  status: in_progress
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /route-runs/{id}/finish:
+    post:
+      summary: Finish a route run
+      description: Marks the route run as completed/finished.
+      tags:
+        - RouteRuns
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - UL
+        - Lead
+        - Admin
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Route run ID
+          example: '42'
+      responses:
+        '200':
+          description: Route run finished
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  route_run:
+                    type: object
+              example:
+                ok: true
+                route_run:
+                  id: 42
+                  status: completed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /route-runs/{id}/assign:
+    patch:
+      summary: Assign, reassign, or unassign a route run
+      description: >
+        Updates the `assigned_user_oid` on a route run. - If previously unassigned → writes `assignment.create` audit
+        entry. - If reassigning → writes `assignment.reassign` audit entry. - If `assigned_user_oid` is null → writes
+        `assignment.cancel` audit entry.
+      tags:
+        - RouteRuns
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Lead
+        - Admin
+      x-audit-action: assignment.create
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Route run ID
+          example: '42'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                assigned_user_oid:
+                  type: string
+                  nullable: true
+                  description: Azure Entra OID of the UL to assign; null to unassign
+                  example: abc123-oid
+            example:
+              assigned_user_oid: abc123-oid
+      responses:
+        '200':
+          description: Assignment updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  route_run:
+                    type: object
+              example:
+                ok: true
+                route_run:
+                  id: 42
+                  assigned_user_oid: abc123-oid
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /route-run-stops/{id}/skip-with-hazard:
+    post:
+      summary: Skip a stop due to a safety hazard
+      description: >
+        Marks the stop as skipped, creates a hazard record, and closes the visit with outcome=skipped. Requires a safety
+        photo to have been uploaded prior to calling this endpoint (validated server-side).
+      tags:
+        - RouteRunStops
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - UL
+        - Lead
+        - Admin
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Route run stop ID
+          example: '7'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - hazard_types
+              properties:
+                hazard_types:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+                  description: One or more safety hazard types
+                  example:
+                    - debris
+                    - flooding
+                notes:
+                  type: string
+                  description: Optional notes
+                severity:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                  description: Hazard severity (1-5)
+                  example: 3
+                safety_photo_key:
+                  type: string
+                  description: S3 key of the safety photo
+                photo_keys:
+                  type: array
+                  items:
+                    type: string
+                  description: Additional photo keys
+                safety:
+                  type: object
+                  description: |
+                    Nested form (alternative to flat fields): { hazard_types, notes, severity, safety_photo_key }
+            example:
+              hazard_types:
+                - debris
+              severity: 3
+              notes: Large debris blocking shelter entrance
+      responses:
+        '200':
+          description: Stop skipped successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  route_run_stop:
+                    type: object
+                  route_run:
+                    type: object
+              example:
+                ok: true
+                route_run_stop:
+                  id: 7
+                  status: skipped
+                route_run:
+                  id: 42
+                  status: in_progress
+        '400':
+          description: Validation error — safety photo missing or no hazard types
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: A safety photo is required to skip a stop
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Stop already skipped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: ALREADY_SKIPPED
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /route-run-stops/{route_run_stop_id}/complete:
+    post:
+      summary: Complete a route run stop
+      description: >
+        Marks the stop as done, records a clean log entry, and emits canonical observations. Requires at least one photo
+        to have been uploaded and at least one cleaning task checked (or spotCheck=true).
+      tags:
+        - RouteRunStops
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - UL
+        - Lead
+        - Admin
+      parameters:
+        - in: path
+          name: route_run_stop_id
+          required: true
+          schema:
+            type: string
+          description: Route run stop ID
+          example: '7'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                duration_minutes:
+                  type: number
+                  description: Time spent at the stop in minutes
+                  example: 12
+                picked_up_litter:
+                  type: boolean
+                  default: false
+                emptied_trash:
+                  type: boolean
+                  default: false
+                washed_shelter:
+                  type: boolean
+                  default: false
+                washed_pad:
+                  type: boolean
+                  default: false
+                washed_can:
+                  type: boolean
+                  default: false
+                trashVolume:
+                  type: integer
+                  minimum: 0
+                  maximum: 4
+                  description: Trash volume 0-4 (required if any cleaning task is true)
+                  example: 2
+                spotCheck:
+                  type: boolean
+                  default: false
+                  description: True if this was an inspection-only visit with no cleaning performed
+                photo_keys:
+                  type: array
+                  items:
+                    type: string
+                  description: S3 keys of completion photos (legacy — prefer uploading via /uploads/signed-url)
+                infraIssues:
+                  type: array
+                  items:
+                    type: object
+                  description: Infrastructure issues observed at the stop
+                safety:
+                  type: object
+                  description: Optional safety observation (hazard types, severity, notes)
+                  properties:
+                    hazard_types:
+                      type: array
+                      items:
+                        type: string
+                    severity:
+                      type: integer
+                    notes:
+                      type: string
+                    safety_photo_key:
+                      type: string
+            example:
+              duration_minutes: 12
+              picked_up_litter: true
+              emptied_trash: true
+              trashVolume: 2
+      responses:
+        '200':
+          description: Stop completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  clean_log_id:
+                    type: integer
+                  route_run:
+                    type: object
+              example:
+                ok: true
+                clean_log_id: 55
+                route_run:
+                  id: 42
+                  status: in_progress
+        '400':
+          description: Validation error — missing photo, missing cleaning task, or invalid trashVolume
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: After photo is required to complete a stop
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Stop is already complete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: ALREADY_COMPLETE
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /uploads/signed-url:
+    post:
+      summary: Get a pre-signed S3 upload URL for a stop photo
+      description: >
+        Returns a time-limited pre-signed S3 URL for direct client-to-S3 upload. The server validates filename and MIME
+        type before issuing the URL. The object key is server-generated (UUID-based) — the client filename is never used
+        as the storage key. Allowed MIME types: image/jpeg, image/png, image/webp, image/heic.
+      tags:
+        - Uploads
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - UL
+        - Lead
+        - Admin
+      x-audit-action: upload.rejected
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - route_run_stop_id
+                - contentType
+                - filename
+              properties:
+                route_run_stop_id:
+                  type: integer
+                  description: ID of the route run stop this photo belongs to
+                  example: 7
+                contentType:
+                  type: string
+                  enum:
+                    - image/jpeg
+                    - image/png
+                    - image/webp
+                    - image/heic
+                  example: image/jpeg
+                filename:
+                  type: string
+                  description: Original filename (validated, not used as storage key)
+                  example: stop_photo.jpg
+                kind:
+                  type: string
+                  enum:
+                    - safety
+                    - cleaning
+                    - infrastructure
+                    - completion
+                    - skip_after
+                  default: completion
+                  description: Photo category
+            example:
+              route_run_stop_id: 7
+              contentType: image/jpeg
+              filename: stop_photo.jpg
+              kind: completion
+      responses:
+        '200':
+          description: Pre-signed URL and server-generated object key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  uploadUrl:
+                    type: string
+                    description: Time-limited S3 pre-signed PUT URL
+                  objectKey:
+                    type: string
+                    description: Server-generated S3 object key (use this to reference the photo)
+              example:
+                ok: true
+                uploadUrl: https://s3.amazonaws.com/bucket/runs/7/uuid.jpg?X-Amz-...
+                objectKey: runs/7/completion/uuid.jpg
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /dev/generate-route-run:
+    post:
+      summary: Generate a test route run (development only)
+      description: >
+        Creates a route run for testing without authentication or OSRM optimization. **Not for production use.** This
+        endpoint has no auth guard and is intended for local development and automated test fixtures only.
+      tags:
+        - Dev
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - pool_id
+                - user_id
+              properties:
+                pool_id:
+                  type: string
+                  description: Route pool ID
+                  example: POOL-001
+                user_id:
+                  type: integer
+                  description: Legacy user ID (dev only)
+                  example: 1
+                base_id:
+                  type: string
+                  default: NORTH
+                  example: NORTH
+                max_stops:
+                  type: integer
+                  default: 25
+                  example: 10
+            example:
+              pool_id: POOL-001
+              user_id: 1
+              base_id: NORTH
+              max_stops: 10
+      responses:
+        '200':
+          description: Route run created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  route_run:
+                    type: object
+              example:
+                ok: true
+                route_run:
+                  id: 99
+                  status: planned
+                  stops: []
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/dashboard:
+    get:
+      summary: Admin dashboard — today's operational metrics
+      tags:
+        - Admin
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      responses:
+        '200':
+          description: Today's metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_stops:
+                    type: integer
+                  total_pools:
+                    type: integer
+                  active_runs_today:
+                    type: integer
+                  completed_runs_today:
+                    type: integer
+              example:
+                total_stops: 450
+                total_pools: 12
+                active_runs_today: 3
+                completed_runs_today: 8
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/pools:
+    get:
+      summary: List all route pools (admin)
+      tags:
+        - Admin
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      responses:
+        '200':
+          description: List of pools
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pools:
+                    type: array
+                    items:
+                      type: object
+              example:
+                pools:
+                  - id: POOL-001
+                    label: North Sector
+                    active: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      summary: Create a new route pool
+      tags:
+        - Admin
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      x-audit-action: admin.config_change
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - id
+                - label
+              properties:
+                id:
+                  type: string
+                  example: POOL-013
+                label:
+                  type: string
+                  example: South Sector
+      responses:
+        '200':
+          description: Pool created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pool:
+                    type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/pools/{id}:
+    patch:
+      summary: Update a route pool
+      tags:
+        - Admin
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      x-audit-action: admin.config_change
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          example: POOL-001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                active:
+                  type: boolean
+      responses:
+        '200':
+          description: Pool updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pool:
+                    type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      summary: Soft-delete a route pool
+      tags:
+        - Admin
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      x-audit-action: admin.config_change
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          example: POOL-001
+      responses:
+        '200':
+          description: Pool soft-deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pool:
+                    type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/stops:
+    get:
+      summary: List stops with pagination and search (admin)
+      tags:
+        - Admin
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+        - in: query
+          name: q
+          schema:
+            type: string
+          description: Text search filter
+        - in: query
+          name: pool_id
+          schema:
+            type: string
+          description: Filter by pool
+      responses:
+        '200':
+          description: Paginated stop list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/stops/{id}:
+    patch:
+      summary: Update a stop (admin)
+      tags:
+        - Admin
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      x-audit-action: admin.stop_edit
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Stop ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pool_id:
+                  type: string
+                active:
+                  type: boolean
+      responses:
+        '200':
+          description: Stop updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stop:
+                    type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/stops/bulk:
+    post:
+      summary: Bulk update stops (admin)
+      tags:
+        - Admin
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      x-audit-action: admin.stop_edit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - stop_ids
+              properties:
+                stop_ids:
+                  type: array
+                  items:
+                    type: string
+                  example:
+                    - '12345'
+                    - '67890'
+                pool_id:
+                  type: string
+                active:
+                  type: boolean
+      responses:
+        '200':
+          description: Bulk update result
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/route-runs:
+    get:
+      summary: List route runs with filters (admin)
+      tags:
+        - Admin
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      parameters:
+        - in: query
+          name: run_date
+          schema:
+            type: string
+            format: date
+          description: Filter by run date (defaults to today)
+          example: '2026-05-13'
+        - in: query
+          name: pool_id
+          schema:
+            type: string
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum:
+              - planned
+              - in_progress
+              - completed
+              - finished
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+      responses:
+        '200':
+          description: Paginated route run list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  route_runs:
+                    type: array
+                    items:
+                      type: object
+              example:
+                route_runs:
+                  - id: 42
+                    status: in_progress
+                    run_date: '2026-05-13'
+                    stop_count: 25
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/clean-logs:
+    get:
+      summary: List clean logs with filters (admin)
+      tags:
+        - Admin
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      parameters:
+        - in: query
+          name: stop_id
+          schema:
+            type: string
+        - in: query
+          name: pool_id
+          schema:
+            type: string
+        - in: query
+          name: run_date
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+      responses:
+        '200':
+          description: Paginated clean log list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clean_logs:
+                    type: array
+                    items:
+                      type: object
+                  total:
+                    type: integer
+              example:
+                clean_logs:
+                  - id: 1
+                    stop_id: '12345'
+                    cleaned_at: '2026-05-13T10:30:00Z'
+                    duration_minutes: 12
+                total: 150
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/audit-log:
+    get:
+      summary: Query the immutable audit log (S1-3)
+      description: >
+        Returns audit events in JSON (default) or CSV. Scoped to org by bearer token. Date range max 365 days; window
+        defaults to last 30 days. Max 1000 rows per request.
+      tags:
+        - Admin
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      parameters:
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date
+          description: Start date ISO 8601 (default 30 days ago)
+          example: '2026-04-01'
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date
+          description: End date ISO 8601 (default now)
+          example: '2026-05-13'
+        - in: query
+          name: action
+          schema:
+            type: string
+            enum:
+              - auth.login
+              - auth.login_failed
+              - assignment.create
+              - assignment.reassign
+              - assignment.cancel
+              - export.data_export
+              - export.delete_confirm
+              - export.delete_execute
+              - admin.config_change
+              - admin.user_role_change
+              - admin.stop_edit
+              - admin.route_edit
+              - upload.rejected
+              - admin.oid_decrypt
+          description: Filter by audit action
+        - in: query
+          name: format
+          schema:
+            type: string
+            enum:
+              - json
+              - csv
+            default: json
+          description: Response format
+      responses:
+        '200':
+          description: Audit log entries (JSON) or CSV attachment
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                  total:
+                    type: integer
+                  from:
+                    type: string
+                    format: date-time
+                  to:
+                    type: string
+                    format: date-time
+            text/csv:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/intelligence/rebuild-risk-map:
+    post:
+      summary: Rebuild the stop risk snapshot
+      description: >-
+        Recomputes the risk snapshot table from clean log history. Admin-only; may take several seconds on large
+        datasets.
+      tags:
+        - Admin
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      responses:
+        '200':
+          description: Rebuild complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  rows:
+                    type: integer
+              example:
+                status: ok
+                rows: 450
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/control-center/overview:
+    get:
+      summary: Control center — today's operational overview
+      description: Aggregate clean events, total clean minutes, hazards reported, and high-severity hazards for today.
+      tags:
+        - Admin
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      responses:
+        '200':
+          description: Today's overview metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clean_events:
+                    type: integer
+                  total_clean_minutes:
+                    type: number
+                  hazards_reported:
+                    type: integer
+                  high_severity_hazards:
+                    type: integer
+              example:
+                clean_events: 38
+                total_clean_minutes: 462.5
+                hazards_reported: 4
+                high_severity_hazards: 1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/control-center/routes:
+    get:
+      summary: Control center — active route status table
+      description: >-
+        Per-route stop counts, resolved counts, emergency additions, and skip flags for planned and in-progress runs
+        today.
+      tags:
+        - Admin
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      responses:
+        '200':
+          description: Array of active route status rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    route_run_id:
+                      type: integer
+                    pool_id:
+                      type: string
+                    planned_stops:
+                      type: integer
+                    emergency_stops:
+                      type: integer
+                    resolved_stops:
+                      type: integer
+                    skipped_stops:
+                      type: integer
+                    total_known_stops:
+                      type: integer
+                    observed_minutes:
+                      type: number
+                    has_emergency_additions:
+                      type: boolean
+                    high_skip_count:
+                      type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/control-center/exceptions:
+    get:
+      summary: Control center — today's exception summary
+      description: Skips by reason, total hazards, total infrastructure issues, and emergency/ad-hoc stop count for today.
+      tags:
+        - Admin
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      responses:
+        '200':
+          description: Exception summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  skips_by_reason:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        reason:
+                          type: string
+                        count:
+                          type: integer
+                  total_hazards:
+                    type: integer
+                  total_infra_issues:
+                    type: integer
+                  emergency_count:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/control-center/difficulty:
+    get:
+      summary: Control center — today's difficulty indicators
+      description: >-
+        Heavy stops by location, routes with high difficulty density, and hotspot area concentration. Observational
+        intelligence — no per-worker metrics.
+      tags:
+        - Admin
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      responses:
+        '200':
+          description: Difficulty indicators
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  heavy_stops:
+                    type: array
+                    items:
+                      type: object
+                  heavy_routes:
+                    type: array
+                    items:
+                      type: object
+                  hotspot_areas:
+                    type: array
+                    items:
+                      type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /stops/{stop_id}/hotspot:
+    patch:
+      summary: Mark or unmark a stop as a hotspot
+      description: Updates the is_hotspot flag on the stop. UL, Lead, and Admin can toggle this.
+      tags:
+        - Stops
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - UL
+        - Lead
+        - Admin
+      parameters:
+        - in: path
+          name: stop_id
+          required: true
+          schema:
+            type: string
+          description: Transit stop ID
+          example: '12345'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - is_hotspot
+              properties:
+                is_hotspot:
+                  type: boolean
+                  description: Whether this stop is a hotspot
+            example:
+              is_hotspot: true
+      responses:
+        '200':
+          description: Flag updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  stop_id:
+                    type: string
+                  is_hotspot:
+                    type: boolean
+              example:
+                ok: true
+                stop_id: '12345'
+                is_hotspot: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /stops/{stop_id}/compactor:
+    patch:
+      summary: Set the compactor flag on a stop
+      description: Marks whether a stop has a trash compactor. Lead and Admin only.
+      tags:
+        - Stops
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Lead
+        - Admin
+      parameters:
+        - in: path
+          name: stop_id
+          required: true
+          schema:
+            type: string
+          description: Transit stop ID
+          example: '12345'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - compactor
+              properties:
+                compactor:
+                  type: boolean
+            example:
+              compactor: true
+      responses:
+        '200':
+          description: Flag updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  stop_id:
+                    type: string
+                  compactor:
+                    type: boolean
+              example:
+                ok: true
+                stop_id: '12345'
+                compactor: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /stops/{stop_id}/has-trash:
+    patch:
+      summary: Set the has-trash flag on a stop
+      description: Marks whether a stop has a trash receptacle. Lead and Admin only.
+      tags:
+        - Stops
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Lead
+        - Admin
+      parameters:
+        - in: path
+          name: stop_id
+          required: true
+          schema:
+            type: string
+          description: Transit stop ID
+          example: '12345'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - has_trash
+              properties:
+                has_trash:
+                  type: boolean
+            example:
+              has_trash: true
+      responses:
+        '200':
+          description: Flag updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  stop_id:
+                    type: string
+                  has_trash:
+                    type: boolean
+              example:
+                ok: true
+                stop_id: '12345'
+                has_trash: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /pools:
+    get:
+      summary: List active route pools
+      description: Returns all active route pools available for assignment. Used by the Lead create-route flow.
+      tags:
+        - Resources
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Lead
+        - Admin
+      responses:
+        '200':
+          description: List of active pools
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  pools:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        label:
+                          type: string
+                        trfDistrict:
+                          type: string
+                        defaultMaxMinutes:
+                          type: integer
+                        active:
+                          type: boolean
+              example:
+                ok: true
+                pools:
+                  - id: POOL-001
+                    name: North Sector
+                    label: North Sector
+                    trfDistrict: TRF-1
+                    defaultMaxMinutes: 480
+                    active: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /users:
+    get:
+      summary: List assignable users (UL and Lead roles)
+      description: Returns users from the identity directory who hold UL or Lead roles. Used by the Lead assignment UI.
+      tags:
+        - Resources
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Lead
+        - Admin
+      responses:
+        '200':
+          description: List of assignable users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  users:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          description: Azure Entra OID
+                        displayName:
+                          type: string
+                        email:
+                          type: string
+                        role:
+                          type: string
+                          enum:
+                            - UL
+                            - Lead
+              example:
+                ok: true
+                users:
+                  - id: abc123-oid
+                    displayName: Jane Smith
+                    email: jsmith@kcmetro.gov
+                    role: UL
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /ops/dashboard:
+    get:
+      summary: Ops dashboard — aggregate metrics for today
+      description: Read-only mirror of the Admin dashboard. Returns stop count, pool count, and today's run status summary.
+      tags:
+        - Ops
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Lead
+        - Admin
+      responses:
+        '200':
+          description: Today's operational metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_stops:
+                    type: integer
+                  total_pools:
+                    type: integer
+                  active_runs_today:
+                    type: integer
+                  completed_runs_today:
+                    type: integer
+              example:
+                total_stops: 450
+                total_pools: 12
+                active_runs_today: 3
+                completed_runs_today: 8
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /ops/pools:
+    get:
+      summary: List all route pools (ops read-only)
+      description: Returns all route pools including inactive ones. Read-only for Lead/Admin.
+      tags:
+        - Ops
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Lead
+        - Admin
+      responses:
+        '200':
+          description: List of pools
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pools:
+                    type: array
+                    items:
+                      type: object
+              example:
+                pools:
+                  - id: POOL-001
+                    label: North Sector
+                    active: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /ops/stops:
+    get:
+      summary: List stops with pagination and search (ops read-only)
+      description: Paginated, searchable list of all stops. Read-only for Lead/Admin.
+      tags:
+        - Ops
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Lead
+        - Admin
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+            default: 50
+        - in: query
+          name: q
+          schema:
+            type: string
+          description: Text search filter
+        - in: query
+          name: pool_id
+          schema:
+            type: string
+          description: Filter by pool
+      responses:
+        '200':
+          description: Paginated stop list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                  total:
+                    type: integer
+              example:
+                items:
+                  - stop_id: '12345'
+                    on_street_name: Main St
+                total: 450
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /ops/route-runs:
+    get:
+      summary: List route runs with filters (ops read-only)
+      description: Paginated list of route runs. Read-only mirror of the Admin route runs list.
+      tags:
+        - Ops
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Lead
+        - Admin
+      parameters:
+        - in: query
+          name: run_date
+          schema:
+            type: string
+            format: date
+          description: Filter by run date (ISO 8601)
+          example: '2026-05-13'
+        - in: query
+          name: pool_id
+          schema:
+            type: string
+          description: Filter by pool
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum:
+              - planned
+              - in_progress
+              - completed
+              - finished
+          description: Filter by status
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+      responses:
+        '200':
+          description: Paginated route run list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  route_runs:
+                    type: array
+                    items:
+                      type: object
+              example:
+                route_runs:
+                  - id: 42
+                    status: in_progress
+                    run_date: '2026-05-13'
+                    stop_count: 25
+                    completed_stops: 12
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /ops/clean-logs:
+    get:
+      summary: List clean logs with filters (ops read-only)
+      description: Paginated list of clean log entries. Read-only mirror of the Admin clean logs list.
+      tags:
+        - Ops
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Lead
+        - Admin
+      parameters:
+        - in: query
+          name: stop_id
+          schema:
+            type: string
+          description: Filter by stop ID
+        - in: query
+          name: pool_id
+          schema:
+            type: string
+          description: Filter by pool
+        - in: query
+          name: run_date
+          schema:
+            type: string
+            format: date
+          description: Filter by run date
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+      responses:
+        '200':
+          description: Paginated clean log list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clean_logs:
+                    type: array
+                    items:
+                      type: object
+                  total:
+                    type: integer
+              example:
+                clean_logs:
+                  - id: 1
+                    stop_id: '12345'
+                    cleaned_at: '2026-05-13T10:30:00Z'
+                    duration_minutes: 12
+                total: 150
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /route-overrides/by-pool/{pool_id}:
+    get:
+      summary: List route overrides for a pool
+      description: Returns all per-stop overrides configured for a given route pool.
+      tags:
+        - RouteOverrides
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Lead
+        - Admin
+      parameters:
+        - in: path
+          name: pool_id
+          required: true
+          schema:
+            type: string
+          description: Route pool ID
+          example: POOL-001
+      responses:
+        '200':
+          description: List of overrides for the pool
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  overrides:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        pool_id:
+                          type: string
+                        stop_id:
+                          type: string
+                        override_type:
+                          type: string
+                        value: {}
+              example:
+                ok: true
+                overrides:
+                  - id: uuid-123
+                    pool_id: POOL-001
+                    stop_id: '12345'
+                    override_type: exclude
+                    value: null
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /route-overrides/add:
+    post:
+      summary: Add a route override for a stop in a pool
+      description: Creates a per-stop override (e.g., exclude a stop from automated route planning for a pool).
+      tags:
+        - RouteOverrides
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Lead
+        - Admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - pool_id
+                - stop_id
+                - override_type
+              properties:
+                pool_id:
+                  type: string
+                  example: POOL-001
+                stop_id:
+                  type: string
+                  example: '12345'
+                override_type:
+                  type: string
+                  example: exclude
+                value:
+                  description: Override value (type-dependent)
+            example:
+              pool_id: POOL-001
+              stop_id: '12345'
+              override_type: exclude
+      responses:
+        '200':
+          description: Override created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  override:
+                    type: object
+              example:
+                ok: true
+                override:
+                  id: uuid-123
+                  pool_id: POOL-001
+                  stop_id: '12345'
+                  override_type: exclude
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /route-overrides/{id}:
+    delete:
+      summary: Delete a route override
+      description: Removes a per-stop route override by ID.
+      tags:
+        - RouteOverrides
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Lead
+        - Admin
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Override ID
+          example: uuid-123
+      responses:
+        '200':
+          description: Override deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+              example:
+                ok: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/tenant/asset-types:
+    get:
+      summary: List asset types for a tenant
+      description: >-
+        Returns all asset types configured for the specified org. Org is supplied via X-Org-Id header or ?org_id= query
+        param.
+      tags:
+        - Tenant
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      parameters:
+        - in: header
+          name: X-Org-Id
+          schema:
+            type: integer
+          description: Org ID (alternative to ?org_id=)
+          example: 1
+        - in: query
+          name: org_id
+          schema:
+            type: integer
+          description: Org ID (alternative to X-Org-Id header)
+          example: 1
+      responses:
+        '200':
+          description: List of asset types
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  asset_types:
+                    type: array
+                    items:
+                      type: object
+              example:
+                asset_types:
+                  - id: 1
+                    type_key: transit_stop
+                    display_name: Transit Stop
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      summary: Create an asset type for a tenant
+      description: Registers a new asset type for the org. Used during tenant onboarding.
+      tags:
+        - Tenant
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      parameters:
+        - in: header
+          name: X-Org-Id
+          schema:
+            type: integer
+          description: Org ID
+          example: 1
+        - in: query
+          name: org_id
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - type_key
+                - display_name
+              properties:
+                type_key:
+                  type: string
+                  description: Unique slug for this asset type
+                  example: transit_stop
+                display_name:
+                  type: string
+                  example: Transit Stop
+                description:
+                  type: string
+            example:
+              type_key: transit_stop
+              display_name: Transit Stop
+              description: Bus shelter or transit stop
+      responses:
+        '201':
+          description: Asset type created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  asset_type:
+                    type: object
+              example:
+                asset_type:
+                  id: 1
+                  type_key: transit_stop
+                  display_name: Transit Stop
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/tenant/observation-types:
+    get:
+      summary: List observation types for an asset type
+      description: Returns all observation types configured for a given asset type within the org.
+      tags:
+        - Tenant
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      parameters:
+        - in: header
+          name: X-Org-Id
+          schema:
+            type: integer
+          example: 1
+        - in: query
+          name: org_id
+          schema:
+            type: integer
+        - in: query
+          name: asset_type_id
+          required: true
+          schema:
+            type: integer
+          description: Asset type ID to list observation types for
+          example: 1
+      responses:
+        '200':
+          description: List of observation types
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  observation_types:
+                    type: array
+                    items:
+                      type: object
+              example:
+                observation_types:
+                  - id: 1
+                    observation_key: cleanliness
+                    display_name: Cleanliness
+                    value_type: state
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      summary: Upsert observation types for an asset type
+      description: Creates or updates observation type definitions for a given asset type. Used during tenant onboarding.
+      tags:
+        - Tenant
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      parameters:
+        - in: header
+          name: X-Org-Id
+          schema:
+            type: integer
+          example: 1
+        - in: query
+          name: org_id
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - asset_type_id
+                - types
+              properties:
+                asset_type_id:
+                  type: integer
+                  example: 1
+                types:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - observation_key
+                      - display_name
+                      - value_type
+                    properties:
+                      observation_key:
+                        type: string
+                      display_name:
+                        type: string
+                      value_type:
+                        type: string
+                        enum:
+                          - state
+                          - numeric
+                          - boolean
+                      valid_values:
+                        type: array
+                        items:
+                          type: string
+                      is_required:
+                        type: boolean
+                      sort_order:
+                        type: integer
+            example:
+              asset_type_id: 1
+              types:
+                - observation_key: cleanliness
+                  display_name: Cleanliness
+                  value_type: state
+                  valid_values:
+                    - clean
+                    - dirty
+                    - hazardous
+                  is_required: true
+                  sort_order: 1
+      responses:
+        '200':
+          description: Observation types upserted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upserted:
+                    type: array
+                    items:
+                      type: object
+              example:
+                upserted:
+                  - id: 1
+                    observation_key: cleanliness
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /admin/tenant/seed-assets:
+    post:
+      summary: Seed asset inventory from a CSV upload
+      description: >
+        Accepts a multipart CSV file with required columns: external_id, display_name, lat, lon. Additional columns
+        become entries in the asset attributes JSON. Used for bulk onboarding of asset inventories (e.g., importing stop
+        data from a GIS export).
+      tags:
+        - Tenant
+      security:
+        - AzureAD: []
+      x-required-roles:
+        - Admin
+      parameters:
+        - in: header
+          name: X-Org-Id
+          schema:
+            type: integer
+          example: 1
+        - in: query
+          name: org_id
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - asset_type_id
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: CSV file with columns external_id, display_name, lat, lon, and optional extras
+                asset_type_id:
+                  type: integer
+                  description: Asset type to assign to all seeded assets
+                  example: 1
+      responses:
+        '200':
+          description: Assets seeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows_received:
+                    type: integer
+                  inserted:
+                    type: integer
+                  updated:
+                    type: integer
+              example:
+                rows_received: 450
+                inserted: 420
+                updated: 30
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'

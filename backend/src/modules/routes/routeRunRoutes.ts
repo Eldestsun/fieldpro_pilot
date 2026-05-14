@@ -23,12 +23,85 @@ const MAX_OSRM_STOPS = 25;
 // This constant will be removed when the legacy user_id column is deprecated.
 const LEGACY_TRANSIT_USER_ID = 0;
 
+/**
+ * @openapi
+ * /lead/hub:
+ *   get:
+ *     summary: Lead hub placeholder
+ *     description: Returns confirmation that the caller has the Lead role.
+ *     tags: [RouteRuns]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Lead]
+ *     responses:
+ *       200:
+ *         description: Caller is a Lead
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 scope: { type: string }
+ *             example:
+ *               ok: true
+ *               scope: Lead
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ */
 // Lead-only hub
 routeRunRoutes.get("/lead/hub", requireAuth, requireAnyRole(["Lead"]), (_req, res) => {
     res.json({ ok: true, scope: "Lead" });
 });
 
-/** ── Lead: Get Today's Runs: GET /lead/todays-runs ───────────────────── */
+/**
+ * @openapi
+ * /lead/todays-runs:
+ *   get:
+ *     summary: Get all planned and in-progress route runs for today
+ *     description: Returns all active route runs across all pools. Used by the Lead dispatch view.
+ *     tags: [RouteRuns]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Lead, Admin]
+ *     responses:
+ *       200:
+ *         description: Today's active route runs
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 route_runs:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id: { type: integer }
+ *                       status: { type: string }
+ *                       route_pool_id: { type: string }
+ *                       run_date: { type: string, format: date }
+ *                       stop_count: { type: integer }
+ *                       completed_stops: { type: integer }
+ *             example:
+ *               ok: true
+ *               route_runs:
+ *                 - id: 42
+ *                   status: in_progress
+ *                   route_pool_id: POOL-001
+ *                   run_date: "2026-05-13"
+ *                   stop_count: 25
+ *                   completed_stops: 12
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 routeRunRoutes.get(
     "/lead/todays-runs",
     requireAuth,
@@ -48,8 +121,8 @@ routeRunRoutes.get(
           COALESCE(rs.completed_stop_count, 0) AS completed_stops
         FROM route_runs rr
         LEFT JOIN (
-          SELECT 
-            route_run_id, 
+          SELECT
+            route_run_id,
             COUNT(*) AS stop_count,
             COUNT(*) FILTER (WHERE status IN ('done', 'skipped')) AS completed_stop_count
           FROM route_run_stops
@@ -69,7 +142,45 @@ routeRunRoutes.get(
     }
 );
 
-/** ── Lead: Get Route Run Details: GET /lead/route-runs/:id ──────────────── */
+/**
+ * @openapi
+ * /lead/route-runs/{id}:
+ *   get:
+ *     summary: Get route run details (Lead view)
+ *     description: Returns the full route run including all stops. Lead and Admin only.
+ *     tags: [RouteRuns]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Lead, Admin]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *         description: Route run ID
+ *         example: "42"
+ *     responses:
+ *       200:
+ *         description: Route run found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 route_run: { type: object }
+ *             example:
+ *               ok: true
+ *               route_run: { id: 42, status: in_progress, stops: [] }
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 routeRunRoutes.get(
     "/lead/route-runs/:id",
     requireAuth,
@@ -94,6 +205,7 @@ routeRunRoutes.get(
 );
 
 /** ── Lead: Get Route Run Details: GET /lead/route-runs/:id ──────────────── */
+// Duplicate registration — intentional; kept for backward compat.
 routeRunRoutes.get(
     "/lead/route-runs/:id",
     requireAuth,
@@ -117,7 +229,57 @@ routeRunRoutes.get(
     }
 );
 
-/** ── OSRM route planning: POST /api/routes/plan ──────────────────────── */
+/**
+ * @openapi
+ * /routes/plan:
+ *   post:
+ *     summary: Plan an OSRM-optimized route from a list of stop IDs
+ *     description: >
+ *       Takes an array of stop IDs, looks up their coordinates, and returns an
+ *       OSRM-optimized trip order. Does not create a route run.
+ *       Note: this endpoint currently has no auth guard and is used by the
+ *       planning UI before authentication completes.
+ *     tags: [RouteRuns]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [stop_ids]
+ *             properties:
+ *               stop_ids:
+ *                 type: array
+ *                 items: { type: string }
+ *                 minItems: 2
+ *                 description: At least two stop IDs to route between
+ *           example:
+ *             stop_ids: ["1001", "1002", "1003"]
+ *     responses:
+ *       200:
+ *         description: Optimized route
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 distance_m: { type: number }
+ *                 duration_s: { type: number }
+ *                 ordered_stops: { type: array, items: { type: object } }
+ *                 legs: { type: array, items: { type: object } }
+ *             example:
+ *               ok: true
+ *               distance_m: 15000
+ *               duration_s: 3600
+ *               ordered_stops: []
+ *               legs: []
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 routeRunRoutes.post("/routes/plan", async (req: Request, res: Response) => {
     try {
         const { stop_ids } = req.body;
@@ -166,7 +328,71 @@ routeRunRoutes.post("/routes/plan", async (req: Request, res: Response) => {
     }
 });
 
-/** ── Route Run Preview: POST /api/route-runs/preview ──────────────────── */
+/**
+ * @openapi
+ * /route-runs/preview:
+ *   post:
+ *     summary: Preview an OSRM-optimized route run without creating it
+ *     description: >
+ *       Returns the optimized route for a pool or explicit stop list. Does not
+ *       persist anything. Used by the Lead planning UI to preview before committing.
+ *       Note: no auth guard; intended for pre-auth planning flow.
+ *     tags: [RouteRuns]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               stop_ids:
+ *                 type: array
+ *                 items: { type: string }
+ *                 description: Explicit stop IDs (option A)
+ *               pool_id:
+ *                 type: string
+ *                 description: Pool ID — fetch stops from pool (option B)
+ *               ul_id:
+ *                 type: string
+ *                 description: Azure Entra OID of the intended assignee (optional)
+ *               run_date:
+ *                 type: string
+ *                 format: date
+ *           example:
+ *             pool_id: POOL-001
+ *             ul_id: "abc123-oid"
+ *             run_date: "2026-05-13"
+ *     responses:
+ *       200:
+ *         description: Optimized preview route
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 truncated: { type: boolean }
+ *                 total_stops: { type: integer }
+ *                 used_stops: { type: integer }
+ *                 distance_m: { type: number }
+ *                 duration_s: { type: number }
+ *                 ordered_stops: { type: array, items: { type: object } }
+ *                 legs: { type: array, items: { type: object } }
+ *             example:
+ *               ok: true
+ *               truncated: false
+ *               total_stops: 20
+ *               used_stops: 20
+ *               distance_m: 12000
+ *               duration_s: 2800
+ *               ordered_stops: []
+ *               legs: []
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 routeRunRoutes.post("/route-runs/preview", async (req: Request, res: Response) => {
     try {
         const { stop_ids, pool_id, ul_id, run_date } = req.body;
@@ -214,7 +440,7 @@ routeRunRoutes.post("/route-runs/preview", async (req: Request, res: Response) =
         }
 
         // 2) Ask OSRM for an optimized trip
-        // Note: stopsToPlan is already limited by MAX_OSRM_STOPS if it came from the helper. 
+        // Note: stopsToPlan is already limited by MAX_OSRM_STOPS if it came from the helper.
         // If it came from Option A (explicit list), it might be longer, so we still slice for OSRM limit safety.
         const osrmStops =
             stopsToPlan.length > MAX_OSRM_STOPS
@@ -240,8 +466,84 @@ routeRunRoutes.post("/route-runs/preview", async (req: Request, res: Response) =
     }
 });
 
-/** ── Create Route Run: POST /api/route-runs ───────────────────────────── */
-/** ── Create Route Run: POST /api/route-runs ───────────────────────────── */
+/**
+ * @openapi
+ * /route-runs:
+ *   post:
+ *     summary: Create a new route run
+ *     description: >
+ *       Creates an OSRM-optimized route run and assigns it to a UL. Requires Lead or Admin role.
+ *       Writes an `assignment.create` audit log entry on success.
+ *     tags: [RouteRuns]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Lead, Admin]
+ *     x-audit-action: assignment.create
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [pool_id]
+ *             properties:
+ *               pool_id:
+ *                 type: string
+ *                 description: Route pool ID (alias route_pool_id)
+ *                 example: POOL-001
+ *               route_pool_id:
+ *                 type: string
+ *                 description: Route pool ID (preferred form)
+ *               stop_ids:
+ *                 type: array
+ *                 items: { type: string }
+ *                 description: Explicit stop IDs (if omitted, pool stops are used)
+ *               ul_id:
+ *                 type: string
+ *                 description: Azure Entra OID of the UL to assign
+ *                 example: "abc123-oid"
+ *               base_id:
+ *                 type: string
+ *                 description: Dispatch base identifier
+ *                 example: NORTH
+ *               run_date:
+ *                 type: string
+ *                 format: date
+ *                 example: "2026-05-13"
+ *           example:
+ *             pool_id: POOL-001
+ *             ul_id: "abc123-oid"
+ *             run_date: "2026-05-13"
+ *     responses:
+ *       200:
+ *         description: Route run created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 route_run_id: { type: integer }
+ *                 distance_m: { type: number }
+ *                 duration_s: { type: number }
+ *                 ordered_stops: { type: array, items: { type: object } }
+ *                 legs: { type: array, items: { type: object } }
+ *             example:
+ *               ok: true
+ *               route_run_id: 42
+ *               distance_m: 15000
+ *               duration_s: 3600
+ *               ordered_stops: []
+ *               legs: []
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 routeRunRoutes.post(
     "/route-runs",
     requireAuth,
@@ -359,7 +661,42 @@ routeRunRoutes.post(
     }
 );
 
-/** ── Get Route Run Details: GET /api/route-runs/:id ───────────────────── */
+/**
+ * @openapi
+ * /route-runs/{id}:
+ *   get:
+ *     summary: Get route run details
+ *     description: >
+ *       Returns the full route run including all stops and their current status.
+ *       This transitional endpoint has no auth guard — prefer domain-specific
+ *       accessors where possible.
+ *     tags: [RouteRuns]
+ *     security: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *         description: Route run ID
+ *         example: "42"
+ *     responses:
+ *       200:
+ *         description: Route run found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 route_run: { type: object }
+ *             example:
+ *               ok: true
+ *               route_run: { id: 42, status: in_progress, stops: [] }
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 // [GOVERNANCE-SENSITIVE] Transitional endpoint. Prefer domain-specific accessors where possible.
 routeRunRoutes.get("/route-runs/:id", async (req: Request, res: Response) => {
     try {
@@ -379,7 +716,45 @@ routeRunRoutes.get("/route-runs/:id", async (req: Request, res: Response) => {
     }
 });
 
-/** ── Start a route run: POST /api/route-runs/:id/start ───────────────────── */
+/**
+ * @openapi
+ * /route-runs/{id}/start:
+ *   post:
+ *     summary: Start a route run
+ *     description: Transitions the route run from planned to in_progress.
+ *     tags: [RouteRuns]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [UL, Lead, Admin]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *         description: Route run ID
+ *         example: "42"
+ *     responses:
+ *       200:
+ *         description: Route run started
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 route_run: { type: object }
+ *             example:
+ *               ok: true
+ *               route_run: { id: 42, status: in_progress }
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 routeRunRoutes.post(
     "/route-runs/:id/start",
     requireAuth,
@@ -403,7 +778,50 @@ routeRunRoutes.post(
     }
 );
 
-/** ── Start a route run stop: POST /api/route-run-stops/:id/start ────────── */
+/**
+ * @openapi
+ * /route-run-stops/{id}/start:
+ *   post:
+ *     summary: Start a route run stop (Lead/Admin variant)
+ *     description: >
+ *       Transitions a stop from pending/planned/assigned to in_progress.
+ *       Also idempotent if already in_progress.
+ *       The UL variant (in routeRunStopRoutes) only allows pending → in_progress.
+ *     tags: [RouteRunStops]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [UL, Lead, Admin]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *         description: Route run stop ID
+ *         example: "7"
+ *     responses:
+ *       200:
+ *         description: Stop started (or already in_progress — idempotent)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 route_run: { type: object }
+ *             example:
+ *               ok: true
+ *               route_run: { id: 42, status: in_progress }
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       409:
+ *         $ref: '#/components/responses/Conflict'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 routeRunRoutes.post(
     "/route-run-stops/:id/start",
     requireAuth,
@@ -468,7 +886,45 @@ routeRunRoutes.post(
     }
 );
 
-/** ── Finish Route Run: POST /api/route-runs/:id/finish ────────────────── */
+/**
+ * @openapi
+ * /route-runs/{id}/finish:
+ *   post:
+ *     summary: Finish a route run
+ *     description: Marks the route run as completed/finished.
+ *     tags: [RouteRuns]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [UL, Lead, Admin]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *         description: Route run ID
+ *         example: "42"
+ *     responses:
+ *       200:
+ *         description: Route run finished
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 route_run: { type: object }
+ *             example:
+ *               ok: true
+ *               route_run: { id: 42, status: completed }
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 routeRunRoutes.post(
     "/route-runs/:id/finish",
     requireAuth,
@@ -492,7 +948,66 @@ routeRunRoutes.post(
     }
 );
 
-/** ── Assign Route Run: PATCH /api/route-runs/:id/assign ──────────────── */
+/**
+ * @openapi
+ * /route-runs/{id}/assign:
+ *   patch:
+ *     summary: Assign, reassign, or unassign a route run
+ *     description: >
+ *       Updates the `assigned_user_oid` on a route run.
+ *       - If previously unassigned → writes `assignment.create` audit entry.
+ *       - If reassigning → writes `assignment.reassign` audit entry.
+ *       - If `assigned_user_oid` is null → writes `assignment.cancel` audit entry.
+ *     tags: [RouteRuns]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Lead, Admin]
+ *     x-audit-action: assignment.create
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *         description: Route run ID
+ *         example: "42"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               assigned_user_oid:
+ *                 type: string
+ *                 nullable: true
+ *                 description: Azure Entra OID of the UL to assign; null to unassign
+ *                 example: "abc123-oid"
+ *           example:
+ *             assigned_user_oid: "abc123-oid"
+ *     responses:
+ *       200:
+ *         description: Assignment updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 route_run: { type: object }
+ *             example:
+ *               ok: true
+ *               route_run: { id: 42, assigned_user_oid: "abc123-oid" }
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 routeRunRoutes.patch(
     "/route-runs/:id/assign",
     requireAuth,

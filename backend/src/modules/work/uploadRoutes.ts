@@ -11,7 +11,80 @@ import {
 
 export const uploadRoutes = Router();
 
-/** ── Presigned Upload URL: POST /api/uploads/signed-url ───────────────── */
+/**
+ * @openapi
+ * /uploads/signed-url:
+ *   post:
+ *     summary: Get a pre-signed S3 upload URL for a stop photo
+ *     description: >
+ *       Returns a time-limited pre-signed S3 URL for direct client-to-S3 upload.
+ *       The server validates filename and MIME type before issuing the URL.
+ *       The object key is server-generated (UUID-based) — the client filename is
+ *       never used as the storage key.
+ *       Allowed MIME types: image/jpeg, image/png, image/webp, image/heic.
+ *     tags: [Uploads]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [UL, Lead, Admin]
+ *     x-audit-action: upload.rejected
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [route_run_stop_id, contentType, filename]
+ *             properties:
+ *               route_run_stop_id:
+ *                 type: integer
+ *                 description: ID of the route run stop this photo belongs to
+ *                 example: 7
+ *               contentType:
+ *                 type: string
+ *                 enum: [image/jpeg, image/png, image/webp, image/heic]
+ *                 example: image/jpeg
+ *               filename:
+ *                 type: string
+ *                 description: Original filename (validated, not used as storage key)
+ *                 example: stop_photo.jpg
+ *               kind:
+ *                 type: string
+ *                 enum: [safety, cleaning, infrastructure, completion, skip_after]
+ *                 default: completion
+ *                 description: Photo category
+ *           example:
+ *             route_run_stop_id: 7
+ *             contentType: image/jpeg
+ *             filename: stop_photo.jpg
+ *             kind: completion
+ *     responses:
+ *       200:
+ *         description: Pre-signed URL and server-generated object key
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 uploadUrl:
+ *                   type: string
+ *                   description: Time-limited S3 pre-signed PUT URL
+ *                 objectKey:
+ *                   type: string
+ *                   description: Server-generated S3 object key (use this to reference the photo)
+ *             example:
+ *               ok: true
+ *               uploadUrl: "https://s3.amazonaws.com/bucket/runs/7/uuid.jpg?X-Amz-..."
+ *               objectKey: "runs/7/completion/uuid.jpg"
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 uploadRoutes.post("/uploads/signed-url", requireAuth, requireAnyRole(["UL", "Lead", "Admin"]), async (req: Request, res: Response) => {
     try {
         const { route_run_stop_id, contentType, filename, kind = "completion" } = req.body;
