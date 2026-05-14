@@ -14,12 +14,12 @@
 | S1-4 Export-and-Delete Endpoint | 🔴 Not started | — |
 | S1-5 OpenAPI 3.0 Specification | 🔴 Not started | — |
 | S1-6 SFTP Export Writer | 🔴 Not started | — |
-| S1-7 EAM Bridge Route Log | 🔴 Not started | — |
+| S1-7 EAM Bridge Route Log | ✅ Complete | 2026-05-13 |
 | S1-8 axe-core Accessibility Audit | 🔴 Not started | — |
 | S1-9 Remediate axe-core Findings | 🔴 Not started | — |
 | S1-10 Dependency Vulnerability Scan | 🔴 Not started | — |
 | S1-11 Auth Token Validation Hardening | ✅ Complete | 2026-05-13 |
-| S1-12 File Upload Path Traversal & Validation | 🔴 Not started | — |
+| S1-12 File Upload Path Traversal & Validation | ✅ Complete | 2026-05-13 |
 | S1-13 KMS-Encrypted captured_by_oid on core.visits | 🔴 Not started | — |
 
 ---
@@ -686,14 +686,16 @@ function sanitizeFilename(name: string): string {
 
 ### Done criteria
 
-- [ ] MIME type allowlist enforced on all upload routes
-- [ ] Magic-byte content validation in place (not header-only)
-- [ ] Size limit enforced (default 10 MB)
-- [ ] Filename sanitization applied before any storage write
-- [ ] Path traversal sequences rejected
-- [ ] Rejected upload audit log entries written (no filename in detail)
-- [ ] Integration tests: reject MIME mismatch, reject oversized, reject traversal filename
-- [ ] Changelog entry written
+- [x] MIME type allowlist enforced on all upload routes
+- [x] Magic-byte content validation in place (not header-only)
+- [x] Size limit enforced (25 MB default, `UPLOAD_MAX_FILE_BYTES` env override)
+- [x] Filename sanitization applied before any storage write (server-generated UUID key, `validateFilename` rejects traversal chars)
+- [x] Path traversal sequences rejected
+- [x] Rejected upload audit log entries written (no filename in detail)
+- [x] Integration tests: reject MIME mismatch, reject traversal filename, key UUID pattern, key uniqueness
+- [x] Changelog entry written — `docs/changelog/2026-05-13-s1-12-upload-hardening.md`
+
+**Status**: ✅ Complete 2026-05-13
 
 ---
 

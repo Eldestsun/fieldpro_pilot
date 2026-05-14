@@ -7,6 +7,8 @@ import "./canonical/evidence.test";
 import "./canonical/assignments.test";
 import "./canonical/auditLog.test";
 import "./canonical/authClaims.test";
+import "./canonical/eamBridge.test";
+import "./canonical/uploadValidation.test";
 
 (async () => {
   console.log("canonical integration tests — real local DB, no mocking\n");
