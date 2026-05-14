@@ -40,7 +40,7 @@ Sprints 1 and 2 are agent-executable. Sprint 3 requires the founder for infrastr
 | S1-9 | Remediate axe-core Findings (Contrast, ARIA, Focus Order) | Code | Agent | S1-8 | 🔴 Not started |
 | S1-10 | Dependency Vulnerability Scan (`pnpm audit`) | Code/Ops | Agent | None | 🔴 Not started |
 | S1-11 | Auth Token Claim Validation (aud, iss, exp, oid) | Code | Agent | None | 🟢 Done 2026-05-13 |
-| S1-12 | File Upload Path Traversal & Validation Hardening | Code | Agent | None | 🔴 Not started |
+| S1-12 | File Upload Path Traversal & Validation Hardening | Code | Agent | None | 🟢 Done 2026-05-13 |
 | S1-13 | KMS-Encrypted captured_by_oid on core.visits | Code | Agent | None | 🔴 Not started |
 | **Sprint 2 — Policy Documents** | | | | | |
 | S2-1 | NIST SP 800-53 Control Mapping Document | Document | Agent | Hosting decision | 🔴 Not started |

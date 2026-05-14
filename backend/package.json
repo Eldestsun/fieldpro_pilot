@@ -8,6 +8,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "migrate": "ts-node scripts/migrate.ts",
+    "eam-bridge:populate": "ts-node src/scripts/populateEamBridge.ts",
     "test": "ts-node --transpile-only tests/run.ts"
   },
   "keywords": [],
