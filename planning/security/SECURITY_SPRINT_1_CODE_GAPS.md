@@ -17,7 +17,7 @@
 | S1-7 EAM Bridge Route Log | ✅ Complete | 2026-05-13 |
 | S1-8 axe-core Accessibility Audit | 🔴 Not started | — |
 | S1-9 Remediate axe-core Findings | 🔴 Not started | — |
-| S1-10 Dependency Vulnerability Scan | 🔴 Not started | — |
+| S1-10 Dependency Vulnerability Scan | ✅ Complete | 2026-05-13 |
 | S1-11 Auth Token Validation Hardening | ✅ Complete | 2026-05-13 |
 | S1-12 File Upload Path Traversal & Validation | ✅ Complete | 2026-05-13 |
 | S1-13 KMS-Encrypted captured_by_oid on core.visits | ✅ Complete | 2026-05-13 |
@@ -547,10 +547,11 @@ This is the most critical surface. Field workers may use assistive technology on
 
 ---
 
-## S1-10 — Dependency Vulnerability Scan
+## S1-10 — Dependency Vulnerability Scan ✅
 
 **Type**: Code/Ops
 **Depends on**: None
+**Status**: Complete — 2026-05-13 | Changelog: `docs/changelog/2026-05-13-s1-10-dependency-audit.md`
 
 ### What to run
 
@@ -578,10 +579,11 @@ cd frontend && pnpm audit
 
 ### Done criteria
 
-- [ ] `pnpm audit` run in both `backend/` and `frontend/`
-- [ ] All critical and high vulnerabilities resolved
-- [ ] Audit results (or "no vulnerabilities found") documented in `docs/security/dependency-audit-YYYYMMDD.md`
-- [ ] Changelog entry written
+- [x] `pnpm audit` run in both `backend/` and `frontend/`
+- [x] All critical and high vulnerabilities resolved (backend: 0 H/C; frontend: 0 H/C)
+- [x] Audit results documented in `docs/security/dependency-audit-2026-05-13.md`
+- [x] CI gate added: `dependency-audit` job in `.github/workflows/ci.yml`
+- [x] Changelog entry written
 
 ---
 

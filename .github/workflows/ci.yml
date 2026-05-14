@@ -80,6 +80,39 @@ jobs:
         env:
           VITE_API_BASE_URL: /api
 
+  # S1-10: Dependency vulnerability gate — fails the build on any HIGH or CRITICAL advisory.
+  # Enforces S1-10 done-criteria: both backend/ and frontend/ workspaces must be clean
+  # before merging to main. LOW and MODERATE findings do not block CI (documented in
+  # docs/security/dependency-audit-2026-05-13.md).
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install backend dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: backend
+
+      - name: Audit backend (fail on HIGH or CRITICAL)
+        run: pnpm audit --audit-level=high
+        working-directory: backend
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: frontend
+
+      - name: Audit frontend (fail on HIGH or CRITICAL)
+        run: pnpm audit --audit-level=high
+        working-directory: frontend
+
   build-docker-images:
     needs: [test-backend, build-frontend]
     runs-on: ubuntu-latest
