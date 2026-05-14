@@ -13,7 +13,7 @@
 | S1-3 Audit Log Query Endpoint | ✅ Complete | 2026-05-13 |
 | S1-4 Export-and-Delete Endpoint | ✅ Complete | 2026-05-13 |
 | S1-5 OpenAPI 3.0 Specification | ✅ Complete | 2026-05-13 |
-| S1-6 SFTP Export Writer | 🔴 Not started | — |
+| S1-6 SFTP Export Writer | ✅ Complete | 2026-05-13 |
 | S1-7 EAM Bridge Route Log | ✅ Complete | 2026-05-13 |
 | S1-8 axe-core Accessibility Audit | 🔴 Not started | — |
 | S1-9 Remediate axe-core Findings | 🔴 Not started | — |
@@ -344,10 +344,11 @@ securitySchemes:
 
 ---
 
-## S1-6 — SFTP Export Writer
+## S1-6 — SFTP Export Writer ✅
 
 **Type**: Code
 **Depends on**: None
+**Status**: Complete — 2026-05-13 | Changelog: `docs/changelog/2026-05-13-s1-6-sftp-export-writer.md`
 
 ### What to build
 
@@ -390,12 +391,12 @@ The script is designed to be invoked by a cron job or CI schedule. It is not a l
 
 ### Done criteria
 
-- [ ] Script runs successfully against a local test SFTP server
-- [ ] All four export files generated with correct column headers
-- [ ] Audit log entry written on each run
-- [ ] Env vars documented in `.env.example`
-- [ ] README note added for scheduling setup
-- [ ] Changelog entry written
+- [x] Script runs successfully against a local test SFTP server (14 tests: 5 unit, 5 integration, 1 mock-server upload, 1 connection-failure, 1 audit-log, 1 config-validation)
+- [x] All export files generated with correct column headers (9 tables: organizations, locations, assignments, visits, observations, evidence, stop_effort_history, stop_condition_history, eam_bridge_route_log)
+- [x] Audit log entry written on each run (destination: 'sftp' on upload, 'local-only' on SFTP_ENABLED=false)
+- [x] Env vars documented in `.env.example` (SFTP_ENABLED, SFTP_HOST, SFTP_PORT, SFTP_USER, SFTP_PRIVATE_KEY_PATH, SFTP_KNOWN_HOSTS_PATH, SFTP_REMOTE_DIR)
+- [x] Script registered as `pnpm sftp:export` in package.json
+- [x] Changelog entry written
 
 ---
 
