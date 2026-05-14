@@ -15,7 +15,7 @@
 | S1-5 OpenAPI 3.0 Specification | ✅ Complete | 2026-05-13 |
 | S1-6 SFTP Export Writer | ✅ Complete | 2026-05-13 |
 | S1-7 EAM Bridge Route Log | ✅ Complete | 2026-05-13 |
-| S1-8 axe-core Accessibility Audit | 🔴 Not started | — |
+| S1-8 axe-core Accessibility Audit | ✅ Complete | 2026-05-14 |
 | S1-9 Remediate axe-core Findings | 🔴 Not started | — |
 | S1-10 Dependency Vulnerability Scan | ✅ Complete | 2026-05-13 |
 | S1-11 Auth Token Validation Hardening | ✅ Complete | 2026-05-13 |
@@ -448,11 +448,13 @@ Logic:
 
 ---
 
-## S1-8 — axe-core Accessibility Audit
+## S1-8 — axe-core Accessibility Audit ✅
 
 **Type**: Audit
 **Depends on**: None
 **Blocks**: S1-9, S2-9
+**Status**: Complete — 2026-05-14 | Changelog: `docs/changelog/2026-05-14-s1-8-axe-audit.md`
+**Report**: `docs/security/axe-audit-2026-05-14.json` + `docs/security/axe-audit-2026-05-14.md`
 
 ### What to run
 
@@ -499,11 +501,12 @@ For each surface:
 
 ### Done criteria
 
-- [ ] Audit script runs against all 6 surfaces
-- [ ] JSON report written to `docs/accessibility/axe-audit-YYYYMMDD.json`
-- [ ] Violations summary printed to console with impact levels
-- [ ] Findings become the input to S1-9 remediation
-- [ ] Changelog entry written
+- [x] Audit script runs against all 6 surfaces (5 authenticated via dual bypass; Login scanned unauthenticated)
+- [x] JSON report written — **deviation**: at `docs/security/axe-audit-2026-05-14.json` (not `docs/accessibility/`)
+- [x] Violations summary and per-surface findings in `docs/security/axe-audit-2026-05-14.md`
+- [x] Findings grouped by remediation pattern for S1-9 (4 patterns documented)
+- [x] Fixture gaps documented — UL surfaces scanned in empty state; re-audit required after fixture data added
+- [x] Changelog entry written
 
 ---
 
