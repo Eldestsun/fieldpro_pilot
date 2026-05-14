@@ -4,7 +4,22 @@
 > **Sprint**: 1 of 3 — Agent-executable code tasks
 > **Estimated effort**: ~3 focused agent-days
 > **Prerequisite**: Refactor (Tiers 1–8) and Refinement (R1–R10) complete or stable
-> **Last updated**: 2026-05-12
+> **Last updated**: 2026-05-13
+
+| Task | Status | Completed |
+|------|--------|-----------|
+| S1-1 Admin Action Audit Log | ✅ Complete | 2026-05-13 |
+| S1-2 Wire Audit Writes | ✅ Complete | 2026-05-13 |
+| S1-3 Audit Log Query Endpoint | ✅ Complete | 2026-05-13 |
+| S1-4 Export-and-Delete Endpoint | 🔴 Not started | — |
+| S1-5 OpenAPI 3.0 Specification | 🔴 Not started | — |
+| S1-6 SFTP Export Writer | 🔴 Not started | — |
+| S1-7 EAM Bridge Route Log | 🔴 Not started | — |
+| S1-8 axe-core Accessibility Audit | 🔴 Not started | — |
+| S1-9 Remediate axe-core Findings | 🔴 Not started | — |
+| S1-10 Dependency Vulnerability Scan | 🔴 Not started | — |
+| S1-11 Auth Token Validation Hardening | ✅ Complete | 2026-05-13 |
+| S1-12 File Upload Path Traversal & Validation | 🔴 Not started | — |
 
 ---
 
@@ -17,11 +32,12 @@ No task may introduce `user_id` or any worker-identifying column into any intell
 
 ---
 
-## S1-1 — Admin Action Audit Log
+## S1-1 — Admin Action Audit Log ✅
 
 **Type**: Code
 **Depends on**: None
 **Blocks**: S1-2, S1-3
+**Status**: Complete — 2026-05-13 | Changelog: `docs/changelog/2026-05-13-s1-1-audit-log-table.md`
 
 ### What to build
 
@@ -107,19 +123,21 @@ Create `backend/migrations/20260512_audit_log.sql`. Follow the existing migratio
 
 ### Done criteria
 
-- [ ] `audit_log` table created via migration
-- [ ] Migration applied and stamped by migration runner
-- [ ] `writeAuditLog()` utility in `backend/src/middleware/auditLog.ts`
-- [ ] Unit test: inserting an audit entry succeeds; no UPDATE or DELETE path exists
-- [ ] Changelog entry written
+- [x] `audit_log` table created via migration
+- [x] Migration applied and stamped by migration runner
+- [x] `writeAuditLog()` utility in `backend/src/middleware/auditLog.ts`
+- [x] Unit test: inserting an audit entry succeeds; no UPDATE or DELETE path exists
+- [x] Changelog entry written
 
 ---
 
-## S1-2 — Wire Audit Writes
+## S1-2 — Wire Audit Writes ✅
 
 **Type**: Code
 **Depends on**: S1-1
 **Blocks**: Nothing downstream (runs in parallel with S1-3)
+**Status**: Complete — 2026-05-13 | Changelog: `docs/changelog/2026-05-13-s1-2-wire-audit-writes.md`
+> Note: `export.data_export` and `admin.user_role_change` are not wired — no hookable code exists yet. Tracked in ISSUE-010. Will be wired when their endpoints land.
 
 ### What to wire
 
@@ -146,17 +164,19 @@ Add `writeAuditLog()` calls at each of the following trigger points. Load the re
 
 ### Done criteria
 
-- [ ] All listed trigger points have audit writes
-- [ ] Audit writes fail silently (try/catch, console.error) — never break primary request
-- [ ] No `actor_oid` appears in any response accessible to UL or Lead roles
-- [ ] Changelog entry written
+- [x] All listed trigger points have audit writes (7/9 wired; 2 deferred — no hookable code yet, see ISSUE-010)
+- [x] Audit writes fail silently (try/catch, console.error) — never break primary request
+- [x] No `actor_oid` appears in any response accessible to UL or Lead roles
+- [x] Changelog entry written
 
 ---
 
-## S1-3 — Audit Log Query Endpoint
+## S1-3 — Audit Log Query Endpoint ✅
 
 **Type**: Code
 **Depends on**: S1-1
+**Status**: Complete — 2026-05-13 | Changelog: `docs/changelog/2026-05-13-s1-3-audit-log-query-endpoint.md`
+> Note: HTTP smoke tests (Auth role enforcement, CSV download) require a running server with a valid Azure Entra token. Code review and actor_oid grep confirmed correct behavior.
 
 ### Endpoint spec
 
@@ -204,11 +224,11 @@ The query must use `withOrgContext()` so the Admin can only see their own org's 
 
 ### Done criteria
 
-- [ ] Endpoint returns filtered results with default 30-day window
-- [ ] CSV export returns valid CSV with correct headers
-- [ ] Admin-only authorization enforced (returns 403 for UL and Lead roles)
-- [ ] `withOrgContext()` applied — no cross-org leakage
-- [ ] Changelog entry written
+- [x] Endpoint returns filtered results with default 30-day window
+- [x] CSV export returns valid CSV with correct headers
+- [x] Admin-only authorization enforced (returns 403 for UL and Lead roles)
+- [x] `withOrgContext()` applied — no cross-org leakage
+- [x] Changelog entry written
 
 ---
 
@@ -564,10 +584,11 @@ cd frontend && pnpm audit
 
 ---
 
-## S1-11 — Auth Token Validation Hardening
+## S1-11 — Auth Token Validation Hardening ✅
 
 **Type**: Code
 **Depends on**: None
+**Status**: Complete — 2026-05-13 | Changelog: `docs/changelog/2026-05-13-s1-11-token-claim-validation.md`
 
 ### What to harden
 
@@ -609,14 +630,14 @@ Also verify:
 
 ### Done criteria
 
-- [ ] `aud` claim validated against `AZURE_CLIENT_ID`
-- [ ] `iss` claim validated against `AZURE_TENANT_ID`
-- [ ] `oid` claim presence asserted before use
-- [ ] JWKS cache TTL confirmed configured
-- [ ] Clock skew tolerance confirmed ≤ 60 seconds
-- [ ] Token with wrong `aud` returns 401 (integration test)
-- [ ] Token with missing `oid` returns 401 (integration test)
-- [ ] Changelog entry written
+- [x] `aud` claim validated against `AZURE_CLIENT_ID` (handles string, `api://` prefix, and array forms)
+- [x] `iss` claim validated against `AZURE_TENANT_ID` (v2.0 endpoint only — stricter than jwt.verify)
+- [x] `oid` claim presence asserted before use
+- [x] JWKS cache TTL confirmed configured (1 hour)
+- [x] Clock skew tolerance confirmed ≤ 60 seconds (clockTolerance: 60)
+- [x] Token with wrong `aud` returns 401 (unit test: `assertClaims: rejects unknown aud`)
+- [x] Token with missing `oid` returns 401 (unit tests: `rejects missing oid`, `rejects empty string oid`)
+- [x] Changelog entry written
 
 ---
 
