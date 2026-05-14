@@ -52,7 +52,7 @@ export function LoginPage({ onSignIn, isLoading }: Props) {
           {isLoading ? "Signing in..." : "Sign in"}
         </OpsButton>
 
-        <div style={{ marginTop: "1.25rem", fontSize: 12, color: "#94a3b8", textAlign: "center" }}>
+        <div style={{ marginTop: "1.25rem", fontSize: 12, color: "#64748b", textAlign: "center" }}>
           v0.9.6
         </div>
       </div>

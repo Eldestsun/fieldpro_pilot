@@ -92,7 +92,7 @@ export function DataTable<T>({
 
     return (
         <div className={cn("overflow-hidden bg-white border border-gray-200 rounded-lg shadow-sm", className)}>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" tabIndex={0}>
                 <table className="w-full border-collapse text-left">
                     <thead>
                         <tr className="bg-gray-50 border-b border-gray-200">
@@ -109,7 +109,7 @@ export function DataTable<T>({
                                     <span className="inline-flex items-center gap-1">
                                         {col.header}
                                         {col.sortable && (
-                                            <span className="text-gray-300 font-normal">
+                                            <span className="text-gray-500 font-normal">
                                                 {sortKey === col.key
                                                     ? (sortDir === "asc" ? "↑" : "↓")
                                                     : "↕"}
