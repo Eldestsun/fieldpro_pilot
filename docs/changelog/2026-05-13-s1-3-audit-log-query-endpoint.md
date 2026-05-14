@@ -1,21 +1,40 @@
 # 2026-05-13 — S1-3 Audit Log Query Endpoint
 
 ## What changed
-- Added `GET /api/admin/audit-log` endpoint to `backend/src/modules/admin/adminRoutes.ts`
-- Endpoint is Admin-only (`requireAnyRole(['Admin'])` via the existing `/admin` guard)
-- Query parameters: `from` (ISO 8601, default 30 days ago), `to` (ISO 8601, default now), `action` (optional filter), `format` (`json`|`csv`, default `json`)
-- Org scoping: `withOrgContext()` + explicit `WHERE org_id = $1` — cross-org leakage is not possible
-- JSON response matches spec shape: `{ entries, total, from, to }`
-- CSV response: `Content-Type: text/csv`, `Content-Disposition: attachment`, headers match JSON fields, JSONB detail serialised as JSON string, quotes escaped per RFC 4180
-- Validation: invalid ISO dates → 400, invalid format → 400, range > 365 days → 400, `from` after `to` → 400
-- Added two DB-layer tests to `tests/canonical/auditLog.test.ts`: org isolation and action filter
-- Imported `withOrgContext` into `adminRoutes.ts`
+- `backend/src/modules/admin/adminRoutes.ts`:
+  - Added `AUDIT_KNOWN_ACTIONS` set (full S1-1 action registry) for filter validation
+  - Completed `GET /admin/audit-log` (partial skeleton was uncommitted):
+    - Auth: `requireAnyRole(['Admin'])` via the existing `/admin` guard — no additional auth code needed
+    - Query params: `from` (ISO date, default 30 days ago), `to` (ISO date, default now), `action` (optional exact-match filter), `format` (`json`|`csv`, default `json`)
+    - Validation: 400 on invalid ISO date, `to < from`, range > 365 days, invalid format; unknown `action` string logs `console.warn` and proceeds
+    - Org scoping: `withOrgContext(orgId, ...)` + explicit `WHERE org_id = $1` — no cross-org leakage possible
+    - Pagination: `LIMIT 1000` on entry rows; parallel `COUNT(*)` returns true `total` (not just page count)
+    - Sort: `occurred_at DESC`
+    - JSON: `{ entries, total, from, to }` — matches spec shape
+    - CSV: `Content-Type: text/csv`, RFC 4180 quoting (CRLF, double-quote escaping), filename `audit-log-{from}-to-{to}.csv` (colons replaced for cross-platform compat), column order matches JSON fields
+
+## actor_oid surface audit (smoke test item 6)
+
+`grep -rn "actor_oid" src/` excluding audit/auth files:
+
+| File | Line(s) | Nature |
+|------|---------|--------|
+| `visitService.ts:113` | `INSERT INTO core.visits` column name | DB write only — not in response body |
+| `adminRoutes.ts:73,92,111,145,170` | `auditWrite({ actor_oid: ... })` | Writes to audit_log; not in response body |
+| `adminRoutes.ts:376,390` | SELECT + CSV header | The audit endpoint itself — Admin-only |
+| `routeRunRoutes.ts:334,525,535` | `auditWrite({ actor_oid: ... })` | Writes to audit_log; not in response body |
+
+**actor_oid appears in API responses exactly once: `GET /admin/audit-log`, Admin role only.**
+
+**Flag (do not fix here — separate audit):** The `detail` JSONB on `assignment.reassign` and `assignment.cancel` records contains `previous_assigned_user_oid` and `new_assigned_user_oid` — worker OIDs stored in the audit log detail column, surfaced to Admins via this endpoint. Intentional for the audit trail but should be explicitly accepted in a follow-up security review.
 
 ## Why
-- S1-3 requirement: Admin users need a compliant audit trail query surface for security review and compliance evidence export (CSV)
-- Org isolation enforced at both application (WHERE clause) and connection (withOrgContext) layers for defense in depth
-- `actor_oid` is surfaced only to Admins — confirmed via grep that no other route handler returns it in a response body
+- S1-3: Admin users need a compliant audit trail query surface for security review and CSV compliance exports
+- `actor_oid` is surfaced only through this Admin-only endpoint — confirmed via grep
+
+## Test baseline
+- 19 passed, 15 failed (34 total) — all 15 failures are pre-existing ISSUE-009 fixture failures, unchanged
 
 ## Files touched
 - `backend/src/modules/admin/adminRoutes.ts`
-- `backend/tests/canonical/auditLog.test.ts`
+- `docs/changelog/2026-05-13-s1-3-audit-log-query-endpoint.md` (this file)
