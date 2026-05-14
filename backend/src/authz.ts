@@ -128,6 +128,11 @@ export function assertClaims(payload: JwtPayload): void {
 
 /** ===== MIDDLEWARES ===== */
 export function requireAuth(req: AuthedRequest, res: Response, next: NextFunction) {
+  // DEV_TOKEN_INJECTION: if devAuthBypass already set req.user + req.roles,
+  // skip JWT validation. This branch is unreachable in production because
+  // devAuthBypass never registers when NODE_ENV==='production'.
+  if (req.user) return next();
+
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
   if (!token) {
