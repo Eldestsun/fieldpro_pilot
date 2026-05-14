@@ -20,6 +20,7 @@
 | S1-10 Dependency Vulnerability Scan | 🔴 Not started | — |
 | S1-11 Auth Token Validation Hardening | ✅ Complete | 2026-05-13 |
 | S1-12 File Upload Path Traversal & Validation | 🔴 Not started | — |
+| S1-13 KMS-Encrypted captured_by_oid on core.visits | 🔴 Not started | — |
 
 ---
 
@@ -693,6 +694,102 @@ function sanitizeFilename(name: string): string {
 - [ ] Rejected upload audit log entries written (no filename in detail)
 - [ ] Integration tests: reject MIME mismatch, reject oversized, reject traversal filename
 - [ ] Changelog entry written
+
+---
+
+## S1-13 — KMS-Encrypted captured_by_oid on core.visits
+
+**Type**: Code (schema + service)
+**Depends on**: None
+**Blocks**: Nothing in Sprint 1; informs S2-1 (NIST SC-13, SC-28)
+
+### Background
+
+`core.visits.captured_by_oid` currently holds the plaintext Azure Entra OID of
+the field worker who made the visit. The architectural deterrent today is the
+access trail — reaching this column requires IT-provisioned DB access or Entra
+access, both of which are themselves logged. This task converts that deterrent
+into a structural prevention by encrypting the column at the application layer
+using a KMS-held key that IT controls.
+
+**After S1-13:**
+- `captured_by_oid` is stored as ciphertext in the database
+- The plaintext OID is never visible at the DB layer to a reader without explicit
+  KMS decrypt permission
+- Decryption requires a formal IT key-release process that is itself logged
+  outside BASELINE
+- This converts "DBA with read access can reconstruct patterns" from a
+  deterrent-only mitigation into a structural impossibility without an
+  IT-logged key request
+
+### Schema change
+
+Add two columns to `core.visits`:
+
+```sql
+ALTER TABLE core.visits
+  ADD COLUMN captured_by_oid_ciphertext BYTEA,
+  ADD COLUMN captured_by_oid_key_id     TEXT;
+-- captured_by_oid_ciphertext: the AES-256-GCM encrypted OID
+-- captured_by_oid_key_id:     which KMS key version was used (supports rotation)
+```
+
+- Existing plaintext values: encrypt and write to the new column in the same
+  migration transaction.
+- The plaintext `captured_by_oid` column is **not** dropped in this task. Drop
+  it in a follow-up migration after one release cycle of dual-write. Document
+  the dual-write period clearly in the migration file.
+
+### Code change
+
+**`backend/src/lib/oidCipher.ts`** (new):
+
+```typescript
+// Dev: uses DEV_OID_KEY env var with AES-256-GCM.
+// Prod: thin adapter interface — plug in Azure Key Vault or AWS KMS
+//       once the hosting decision is made (S3-1). Stub the prod adapter here;
+//       founder configures the real KMS integration post-S3-1.
+
+export async function encryptOid(oid: string): Promise<{ ciphertext: Buffer; keyId: string }>;
+export async function decryptOid(ciphertext: Buffer, keyId: string): Promise<string>;
+```
+
+- For local/dev: static key from `DEV_OID_KEY` env var. Document clearly in
+  the file header that this is dev-only and that production requires a real KMS.
+- For prod: the adapter interface accepts a `KmsProvider` so the hosting
+  platform plugs in without further changes to call sites.
+
+**`backend/src/domains/visit/visitService.ts`**:
+- Update `ensureVisitForRouteRunStop` to call `encryptOid(actorOid)` before
+  INSERT and write `captured_by_oid_ciphertext` and `captured_by_oid_key_id`.
+
+**Any reader of `captured_by_oid`**:
+- Update to call `decryptOid(ciphertext, keyId)` instead of reading plaintext.
+- Every `decryptOid` call must write an audit log entry:
+  `action: 'admin.oid_decrypt'`, `resource_id: visit_id`.
+  This is the trail that proves the structural control is working.
+
+### Done criteria
+
+- [ ] `captured_by_oid_ciphertext` and `captured_by_oid_key_id` columns exist on `core.visits`
+- [ ] All existing visits have ciphertext populated (migration backfill)
+- [ ] New visit inserts write ciphertext, not plaintext
+- [ ] `decryptOid()` requires the KMS key — missing key throws, wrong key throws
+- [ ] `admin.oid_decrypt` audit entry written on every decrypt call
+- [ ] Dev environment works with `DEV_OID_KEY` static key
+- [ ] Prod KMS adapter stubbed with clear TODO for hosting decision
+- [ ] Unit tests: encrypt → decrypt roundtrip, missing key error, wrong key error
+- [ ] Changelog entry written
+
+### Critical constraints
+
+- **Labor safety**: this strengthens the existing constraint — no worker identity
+  is added anywhere new. The ciphertext column replaces the plaintext column
+  for the same data.
+- **Do not drop the plaintext column in this task** — that is a separate
+  migration after a dual-write release cycle.
+- **No change to any surface visible to UL or Lead roles.** Those views never
+  showed `captured_by_oid` and do not show it after this task.
 
 ---
 

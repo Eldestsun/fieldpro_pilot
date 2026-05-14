@@ -3,7 +3,7 @@
 > Orchestration layer for the Security Hardening & Procurement Compliance track.
 > Based on: `BASELINE_Security_Hardening_Plan.docx` + `BASELINE_Gap_Analysis.docx`
 > Prerequisite: Refactor (Tiers 1–8) and Refinement (R1–R10) tracks complete or stable.
-> Last updated: 2026-05-12
+> Last updated: 2026-05-13
 
 ---
 
@@ -29,9 +29,9 @@ Sprints 1 and 2 are agent-executable. Sprint 3 requires the founder for infrastr
 | ID | Name | Type | Owner | Depends On | Status |
 |----|------|------|-------|------------|--------|
 | **Sprint 1 — Code Gaps** | | | | | |
-| S1-1 | Audit Log Table + Append-Only Middleware | Code | Agent | None | 🔴 Not started |
-| S1-2 | Wire Audit Writes: Login, Assignment, Export, Admin Config | Code | Agent | S1-1 | 🔴 Not started |
-| S1-3 | GET /api/admin/audit-log — Date Filter + CSV Export | Code | Agent | S1-1 | 🔴 Not started |
+| S1-1 | Audit Log Table + Append-Only Middleware | Code | Agent | None | 🟢 Done 2026-05-13 |
+| S1-2 | Wire Audit Writes: Login, Assignment, Export, Admin Config | Code | Agent | S1-1 | 🟢 Done 2026-05-13 |
+| S1-3 | GET /api/admin/audit-log — Date Filter + CSV Export | Code | Agent | S1-1 | 🟢 Done 2026-05-13 |
 | S1-4 | Export-and-Delete Endpoint with Confirmation Token | Code | Agent | None | 🔴 Not started |
 | S1-5 | OpenAPI 3.0 Spec Generated from Existing Routes | Code | Agent | None | 🔴 Not started |
 | S1-6 | SFTP Export Writer — Nightly CSV/JSON Canonical Data | Code | Agent | None | 🔴 Not started |
@@ -39,8 +39,9 @@ Sprints 1 and 2 are agent-executable. Sprint 3 requires the founder for infrastr
 | S1-8 | axe-core Accessibility Audit — All 6 Surfaces | Audit | Agent | None | 🔴 Not started |
 | S1-9 | Remediate axe-core Findings (Contrast, ARIA, Focus Order) | Code | Agent | S1-8 | 🔴 Not started |
 | S1-10 | Dependency Vulnerability Scan (`pnpm audit`) | Code/Ops | Agent | None | 🔴 Not started |
-| S1-11 | Auth Token Claim Validation (aud, iss, exp, oid) | Code | Agent | None | 🔴 Not started |
+| S1-11 | Auth Token Claim Validation (aud, iss, exp, oid) | Code | Agent | None | 🟢 Done 2026-05-13 |
 | S1-12 | File Upload Path Traversal & Validation Hardening | Code | Agent | None | 🔴 Not started |
+| S1-13 | KMS-Encrypted captured_by_oid on core.visits | Code | Agent | None | 🔴 Not started |
 | **Sprint 2 — Policy Documents** | | | | | |
 | S2-1 | NIST SP 800-53 Control Mapping Document | Document | Agent | Hosting decision | 🔴 Not started |
 | S2-2 | WA OCIO 141.10 Alignment Statement | Document | Agent | Hosting decision | 🔴 Not started |
@@ -77,6 +78,7 @@ S1-5    (independent — OpenAPI spec)
 S1-6    (independent — SFTP export)
 S1-7    (independent — EAM bridge table)
 S1-8 ──► S1-9 (remediate after audit findings)
+S1-13   (independent — KMS OID encryption; prod adapter needs S3-1 hosting decision)
 
 Founder: Hosting decision
          │
@@ -131,6 +133,11 @@ S2 complete ──► S3-5 ──► S3-7
 > No security hardening task may introduce worker identity into the intelligence layer.
 > The `audit_log` records `actor_oid` (Azure Entra OID) for security purposes at the security-tier access level.
 > It must **not** be surfaced in operational dashboards, risk maps, or any view accessible to supervisors or dispatchers.
+
+**Admin access roster and audit log use-limitation policy:**
+See `planning/security/ADMIN_ACCESS_POLICY.md` for the authoritative statement of
+who holds Admin role, why, and why the audit log cannot be misused for worker
+surveillance. This document is the source of truth for S2-1, S2-5, and S2-7.
 
 ---
 
