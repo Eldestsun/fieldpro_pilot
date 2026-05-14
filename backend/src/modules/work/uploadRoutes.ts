@@ -1,6 +1,13 @@
 import { Router, Request, Response } from "express";
 import { requireAuth, requireAnyRole } from "../../authz";
 import { getPresignedUploadUrl } from "../../s3Client";
+import { auditWrite, reqOrgId } from "../../middleware/auditWrite";
+import {
+    ALLOWED_MIME_TYPES,
+    validateFilename,
+    generateStorageKey,
+    UploadRejectedError,
+} from "../../middleware/uploadValidation";
 
 export const uploadRoutes = Router();
 
@@ -25,22 +32,43 @@ uploadRoutes.post("/uploads/signed-url", requireAuth, requireAnyRole(["UL", "Lea
             return res.status(400).json({ error: `Invalid kind. Must be one of: ${validKinds.join(", ")}` });
         }
 
-        // 2. Build object key
-        // Pattern: route-run-stops/{id}/{kind}/{timestamp}-{safeFilename}
-        const timestamp = new Date().toISOString().replace(/[-:.]/g, "");
-        const safeFilename = filename
-            .toLowerCase()
-            .replace(/[^a-z0-9.]/g, "-")
-            .replace(/-+/g, "-");
-        const objectKey = `route-run-stops/${route_run_stop_id}/${kind}/${timestamp}-${safeFilename}`;
+        // 2. Validate filename (no path traversal)
+        try {
+            validateFilename(filename);
+        } catch (e) {
+            if (e instanceof UploadRejectedError) {
+                auditWrite({
+                    org_id: reqOrgId(req),
+                    actor_oid: (req as any).user?.oid ?? "unknown",
+                    action: "upload.rejected",
+                    detail: { reason: e.reason },
+                });
+                return res.status(400).json({ error: "Invalid filename" });
+            }
+            throw e;
+        }
 
-        // 3. Generate signed URL
+        // 3. Validate content type against whitelist
+        if (!ALLOWED_MIME_TYPES.has(contentType)) {
+            auditWrite({
+                org_id: reqOrgId(req),
+                actor_oid: (req as any).user?.oid ?? "unknown",
+                action: "upload.rejected",
+                detail: { reason: "mime_mismatch" },
+            });
+            return res.status(400).json({ error: "Content type not allowed" });
+        }
+
+        // 4. Build server-generated object key (never derived from client filename)
+        const objectKey = generateStorageKey(route_run_stop_id, kind, contentType);
+
+        // 5. Generate signed URL
         const uploadUrl = await getPresignedUploadUrl({
             objectKey,
             contentType,
         });
 
-        // 4. Return
+        // 6. Return
         return res.json({
             ok: true,
             uploadUrl,

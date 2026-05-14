@@ -1,6 +1,7 @@
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import "multer"; // Import to ensure Express.Multer namespace is available
+import { generateStorageKey, validateMimeBytes } from "./middleware/uploadValidation";
 
 const s3Client = new S3Client({
     region: process.env.MINIO_REGION || "us-east-1",
@@ -67,17 +68,9 @@ export async function uploadStopPhotos(
     const results: { s3Key: string }[] = [];
 
     for (const file of files) {
-        // Generate key: route-run-stops/{routeRunStopId}/{kind}/{timestamp}-{random}.{ext}
-        // Updated to match signed-url pattern and include kind
-        const timestamp = new Date().getTime();
-        const random = Math.floor(Math.random() * 10000);
-        // Sanitize original name or basic ext
-        const safeName = file.originalname.replace(/[^a-zA-Z0-9.]/g, "-");
-
-        // Use consistent path structure with signed-url flow
-        const key = `route-run-stops/${routeRunStopId}/${kind}/${timestamp}-${random}-${safeName}`;
-
-        await uploadFileToS3(key, file.buffer, file.mimetype);
+        const detectedMime = validateMimeBytes(file);
+        const key = generateStorageKey(routeRunStopId, kind, detectedMime);
+        await uploadFileToS3(key, file.buffer, detectedMime);
         results.push({ s3Key: key });
     }
 

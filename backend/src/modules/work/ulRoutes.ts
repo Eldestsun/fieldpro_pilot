@@ -2,12 +2,20 @@ import { Router, Response } from "express";
 import { requireAuth, requireAnyRole } from "../../authz";
 import { pool } from "../../db";
 import { loadRouteRunById } from "../../domains/routeRun/loaders/loadRouteRunById";
-import multer from "multer";
+import multer, { MulterError } from "multer";
 import { uploadStopPhotos } from "../../s3Client";
 import { createStopPhotos, listStopPhotosByRouteRunStop } from "../../domains/routeRunStop/stopPhotosService";
+import { auditWrite, reqOrgId } from "../../middleware/auditWrite";
+import {
+    MAX_FILE_BYTES,
+    validateMimeBytes,
+    UploadRejectedError,
+} from "../../middleware/uploadValidation";
 
-const upload = multer({ storage: multer.memoryStorage() });
-
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_FILE_BYTES, files: 10 },
+});
 
 export const ulRoutes = Router();
 
@@ -66,14 +74,32 @@ ulRoutes.post(
     "/route-runs/:runId/stops/:stopId/photos",
     requireAuth,
     requireAnyRole(["UL", "Lead", "Admin"]),
-    upload.array("photos", 10), // Allow up to 10 photos
     async (req: any, res: Response) => {
+        // Run multer in a promise so MulterError (LIMIT_FILE_SIZE) returns 413
+        const multerErr = await new Promise<MulterError | null>((resolve) => {
+            upload.array("photos", 10)(req, res as any, (err) => {
+                resolve(err instanceof MulterError ? err : null);
+            });
+        });
+
+        if (multerErr) {
+            if (multerErr.code === "LIMIT_FILE_SIZE") {
+                auditWrite({
+                    org_id: reqOrgId(req),
+                    actor_oid: req.user?.oid ?? "unknown",
+                    action: "upload.rejected",
+                    detail: { reason: "size_exceeded" },
+                });
+                return res.status(413).json({ error: "File exceeds 25 MB limit" });
+            }
+            return res.status(400).json({ error: multerErr.message });
+        }
+
         try {
             const { runId, stopId } = req.params;
             const routeRunId = Number(runId);
             const stopRunId = Number(stopId);
 
-            // Validate IDs
             if (isNaN(routeRunId) || isNaN(stopRunId)) {
                 return res.status(400).json({ error: "Invalid IDs" });
             }
@@ -88,7 +114,25 @@ ulRoutes.post(
                 return res.status(401).json({ error: "User OID missing" });
             }
 
-            // 1. Upload to S3
+            // Per-file MIME validation before any S3 writes
+            for (const file of files) {
+                try {
+                    validateMimeBytes(file);
+                } catch (e) {
+                    if (e instanceof UploadRejectedError) {
+                        auditWrite({
+                            org_id: reqOrgId(req),
+                            actor_oid: userOid,
+                            action: "upload.rejected",
+                            detail: { reason: e.reason },
+                        });
+                        return res.status(400).json({ error: "File type not allowed" });
+                    }
+                    throw e;
+                }
+            }
+
+            // 1. Upload to S3 (generateStorageKey + detectedMime handled in uploadStopPhotos)
             const kind = req.body.kind || "completion";
             const uploadedKeys = await uploadStopPhotos(files, {
                 routeRunId,

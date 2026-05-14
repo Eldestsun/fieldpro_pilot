@@ -311,6 +311,7 @@ const AUDIT_KNOWN_ACTIONS = new Set([
   'assignment.create', 'assignment.reassign', 'assignment.cancel',
   'export.data_export', 'export.delete_confirm', 'export.delete_execute',
   'admin.config_change', 'admin.user_role_change', 'admin.stop_edit', 'admin.route_edit',
+  'upload.rejected',
 ]);
 
 adminRoutes.get("/admin/audit-log", async (req: Request, res: Response) => {
