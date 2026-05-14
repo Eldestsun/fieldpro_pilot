@@ -34,10 +34,10 @@ Sprints 1 and 2 are agent-executable. Sprint 3 requires the founder for infrastr
 | S1-3 | GET /api/admin/audit-log — Date Filter + CSV Export | Code | Agent | S1-1 | 🟢 Done 2026-05-13 |
 | S1-4 | Export-and-Delete Endpoint with Confirmation Token | Code | Agent | None | 🟢 Done 2026-05-13 |
 | S1-5 | OpenAPI 3.0 Spec Generated from Existing Routes | Code | Agent | None | 🟢 Done 2026-05-13 |
-| S1-6 | SFTP Export Writer — Nightly CSV/JSON Canonical Data | Code | Agent | None | 🔴 Not started |
+| S1-6 | SFTP Export Writer — Nightly CSV/JSON Canonical Data | Code | Agent | None | 🟢 Done 2026-05-13 |
 | S1-7 | EAM Bridge Route Log — Table + Populate Script | Code | Agent | None | 🟢 Done 2026-05-13 |
-| S1-8 | axe-core Accessibility Audit — All 6 Surfaces | Audit | Agent | None | 🔴 Not started |
-| S1-9 | Remediate axe-core Findings (Contrast, ARIA, Focus Order) | Code | Agent | S1-8 | 🔴 Not started |
+| S1-8 | axe-core Accessibility Audit — All 6 Surfaces | Audit | Agent | None | 🟢 Done 2026-05-14 |
+| S1-9 | Remediate axe-core Findings (Contrast, ARIA, Focus Order) | Code | Agent | S1-8 | 🟢 Done 2026-05-14 |
 | S1-10 | Dependency Vulnerability Scan (`pnpm audit`) | Code/Ops | Agent | None | 🟢 Done 2026-05-13 |
 | S1-11 | Auth Token Claim Validation (aud, iss, exp, oid) | Code | Agent | None | 🟢 Done 2026-05-13 |
 | S1-12 | File Upload Path Traversal & Validation Hardening | Code | Agent | None | 🟢 Done 2026-05-13 |
@@ -51,7 +51,7 @@ Sprints 1 and 2 are agent-executable. Sprint 3 requires the founder for infrastr
 | S2-6 | Log Retention Policy (>= 1 Year) | Document | Agent | None | 🔴 Not started |
 | S2-7 | Data Use Limitation Policy (WA Public-Sector Privacy) | Document | Agent | None | 🔴 Not started |
 | S2-8 | ArcGIS Integration Roadmap Narrative (TPRA) | Document | Agent | None | 🔴 Not started |
-| S2-9 | WCAG 2.1 AA Conformance Statement | Document | Agent | S1-8 + S1-9 | 🔴 Not started |
+| S2-9 | WCAG 2.1 AA Conformance Statement | Document | Agent | S1-8 + S1-9 + S2-9-prereqs | 🔴 Not started |
 | S2-10 | TPRA Questionnaire Answers + Integration Options Matrix | Document | Agent | All S2 docs | 🔴 Not started |
 | **Sprint 3 — Founder Tasks & Final Validation** | | | | | |
 | S3-1 | Select and Configure Hosting Platform | Infra | Founder | — blocks S2 | 🔴 Not started |
@@ -84,13 +84,27 @@ Founder: Hosting decision
          │
          └──► S2-1, S2-2, S2-3, S2-4 (all require hosting context)
 S2-5, S2-6, S2-7, S2-8  (independent of hosting)
-S1-9 ──► S2-9 (conformance statement requires remediation done)
+S1-9 ──► S2-9-prereqs ──► S2-9 (conformance statement requires prereqs resolved)
 All S2 ──► S2-10 (TPRA master doc)
 
 S3-1 ──► S3-2, S3-3
 S1-9 ──► S3-4
 S2 complete ──► S3-5 ──► S3-7
 ```
+
+---
+
+## S2-9 Prerequisites (must resolve before conformance statement can be written)
+
+Three items were deferred out of S1-9 scope. They must be completed before S2-9 is dispatched — a conformance statement that omits known gaps is a false claim.
+
+| # | Item | Type | Owner | Status |
+|---|------|------|-------|--------|
+| 1 | **Modal focus management JS** — add `useEffect`-based focus trap to all 5 dialog components (ConfirmDialog, ImagePreviewModal, ConflictResolutionModal, Safety Modal, Infra Modal): move focus to first interactive element on open, contain Tab, return focus to trigger on close | Code | Agent | 🔴 Open |
+| 2 | **Photo remove button touch target** — the × overlay on photo thumbnails is 20×20px (below WCAG 2.5.5 44×44px). Expanding it requires a product/design decision: options are (a) remove the button and replace with a swipe gesture, (b) show a separate remove step below the thumbnail strip, or (c) accept the AAA deviation and document it explicitly in the conformance statement | Product decision | Founder | 🔴 Open |
+| 3 | **VoiceOver / TalkBack manual run** — already tracked as S3-4 (Founder task) | QA | Founder | 🔴 Open (S3-4) |
+
+**Reference**: `docs/security/axe-audit-2026-05-14.md` → Part C Manual Audit section for full context on each item.
 
 ---
 
@@ -102,7 +116,7 @@ S2 complete ──► S3-5 ──► S3-7
 - [x] OpenAPI 3.0 spec published and accessible
 - [ ] SFTP export writer deployed and tested against staging
 - [x] eam_bridge_route_log table populated on schedule
-- [ ] axe-core findings remediated — no WCAG AA violations in automated scan
+- [x] axe-core findings remediated — no WCAG AA violations in automated scan (S1-9 complete 2026-05-14)
 
 **Documents**
 - [ ] NIST SP 800-53 control mapping — reviewed and signed off
