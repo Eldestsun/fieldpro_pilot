@@ -19,4 +19,5 @@ export const AUDIT_KNOWN_ACTIONS: ReadonlySet<string> = new Set([
   'admin.route_edit',
   'upload.rejected',
   'admin.oid_decrypt', // S1-13: logged on every captured_by_oid decryption
+  'auth.dev_bypass',  // DEV_TOKEN_INJECTION: logged on every dev-bypass use
 ]);

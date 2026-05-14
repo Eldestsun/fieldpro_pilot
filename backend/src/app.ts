@@ -15,6 +15,7 @@ import { exportDeleteRoutes } from "./modules/admin/exportDeleteRoutes";
 import { routeOverrideRoutes } from "./modules/routeOverrides/routeOverrideRoutes";
 import { opsRoutes } from "./modules/ops/opsRoutes";
 import { specRouter } from "./openapi/specRouter";
+import { createDevAuthBypass } from "./middleware/devAuthBypass";
 
 export const app = express();
 
@@ -28,6 +29,12 @@ app.use(
     })
 );
 app.use(express.json());
+
+/** ── Dev auth bypass (dev/test only — never active in production) ────── */
+if (process.env.NODE_ENV !== 'production') {
+  const devBypass = createDevAuthBypass();
+  if (devBypass) app.use(devBypass);
+}
 
 /** ── Mount Routes ─────────────────────────────────────────────────────── */
 app.use("/api", healthRoutes);

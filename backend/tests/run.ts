@@ -12,6 +12,7 @@ import "./canonical/uploadValidation.test";
 import "./canonical/oidCipher.test";
 import "./canonical/exportDelete.test";
 import "./canonical/sftpExport.test";
+import "./canonical/devAuthBypass.test";
 
 (async () => {
   console.log("canonical integration tests — real local DB, no mocking\n");
