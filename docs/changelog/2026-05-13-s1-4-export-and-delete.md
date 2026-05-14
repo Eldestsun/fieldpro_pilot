@@ -1,4 +1,4 @@
-# 2026-05-13 — S1-4: Export-and-Delete Endpoint with Confirmation Token
+# 2026-05-13 — S1-4 Export-and-Delete Endpoint with Confirmation Token
 
 ## What changed
 

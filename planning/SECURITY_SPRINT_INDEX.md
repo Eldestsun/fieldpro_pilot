@@ -32,16 +32,16 @@ Sprints 1 and 2 are agent-executable. Sprint 3 requires the founder for infrastr
 | S1-1 | Audit Log Table + Append-Only Middleware | Code | Agent | None | 🟢 Done 2026-05-13 |
 | S1-2 | Wire Audit Writes: Login, Assignment, Export, Admin Config | Code | Agent | S1-1 | 🟢 Done 2026-05-13 |
 | S1-3 | GET /api/admin/audit-log — Date Filter + CSV Export | Code | Agent | S1-1 | 🟢 Done 2026-05-13 |
-| S1-4 | Export-and-Delete Endpoint with Confirmation Token | Code | Agent | None | 🔴 Not started |
-| S1-5 | OpenAPI 3.0 Spec Generated from Existing Routes | Code | Agent | None | 🔴 Not started |
+| S1-4 | Export-and-Delete Endpoint with Confirmation Token | Code | Agent | None | 🟢 Done 2026-05-13 |
+| S1-5 | OpenAPI 3.0 Spec Generated from Existing Routes | Code | Agent | None | 🟢 Done 2026-05-13 |
 | S1-6 | SFTP Export Writer — Nightly CSV/JSON Canonical Data | Code | Agent | None | 🔴 Not started |
-| S1-7 | EAM Bridge Route Log — Table + Populate Script | Code | Agent | None | 🔴 Not started |
+| S1-7 | EAM Bridge Route Log — Table + Populate Script | Code | Agent | None | 🟢 Done 2026-05-13 |
 | S1-8 | axe-core Accessibility Audit — All 6 Surfaces | Audit | Agent | None | 🔴 Not started |
 | S1-9 | Remediate axe-core Findings (Contrast, ARIA, Focus Order) | Code | Agent | S1-8 | 🔴 Not started |
 | S1-10 | Dependency Vulnerability Scan (`pnpm audit`) | Code/Ops | Agent | None | 🟢 Done 2026-05-13 |
 | S1-11 | Auth Token Claim Validation (aud, iss, exp, oid) | Code | Agent | None | 🟢 Done 2026-05-13 |
 | S1-12 | File Upload Path Traversal & Validation Hardening | Code | Agent | None | 🟢 Done 2026-05-13 |
-| S1-13 | KMS-Encrypted captured_by_oid on core.visits | Code | Agent | None | 🔴 Not started |
+| S1-13 | KMS-Encrypted captured_by_oid on core.visits | Code | Agent | None | 🟢 Done 2026-05-13 |
 | **Sprint 2 — Policy Documents** | | | | | |
 | S2-1 | NIST SP 800-53 Control Mapping Document | Document | Agent | Hosting decision | 🔴 Not started |
 | S2-2 | WA OCIO 141.10 Alignment Statement | Document | Agent | Hosting decision | 🔴 Not started |
@@ -97,11 +97,11 @@ S2 complete ──► S3-5 ──► S3-7
 ## TPRA-Ready Checklist
 
 **Code**
-- [ ] audit_log table in production, all Admin actions writing to it
-- [ ] Export-and-delete endpoint functional and tested
-- [ ] OpenAPI 3.0 spec published and accessible
+- [x] audit_log table in production, all Admin actions writing to it
+- [x] Export-and-delete endpoint functional and tested
+- [x] OpenAPI 3.0 spec published and accessible
 - [ ] SFTP export writer deployed and tested against staging
-- [ ] eam_bridge_route_log table populated on schedule
+- [x] eam_bridge_route_log table populated on schedule
 - [ ] axe-core findings remediated — no WCAG AA violations in automated scan
 
 **Documents**
