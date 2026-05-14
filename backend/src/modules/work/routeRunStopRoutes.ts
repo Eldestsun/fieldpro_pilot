@@ -15,6 +15,11 @@ import { startRouteRunStopInternal } from "../../domains/routeRun/operations/sta
 
 export const routeRunStopRoutes = Router();
 
+// POST /route-run-stops/:id/start is also registered in routeRunRoutes.ts (Lead/Admin variant
+// that allows pending/planned/assigned → in_progress and is idempotent on in_progress).
+// This UL-only variant allows only pending → in_progress and returns 409 if already started.
+// The routeRunRoutes version takes precedence (registered first in app.ts).
+// @openapi JSDoc is on the routeRunRoutes.ts version; coverage check passes via that entry.
 routeRunStopRoutes.post(
     "/route-run-stops/:id/start",
     requireAuth,
@@ -48,7 +53,101 @@ routeRunStopRoutes.post(
     }
 );
 
-/** ── Skip with Hazard: POST /api/route-run-stops/:id/skip-with-hazard ── */
+/**
+ * @openapi
+ * /route-run-stops/{id}/skip-with-hazard:
+ *   post:
+ *     summary: Skip a stop due to a safety hazard
+ *     description: >
+ *       Marks the stop as skipped, creates a hazard record, and closes the visit
+ *       with outcome=skipped. Requires a safety photo to have been uploaded prior
+ *       to calling this endpoint (validated server-side).
+ *     tags: [RouteRunStops]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [UL, Lead, Admin]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *         description: Route run stop ID
+ *         example: "7"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [hazard_types]
+ *             properties:
+ *               hazard_types:
+ *                 type: array
+ *                 items: { type: string }
+ *                 minItems: 1
+ *                 description: One or more safety hazard types
+ *                 example: ["debris", "flooding"]
+ *               notes:
+ *                 type: string
+ *                 description: Optional notes
+ *               severity:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 5
+ *                 description: Hazard severity (1-5)
+ *                 example: 3
+ *               safety_photo_key:
+ *                 type: string
+ *                 description: S3 key of the safety photo
+ *               photo_keys:
+ *                 type: array
+ *                 items: { type: string }
+ *                 description: Additional photo keys
+ *               safety:
+ *                 type: object
+ *                 description: >
+ *                   Nested form (alternative to flat fields):
+ *                   { hazard_types, notes, severity, safety_photo_key }
+ *           example:
+ *             hazard_types: ["debris"]
+ *             severity: 3
+ *             notes: "Large debris blocking shelter entrance"
+ *     responses:
+ *       200:
+ *         description: Stop skipped successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 route_run_stop: { type: object }
+ *                 route_run: { type: object }
+ *             example:
+ *               ok: true
+ *               route_run_stop: { id: 7, status: skipped }
+ *               route_run: { id: 42, status: in_progress }
+ *       400:
+ *         description: Validation error — safety photo missing or no hazard types
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *             example: { error: "A safety photo is required to skip a stop" }
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       409:
+ *         description: Stop already skipped
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *             example: { error: "ALREADY_SKIPPED" }
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 routeRunStopRoutes.post(
     "/route-run-stops/:id/skip-with-hazard",
     requireAuth,
@@ -95,8 +194,8 @@ routeRunStopRoutes.post(
 
             // 2. Load route_run_stop and validate status
             const lookupQuery = `
-                SELECT status, stop_id, route_run_id 
-                FROM route_run_stops 
+                SELECT status, stop_id, route_run_id
+                FROM route_run_stops
                 WHERE id = $1
     `;
             const lookupRes = await client.query(lookupQuery, [id]);
@@ -196,7 +295,119 @@ routeRunStopRoutes.post(
     }
 );
 
-/** ── Complete Stop: POST /api/route-run-stops/:route_run_stop_id/complete ── */
+/**
+ * @openapi
+ * /route-run-stops/{route_run_stop_id}/complete:
+ *   post:
+ *     summary: Complete a route run stop
+ *     description: >
+ *       Marks the stop as done, records a clean log entry, and emits canonical
+ *       observations. Requires at least one photo to have been uploaded and at
+ *       least one cleaning task checked (or spotCheck=true).
+ *     tags: [RouteRunStops]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [UL, Lead, Admin]
+ *     parameters:
+ *       - in: path
+ *         name: route_run_stop_id
+ *         required: true
+ *         schema: { type: string }
+ *         description: Route run stop ID
+ *         example: "7"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               duration_minutes:
+ *                 type: number
+ *                 description: Time spent at the stop in minutes
+ *                 example: 12
+ *               picked_up_litter:
+ *                 type: boolean
+ *                 default: false
+ *               emptied_trash:
+ *                 type: boolean
+ *                 default: false
+ *               washed_shelter:
+ *                 type: boolean
+ *                 default: false
+ *               washed_pad:
+ *                 type: boolean
+ *                 default: false
+ *               washed_can:
+ *                 type: boolean
+ *                 default: false
+ *               trashVolume:
+ *                 type: integer
+ *                 minimum: 0
+ *                 maximum: 4
+ *                 description: Trash volume 0-4 (required if any cleaning task is true)
+ *                 example: 2
+ *               spotCheck:
+ *                 type: boolean
+ *                 default: false
+ *                 description: True if this was an inspection-only visit with no cleaning performed
+ *               photo_keys:
+ *                 type: array
+ *                 items: { type: string }
+ *                 description: S3 keys of completion photos (legacy — prefer uploading via /uploads/signed-url)
+ *               infraIssues:
+ *                 type: array
+ *                 items: { type: object }
+ *                 description: Infrastructure issues observed at the stop
+ *               safety:
+ *                 type: object
+ *                 description: Optional safety observation (hazard types, severity, notes)
+ *                 properties:
+ *                   hazard_types: { type: array, items: { type: string } }
+ *                   severity: { type: integer }
+ *                   notes: { type: string }
+ *                   safety_photo_key: { type: string }
+ *           example:
+ *             duration_minutes: 12
+ *             picked_up_litter: true
+ *             emptied_trash: true
+ *             trashVolume: 2
+ *     responses:
+ *       200:
+ *         description: Stop completed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 clean_log_id: { type: integer }
+ *                 route_run: { type: object }
+ *             example:
+ *               ok: true
+ *               clean_log_id: 55
+ *               route_run: { id: 42, status: in_progress }
+ *       400:
+ *         description: Validation error — missing photo, missing cleaning task, or invalid trashVolume
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *             example: { error: "After photo is required to complete a stop" }
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       409:
+ *         description: Stop is already complete
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *             example: { error: "ALREADY_COMPLETE" }
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 routeRunStopRoutes.post(
     "/route-run-stops/:route_run_stop_id/complete",
     requireAuth,

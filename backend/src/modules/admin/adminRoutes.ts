@@ -4,6 +4,7 @@ import { pool, withOrgContext } from "../../db";
 import * as poolService from "../../services/adminPoolService";
 import * as stopService from "../../services/adminStopService";
 import { auditWrite, reqOrgId } from "../../middleware/auditWrite";
+import { AUDIT_KNOWN_ACTIONS } from "../../middleware/auditActions";
 
 export const adminRoutes = Router();
 
@@ -16,6 +17,39 @@ const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
 adminRoutes.use("/admin", requireAuth, requireAdmin);
 
 /** ── Dashboard ────────────────────────────────────────────────────────── */
+/**
+ * @openapi
+ * /admin/dashboard:
+ *   get:
+ *     summary: Admin dashboard — today's operational metrics
+ *     tags: [Admin]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     responses:
+ *       200:
+ *         description: Today's metrics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 total_stops: { type: integer }
+ *                 total_pools: { type: integer }
+ *                 active_runs_today: { type: integer }
+ *                 completed_runs_today: { type: integer }
+ *             example:
+ *               total_stops: 450
+ *               total_pools: 12
+ *               active_runs_today: 3
+ *               completed_runs_today: 8
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 adminRoutes.get("/admin/dashboard", async (_req: Request, res: Response) => {
   try {
     const client = await pool.connect();
@@ -25,15 +59,15 @@ adminRoutes.get("/admin/dashboard", async (_req: Request, res: Response) => {
 
       // Active runs: planned or in_progress today
       const activeRunsRes = await client.query(`
-                SELECT COUNT(*) FROM route_runs 
-                WHERE run_date = CURRENT_DATE 
+                SELECT COUNT(*) FROM route_runs
+                WHERE run_date = CURRENT_DATE
                 AND status IN ('planned', 'in_progress')
             `);
 
       // Completed runs: done today
       const completedRunsRes = await client.query(`
-                SELECT COUNT(*) FROM route_runs 
-                WHERE run_date = CURRENT_DATE 
+                SELECT COUNT(*) FROM route_runs
+                WHERE run_date = CURRENT_DATE
                 AND status IN ('completed', 'finished')
             `);
 
@@ -53,6 +87,38 @@ adminRoutes.get("/admin/dashboard", async (_req: Request, res: Response) => {
 });
 
 /** ── Pools ────────────────────────────────────────────────────────────── */
+/**
+ * @openapi
+ * /admin/pools:
+ *   get:
+ *     summary: List all route pools (admin)
+ *     tags: [Admin]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     responses:
+ *       200:
+ *         description: List of pools
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 pools:
+ *                   type: array
+ *                   items: { type: object }
+ *             example:
+ *               pools:
+ *                 - id: POOL-001
+ *                   label: "North Sector"
+ *                   active: true
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 adminRoutes.get("/admin/pools", async (_req: Request, res: Response) => {
   try {
     const pools = await poolService.getAllPools();
@@ -62,6 +128,48 @@ adminRoutes.get("/admin/pools", async (_req: Request, res: Response) => {
   }
 });
 
+/**
+ * @openapi
+ * /admin/pools:
+ *   post:
+ *     summary: Create a new route pool
+ *     tags: [Admin]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     x-audit-action: admin.config_change
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [id, label]
+ *             properties:
+ *               id:
+ *                 type: string
+ *                 example: POOL-013
+ *               label:
+ *                 type: string
+ *                 example: "South Sector"
+ *     responses:
+ *       200:
+ *         description: Pool created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 pool: { type: object }
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 adminRoutes.post("/admin/pools", async (req: Request, res: Response) => {
   try {
     const { id, label } = req.body;
@@ -84,6 +192,49 @@ adminRoutes.post("/admin/pools", async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * @openapi
+ * /admin/pools/{id}:
+ *   patch:
+ *     summary: Update a route pool
+ *     tags: [Admin]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     x-audit-action: admin.config_change
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *         example: POOL-001
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               label: { type: string }
+ *               active: { type: boolean }
+ *     responses:
+ *       200:
+ *         description: Pool updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 pool: { type: object }
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 adminRoutes.patch("/admin/pools/:id", async (req: Request, res: Response) => {
   try {
     const updated = await poolService.updatePool(req.params.id, req.body);
@@ -103,6 +254,40 @@ adminRoutes.patch("/admin/pools/:id", async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * @openapi
+ * /admin/pools/{id}:
+ *   delete:
+ *     summary: Soft-delete a route pool
+ *     tags: [Admin]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     x-audit-action: admin.config_change
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *         example: POOL-001
+ *     responses:
+ *       200:
+ *         description: Pool soft-deleted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 pool: { type: object }
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 adminRoutes.delete("/admin/pools/:id", async (req: Request, res: Response) => {
   try {
     const updated = await poolService.softDeletePool(req.params.id);
@@ -123,6 +308,47 @@ adminRoutes.delete("/admin/pools/:id", async (req: Request, res: Response) => {
 });
 
 /** ── Stops ────────────────────────────────────────────────────────────── */
+/**
+ * @openapi
+ * /admin/stops:
+ *   get:
+ *     summary: List stops with pagination and search (admin)
+ *     tags: [Admin]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: pageSize
+ *         schema: { type: integer, default: 50, maximum: 200 }
+ *       - in: query
+ *         name: q
+ *         schema: { type: string }
+ *         description: Text search filter
+ *       - in: query
+ *         name: pool_id
+ *         schema: { type: string }
+ *         description: Filter by pool
+ *     responses:
+ *       200:
+ *         description: Paginated stop list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 items: { type: array, items: { type: object } }
+ *                 total: { type: integer }
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 adminRoutes.get("/admin/stops", async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -137,6 +363,51 @@ adminRoutes.get("/admin/stops", async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * @openapi
+ * /admin/stops/{id}:
+ *   patch:
+ *     summary: Update a stop (admin)
+ *     tags: [Admin]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     x-audit-action: admin.stop_edit
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *         description: Stop ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               pool_id: { type: string }
+ *               active: { type: boolean }
+ *     responses:
+ *       200:
+ *         description: Stop updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 stop: { type: object }
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 adminRoutes.patch("/admin/stops/:id", async (req: Request, res: Response) => {
   try {
     const updated = await stopService.updateStop(req.params.id, req.body);
@@ -159,6 +430,42 @@ adminRoutes.patch("/admin/stops/:id", async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * @openapi
+ * /admin/stops/bulk:
+ *   post:
+ *     summary: Bulk update stops (admin)
+ *     tags: [Admin]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     x-audit-action: admin.stop_edit
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [stop_ids]
+ *             properties:
+ *               stop_ids:
+ *                 type: array
+ *                 items: { type: string }
+ *                 example: ["12345", "67890"]
+ *               pool_id: { type: string }
+ *               active: { type: boolean }
+ *     responses:
+ *       200:
+ *         description: Bulk update result
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 adminRoutes.post("/admin/stops/bulk", async (req: Request, res: Response) => {
   try {
     const { stop_ids, ...data } = req.body;
@@ -185,6 +492,57 @@ adminRoutes.post("/admin/stops/bulk", async (req: Request, res: Response) => {
 });
 
 /** ── Route Runs (Global) ──────────────────────────────────────────────── */
+/**
+ * @openapi
+ * /admin/route-runs:
+ *   get:
+ *     summary: List route runs with filters (admin)
+ *     tags: [Admin]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     parameters:
+ *       - in: query
+ *         name: run_date
+ *         schema: { type: string, format: date }
+ *         description: Filter by run date (defaults to today)
+ *         example: "2026-05-13"
+ *       - in: query
+ *         name: pool_id
+ *         schema: { type: string }
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [planned, in_progress, completed, finished] }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: pageSize
+ *         schema: { type: integer, default: 50, maximum: 200 }
+ *     responses:
+ *       200:
+ *         description: Paginated route run list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 route_runs:
+ *                   type: array
+ *                   items: { type: object }
+ *             example:
+ *               route_runs:
+ *                 - id: 42
+ *                   status: in_progress
+ *                   run_date: "2026-05-13"
+ *                   stop_count: 25
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 adminRoutes.get("/admin/route-runs", async (req: Request, res: Response) => {
   try {
     const run_date = (req.query.run_date as string) || new Date().toISOString().split('T')[0];
@@ -214,7 +572,7 @@ adminRoutes.get("/admin/route-runs", async (req: Request, res: Response) => {
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
     const query = `
-            SELECT 
+            SELECT
                 rr.id, rr.user_id, rr.route_pool_id, rr.base_id, rr.status, rr.run_date, rr.created_at,
                 rp.label as pool_label,
                 (SELECT COUNT(*) FROM route_run_stops rrs WHERE rrs.route_run_id = rr.id) as stop_count
@@ -234,6 +592,57 @@ adminRoutes.get("/admin/route-runs", async (req: Request, res: Response) => {
 });
 
 /** ── Clean Logs (Global) ──────────────────────────────────────────────── */
+/**
+ * @openapi
+ * /admin/clean-logs:
+ *   get:
+ *     summary: List clean logs with filters (admin)
+ *     tags: [Admin]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     parameters:
+ *       - in: query
+ *         name: stop_id
+ *         schema: { type: string }
+ *       - in: query
+ *         name: pool_id
+ *         schema: { type: string }
+ *       - in: query
+ *         name: run_date
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: pageSize
+ *         schema: { type: integer, default: 50, maximum: 200 }
+ *     responses:
+ *       200:
+ *         description: Paginated clean log list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 clean_logs:
+ *                   type: array
+ *                   items: { type: object }
+ *                 total: { type: integer }
+ *             example:
+ *               clean_logs:
+ *                 - id: 1
+ *                   stop_id: "12345"
+ *                   cleaned_at: "2026-05-13T10:30:00Z"
+ *                   duration_minutes: 12
+ *               total: 150
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 adminRoutes.get("/admin/clean-logs", async (req: Request, res: Response) => {
   try {
     const stop_id = req.query.stop_id as string;
@@ -264,7 +673,7 @@ adminRoutes.get("/admin/clean-logs", async (req: Request, res: Response) => {
 
     // Main Query
     const query = `
-            SELECT 
+            SELECT
                 cl.*,
                 s.on_street_name, s.pool_id,
                 rr.run_date, rr.route_pool_id
@@ -306,14 +715,82 @@ adminRoutes.get("/admin/clean-logs", async (req: Request, res: Response) => {
 });
 
 /** ── Audit Log (S1-3) ─────────────────────────────────────────────────── */
-const AUDIT_KNOWN_ACTIONS = new Set([
-  'auth.login', 'auth.login_failed',
-  'assignment.create', 'assignment.reassign', 'assignment.cancel',
-  'export.data_export', 'export.delete_confirm', 'export.delete_execute',
-  'admin.config_change', 'admin.user_role_change', 'admin.stop_edit', 'admin.route_edit',
-  'upload.rejected',
-]);
-
+/**
+ * @openapi
+ * /admin/audit-log:
+ *   get:
+ *     summary: Query the immutable audit log (S1-3)
+ *     description: >
+ *       Returns audit events in JSON (default) or CSV. Scoped to org by bearer token.
+ *       Date range max 365 days; window defaults to last 30 days. Max 1000 rows per request.
+ *     tags: [Admin]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     parameters:
+ *       - in: query
+ *         name: from
+ *         schema: { type: string, format: date }
+ *         description: Start date ISO 8601 (default 30 days ago)
+ *         example: "2026-04-01"
+ *       - in: query
+ *         name: to
+ *         schema: { type: string, format: date }
+ *         description: End date ISO 8601 (default now)
+ *         example: "2026-05-13"
+ *       - in: query
+ *         name: action
+ *         schema:
+ *           type: string
+ *           enum:
+ *             - auth.login
+ *             - auth.login_failed
+ *             - assignment.create
+ *             - assignment.reassign
+ *             - assignment.cancel
+ *             - export.data_export
+ *             - export.delete_confirm
+ *             - export.delete_execute
+ *             - admin.config_change
+ *             - admin.user_role_change
+ *             - admin.stop_edit
+ *             - admin.route_edit
+ *             - upload.rejected
+ *             - admin.oid_decrypt
+ *         description: Filter by audit action
+ *       - in: query
+ *         name: format
+ *         schema:
+ *           type: string
+ *           enum: [json, csv]
+ *           default: json
+ *         description: Response format
+ *     responses:
+ *       200:
+ *         description: Audit log entries (JSON) or CSV attachment
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 entries:
+ *                   type: array
+ *                   items: { type: object }
+ *                 total: { type: integer }
+ *                 from: { type: string, format: date-time }
+ *                 to: { type: string, format: date-time }
+ *           text/csv:
+ *             schema:
+ *               type: string
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 adminRoutes.get("/admin/audit-log", async (req: Request, res: Response) => {
   try {
     const format = (req.query.format as string | undefined) ?? 'json';
@@ -431,6 +908,36 @@ adminRoutes.get("/admin/audit-log", async (req: Request, res: Response) => {
 /** ── Intelligence ──────────────────────────────────────────────────────── */
 import { rebuildStopRiskSnapshot } from "../../intelligence/riskMapService";
 
+/**
+ * @openapi
+ * /admin/intelligence/rebuild-risk-map:
+ *   post:
+ *     summary: Rebuild the stop risk snapshot
+ *     description: Recomputes the risk snapshot table from clean log history. Admin-only; may take several seconds on large datasets.
+ *     tags: [Admin]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     responses:
+ *       200:
+ *         description: Rebuild complete
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status: { type: string, example: ok }
+ *                 rows: { type: integer }
+ *             example:
+ *               status: ok
+ *               rows: 450
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 adminRoutes.post("/admin/intelligence/rebuild-risk-map", async (_req: Request, res: Response) => {
   try {
     const rows = await rebuildStopRiskSnapshot(pool);
@@ -446,6 +953,40 @@ adminRoutes.post("/admin/intelligence/rebuild-risk-map", async (_req: Request, r
 const ccRouter = Router();
 ccRouter.use(requireAuth, requireAdmin);
 
+/**
+ * @openapi
+ * /admin/control-center/overview:
+ *   get:
+ *     summary: Control center — today's operational overview
+ *     description: Aggregate clean events, total clean minutes, hazards reported, and high-severity hazards for today.
+ *     tags: [Admin]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     responses:
+ *       200:
+ *         description: Today's overview metrics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 clean_events: { type: integer }
+ *                 total_clean_minutes: { type: number }
+ *                 hazards_reported: { type: integer }
+ *                 high_severity_hazards: { type: integer }
+ *             example:
+ *               clean_events: 38
+ *               total_clean_minutes: 462.5
+ *               hazards_reported: 4
+ *               high_severity_hazards: 1
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 // 0. Overview / Today at a Glance (Panel 1 - Authoritative)
 ccRouter.get("/overview", async (_req: Request, res: Response) => {
   const client = await pool.connect();
@@ -507,6 +1048,43 @@ ccRouter.get("/overview", async (_req: Request, res: Response) => {
 
 
 
+/**
+ * @openapi
+ * /admin/control-center/routes:
+ *   get:
+ *     summary: Control center — active route status table
+ *     description: Per-route stop counts, resolved counts, emergency additions, and skip flags for planned and in-progress runs today.
+ *     tags: [Admin]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     responses:
+ *       200:
+ *         description: Array of active route status rows
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   route_run_id: { type: integer }
+ *                   pool_id: { type: string }
+ *                   planned_stops: { type: integer }
+ *                   emergency_stops: { type: integer }
+ *                   resolved_stops: { type: integer }
+ *                   skipped_stops: { type: integer }
+ *                   total_known_stops: { type: integer }
+ *                   observed_minutes: { type: number }
+ *                   has_emergency_additions: { type: boolean }
+ *                   high_skip_count: { type: boolean }
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 // 2. Route Status Table (Panel 2 - Authoritative)
 ccRouter.get("/routes", async (_req: Request, res: Response) => {
   const client = await pool.connect();
@@ -606,6 +1184,41 @@ ORDER BY rb.route_run_id;
   }
 });
 
+/**
+ * @openapi
+ * /admin/control-center/exceptions:
+ *   get:
+ *     summary: Control center — today's exception summary
+ *     description: Skips by reason, total hazards, total infrastructure issues, and emergency/ad-hoc stop count for today.
+ *     tags: [Admin]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     responses:
+ *       200:
+ *         description: Exception summary
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 skips_by_reason:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       reason: { type: string }
+ *                       count: { type: integer }
+ *                 total_hazards: { type: integer }
+ *                 total_infra_issues: { type: integer }
+ *                 emergency_count: { type: integer }
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 // 3. Exceptions (Strict Guardrails - Phase B)
 ccRouter.get("/exceptions", async (_req: Request, res: Response) => {
   const client = await pool.connect();
@@ -679,6 +1292,40 @@ ccRouter.get("/exceptions", async (_req: Request, res: Response) => {
   }
 });
 
+/**
+ * @openapi
+ * /admin/control-center/difficulty:
+ *   get:
+ *     summary: Control center — today's difficulty indicators
+ *     description: Heavy stops by location, routes with high difficulty density, and hotspot area concentration. Observational intelligence — no per-worker metrics.
+ *     tags: [Admin]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     responses:
+ *       200:
+ *         description: Difficulty indicators
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 heavy_stops:
+ *                   type: array
+ *                   items: { type: object }
+ *                 heavy_routes:
+ *                   type: array
+ *                   items: { type: object }
+ *                 hotspot_areas:
+ *                   type: array
+ *                   items: { type: object }
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 // 4. Difficulty Indicators (Observational Intelligence - Phase B)
 ccRouter.get("/difficulty", async (_req: Request, res: Response) => {
   const client = await pool.connect();
@@ -804,6 +1451,7 @@ ccRouter.get("/difficulty", async (_req: Request, res: Response) => {
 
 adminRoutes.use("/admin/control-center", ccRouter);
 
+// Documented in healthRoutes.ts (registered first in app.ts; same path, same Auth)
 adminRoutes.get("/admin/secret", async (_req, res) => {
   res.json({ secret: "Only admins can see this!" });
 });

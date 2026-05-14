@@ -6,7 +6,64 @@ import { loadRouteRunById } from "../domains/routeRun/loaders/loadRouteRunById";
 
 export const devRoutes = Router();
 
-/** ── Dev Only: Generate Route Run ─────────────────────────────────────── */
+/**
+ * @openapi
+ * /dev/generate-route-run:
+ *   post:
+ *     summary: Generate a test route run (development only)
+ *     description: >
+ *       Creates a route run for testing without authentication or OSRM optimization.
+ *       **Not for production use.** This endpoint has no auth guard and is intended
+ *       for local development and automated test fixtures only.
+ *     tags: [Dev]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [pool_id, user_id]
+ *             properties:
+ *               pool_id:
+ *                 type: string
+ *                 description: Route pool ID
+ *                 example: POOL-001
+ *               user_id:
+ *                 type: integer
+ *                 description: Legacy user ID (dev only)
+ *                 example: 1
+ *               base_id:
+ *                 type: string
+ *                 default: NORTH
+ *                 example: NORTH
+ *               max_stops:
+ *                 type: integer
+ *                 default: 25
+ *                 example: 10
+ *           example:
+ *             pool_id: POOL-001
+ *             user_id: 1
+ *             base_id: NORTH
+ *             max_stops: 10
+ *     responses:
+ *       200:
+ *         description: Route run created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 route_run: { type: object }
+ *             example:
+ *               ok: true
+ *               route_run: { id: 99, status: planned, stops: [] }
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 // DEV ONLY – route run generator for testing, not for production.
 devRoutes.post("/dev/generate-route-run", async (req: Request, res: Response) => {
     const client = await pool.connect();
@@ -70,4 +127,3 @@ devRoutes.post("/dev/generate-route-run", async (req: Request, res: Response) =>
         client.release();
     }
 });
-

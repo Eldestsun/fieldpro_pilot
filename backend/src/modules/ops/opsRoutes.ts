@@ -14,7 +14,40 @@ const requireOps = (req: Request, res: Response, next: NextFunction) => {
 // Apply to all /ops routes
 opsRoutes.use("/ops", requireAuth, requireOps);
 
-/** ── Dashboard ────────────────────────────────────────────────────────── */
+/**
+ * @openapi
+ * /ops/dashboard:
+ *   get:
+ *     summary: Ops dashboard — aggregate metrics for today
+ *     description: Read-only mirror of the Admin dashboard. Returns stop count, pool count, and today's run status summary.
+ *     tags: [Ops]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Lead, Admin]
+ *     responses:
+ *       200:
+ *         description: Today's operational metrics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 total_stops: { type: integer }
+ *                 total_pools: { type: integer }
+ *                 active_runs_today: { type: integer }
+ *                 completed_runs_today: { type: integer }
+ *             example:
+ *               total_stops: 450
+ *               total_pools: 12
+ *               active_runs_today: 3
+ *               completed_runs_today: 8
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 // Explicit path: /api/ops/dashboard
 // Duplicate of Admin Dashboard logic (Read-Only)
 opsRoutes.get("/ops/dashboard", async (_req: Request, res: Response) => {
@@ -26,15 +59,15 @@ opsRoutes.get("/ops/dashboard", async (_req: Request, res: Response) => {
 
             // Active runs: planned or in_progress today
             const activeRunsRes = await client.query(`
-                SELECT COUNT(*) FROM route_runs 
-                WHERE run_date = CURRENT_DATE 
+                SELECT COUNT(*) FROM route_runs
+                WHERE run_date = CURRENT_DATE
                 AND status IN ('planned', 'in_progress')
             `);
 
             // Completed runs: done today
             const completedRunsRes = await client.query(`
-                SELECT COUNT(*) FROM route_runs 
-                WHERE run_date = CURRENT_DATE 
+                SELECT COUNT(*) FROM route_runs
+                WHERE run_date = CURRENT_DATE
                 AND status IN ('completed', 'finished')
             `);
 
@@ -53,7 +86,39 @@ opsRoutes.get("/ops/dashboard", async (_req: Request, res: Response) => {
     }
 });
 
-/** ── Pools ────────────────────────────────────────────────────────────── */
+/**
+ * @openapi
+ * /ops/pools:
+ *   get:
+ *     summary: List all route pools (ops read-only)
+ *     description: Returns all route pools including inactive ones. Read-only for Lead/Admin.
+ *     tags: [Ops]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Lead, Admin]
+ *     responses:
+ *       200:
+ *         description: List of pools
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 pools:
+ *                   type: array
+ *                   items: { type: object }
+ *             example:
+ *               pools:
+ *                 - id: POOL-001
+ *                   label: "North Sector"
+ *                   active: true
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 // Explicit path: /api/ops/pools
 // Read-only wrapper for poolService
 opsRoutes.get("/ops/pools", async (_req: Request, res: Response) => {
@@ -66,7 +131,51 @@ opsRoutes.get("/ops/pools", async (_req: Request, res: Response) => {
     }
 });
 
-/** ── Stops ────────────────────────────────────────────────────────────── */
+/**
+ * @openapi
+ * /ops/stops:
+ *   get:
+ *     summary: List stops with pagination and search (ops read-only)
+ *     description: Paginated, searchable list of all stops. Read-only for Lead/Admin.
+ *     tags: [Ops]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Lead, Admin]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: pageSize
+ *         schema: { type: integer, default: 50 }
+ *       - in: query
+ *         name: q
+ *         schema: { type: string }
+ *         description: Text search filter
+ *       - in: query
+ *         name: pool_id
+ *         schema: { type: string }
+ *         description: Filter by pool
+ *     responses:
+ *       200:
+ *         description: Paginated stop list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 items: { type: array, items: { type: object } }
+ *                 total: { type: integer }
+ *             example:
+ *               items: [{ stop_id: "12345", on_street_name: "Main St" }]
+ *               total: 450
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 // Explicit path: /api/ops/stops
 // Read-only wrapper for stopService
 opsRoutes.get("/ops/stops", async (req: Request, res: Response) => {
@@ -84,7 +193,61 @@ opsRoutes.get("/ops/stops", async (req: Request, res: Response) => {
     }
 });
 
-/** ── Route Runs ───────────────────────────────────────────────────────── */
+/**
+ * @openapi
+ * /ops/route-runs:
+ *   get:
+ *     summary: List route runs with filters (ops read-only)
+ *     description: Paginated list of route runs. Read-only mirror of the Admin route runs list.
+ *     tags: [Ops]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Lead, Admin]
+ *     parameters:
+ *       - in: query
+ *         name: run_date
+ *         schema: { type: string, format: date }
+ *         description: Filter by run date (ISO 8601)
+ *         example: "2026-05-13"
+ *       - in: query
+ *         name: pool_id
+ *         schema: { type: string }
+ *         description: Filter by pool
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [planned, in_progress, completed, finished] }
+ *         description: Filter by status
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: pageSize
+ *         schema: { type: integer, default: 50, maximum: 200 }
+ *     responses:
+ *       200:
+ *         description: Paginated route run list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 route_runs:
+ *                   type: array
+ *                   items: { type: object }
+ *             example:
+ *               route_runs:
+ *                 - id: 42
+ *                   status: in_progress
+ *                   run_date: "2026-05-13"
+ *                   stop_count: 25
+ *                   completed_stops: 12
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 // Explicit path: /api/ops/route-runs
 // Read-only mirror of Admin Route Runs list
 opsRoutes.get("/ops/route-runs", async (req: Request, res: Response) => {
@@ -116,7 +279,7 @@ opsRoutes.get("/ops/route-runs", async (req: Request, res: Response) => {
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
         const query = `
-            SELECT 
+            SELECT
                 rr.id, rr.user_id, rr.route_pool_id, rr.base_id, rr.status, rr.run_date, rr.created_at,
                 rr.created_at,
                 rp.label as pool_label,
@@ -138,7 +301,61 @@ opsRoutes.get("/ops/route-runs", async (req: Request, res: Response) => {
     }
 });
 
-/** ── Clean Logs ───────────────────────────────────────────────────────── */
+/**
+ * @openapi
+ * /ops/clean-logs:
+ *   get:
+ *     summary: List clean logs with filters (ops read-only)
+ *     description: Paginated list of clean log entries. Read-only mirror of the Admin clean logs list.
+ *     tags: [Ops]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Lead, Admin]
+ *     parameters:
+ *       - in: query
+ *         name: stop_id
+ *         schema: { type: string }
+ *         description: Filter by stop ID
+ *       - in: query
+ *         name: pool_id
+ *         schema: { type: string }
+ *         description: Filter by pool
+ *       - in: query
+ *         name: run_date
+ *         schema: { type: string, format: date }
+ *         description: Filter by run date
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: pageSize
+ *         schema: { type: integer, default: 50, maximum: 200 }
+ *     responses:
+ *       200:
+ *         description: Paginated clean log list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 clean_logs:
+ *                   type: array
+ *                   items: { type: object }
+ *                 total: { type: integer }
+ *             example:
+ *               clean_logs:
+ *                 - id: 1
+ *                   stop_id: "12345"
+ *                   cleaned_at: "2026-05-13T10:30:00Z"
+ *                   duration_minutes: 12
+ *               total: 150
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 // Explicit path: /api/ops/clean-logs
 // Read-only mirror of Admin Clean Logs list
 opsRoutes.get("/ops/clean-logs", async (req: Request, res: Response) => {
@@ -171,7 +388,7 @@ opsRoutes.get("/ops/clean-logs", async (req: Request, res: Response) => {
 
         // Main Query
         const query = `
-            SELECT 
+            SELECT
                 cl.*,
                 s.on_street_name, s.pool_id,
                 rr.run_date, rr.route_pool_id

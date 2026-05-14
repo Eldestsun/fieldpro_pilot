@@ -4,6 +4,62 @@ import { pool } from "../../db";
 
 export const stopRoutes = Router();
 
+/**
+ * @openapi
+ * /stops/{stop_id}/hotspot:
+ *   patch:
+ *     summary: Mark or unmark a stop as a hotspot
+ *     description: Updates the is_hotspot flag on the stop. UL, Lead, and Admin can toggle this.
+ *     tags: [Stops]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [UL, Lead, Admin]
+ *     parameters:
+ *       - in: path
+ *         name: stop_id
+ *         required: true
+ *         schema: { type: string }
+ *         description: Transit stop ID
+ *         example: "12345"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [is_hotspot]
+ *             properties:
+ *               is_hotspot:
+ *                 type: boolean
+ *                 description: Whether this stop is a hotspot
+ *           example:
+ *             is_hotspot: true
+ *     responses:
+ *       200:
+ *         description: Flag updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 stop_id: { type: string }
+ *                 is_hotspot: { type: boolean }
+ *             example:
+ *               ok: true
+ *               stop_id: "12345"
+ *               is_hotspot: true
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 // PATCH /stops/:stop_id/hotspot
 stopRoutes.patch(
     "/stops/:stop_id/hotspot",
@@ -44,6 +100,61 @@ stopRoutes.patch(
     }
 );
 
+/**
+ * @openapi
+ * /stops/{stop_id}/compactor:
+ *   patch:
+ *     summary: Set the compactor flag on a stop
+ *     description: Marks whether a stop has a trash compactor. Lead and Admin only.
+ *     tags: [Stops]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Lead, Admin]
+ *     parameters:
+ *       - in: path
+ *         name: stop_id
+ *         required: true
+ *         schema: { type: string }
+ *         description: Transit stop ID
+ *         example: "12345"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [compactor]
+ *             properties:
+ *               compactor:
+ *                 type: boolean
+ *           example:
+ *             compactor: true
+ *     responses:
+ *       200:
+ *         description: Flag updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 stop_id: { type: string }
+ *                 compactor: { type: boolean }
+ *             example:
+ *               ok: true
+ *               stop_id: "12345"
+ *               compactor: true
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 // PATCH /stops/:stop_id/compactor
 stopRoutes.patch(
     "/stops/:stop_id/compactor",
@@ -84,6 +195,61 @@ stopRoutes.patch(
     }
 );
 
+/**
+ * @openapi
+ * /stops/{stop_id}/has-trash:
+ *   patch:
+ *     summary: Set the has-trash flag on a stop
+ *     description: Marks whether a stop has a trash receptacle. Lead and Admin only.
+ *     tags: [Stops]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Lead, Admin]
+ *     parameters:
+ *       - in: path
+ *         name: stop_id
+ *         required: true
+ *         schema: { type: string }
+ *         description: Transit stop ID
+ *         example: "12345"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [has_trash]
+ *             properties:
+ *               has_trash:
+ *                 type: boolean
+ *           example:
+ *             has_trash: true
+ *     responses:
+ *       200:
+ *         description: Flag updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 stop_id: { type: string }
+ *                 has_trash: { type: boolean }
+ *             example:
+ *               ok: true
+ *               stop_id: "12345"
+ *               has_trash: true
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
 // PATCH /stops/:stop_id/has-trash
 stopRoutes.patch(
     "/stops/:stop_id/has-trash",
