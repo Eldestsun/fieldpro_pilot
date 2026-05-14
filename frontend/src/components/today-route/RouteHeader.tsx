@@ -14,10 +14,10 @@ interface RouteHeaderProps {
 }
 
 const SYNC_STYLES: Record<string, string> = {
-  synced: "text-green-600",
-  "offline-queued": "text-amber-600",
-  syncing: "text-blue-600",
-  conflict: "text-red-600",
+  synced: "text-green-800",
+  "offline-queued": "text-amber-800",
+  syncing: "text-blue-700",
+  conflict: "text-red-700",
 };
 
 export function RouteHeader({ stats, syncStatus, routeLabel }: RouteHeaderProps) {

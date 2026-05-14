@@ -64,6 +64,100 @@ export const devRoutes = Router();
  *       500:
  *         $ref: '#/components/responses/InternalError'
  */
+/**
+ * @openapi
+ * /dev/seed-axe-fixture:
+ *   post:
+ *     summary: Seed a route_run fixture for axe-audit synthetic users (dev/test only)
+ *     description: >
+ *       Idempotent. Creates a route_run with 3 stops assigned to the given OID if
+ *       one does not already exist. Gated by NODE_ENV !== production AND
+ *       DEV_AUTH_BYPASS === true. Returns 404 in any other environment.
+ *     tags: [Dev]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [oid]
+ *             properties:
+ *               oid: { type: string }
+ *               org_id: { type: integer, default: 1 }
+ *     responses:
+ *       200:
+ *         description: Fixture seeded or already exists
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       404:
+ *         description: Not available in this environment
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+devRoutes.post("/dev/seed-axe-fixture", async (req: Request, res: Response) => {
+    if (process.env.NODE_ENV === 'production' || process.env.DEV_AUTH_BYPASS !== 'true') {
+        return res.status(404).json({ error: 'Not found' });
+    }
+
+    const { oid, org_id = 1 } = req.body;
+    if (!oid || typeof oid !== 'string') {
+        return res.status(400).json({ error: 'oid is required' });
+    }
+
+    const client = await pool.connect();
+    try {
+        // Idempotent: return existing run if one already exists for this OID
+        const existing = await client.query(
+            `SELECT id FROM route_runs
+             WHERE assigned_user_oid = $1 AND status IN ('planned', 'in_progress')
+             ORDER BY created_at DESC LIMIT 1`,
+            [oid]
+        );
+        if (existing.rows.length > 0) {
+            return res.json({ ok: true, route_run_id: existing.rows[0].id, created: false });
+        }
+
+        // Pick 3 stops from the largest pool (SE pool, org_id 1)
+        const stopsRes = await client.query(
+            `SELECT stop_id, asset_id FROM stops
+             WHERE pool_id = 'SE'
+             ORDER BY stop_id ASC LIMIT 3`
+        );
+        if (stopsRes.rows.length < 3) {
+            return res.status(500).json({ error: 'Not enough stops in SE pool to seed fixture' });
+        }
+
+        // Insert route_run — trigger auto-fills base_id and org_id from pool
+        const runRes = await client.query(
+            `INSERT INTO route_runs
+               (route_pool_id, run_date, status, org_id, assigned_user_oid, created_by_oid)
+             VALUES ('SE', CURRENT_DATE, 'in_progress', $1, $2, $2)
+             RETURNING id`,
+            [org_id, oid]
+        );
+        const routeRunId: number = runRes.rows[0].id;
+
+        // Insert 3 stops in pending state
+        for (let i = 0; i < stopsRes.rows.length; i++) {
+            const { stop_id, asset_id } = stopsRes.rows[i];
+            await client.query(
+                `INSERT INTO route_run_stops
+                   (route_run_id, stop_id, sequence, status, origin_type, asset_id)
+                 VALUES ($1, $2, $3, 'pending', 'planned', $4)`,
+                [routeRunId, stop_id, i + 1, asset_id]
+            );
+        }
+
+        return res.json({ ok: true, route_run_id: routeRunId, created: true });
+    } catch (err: any) {
+        console.error('Error in /api/dev/seed-axe-fixture:', err);
+        return res.status(500).json({ error: err.message || 'Internal server error' });
+    } finally {
+        client.release();
+    }
+});
+
 // DEV ONLY – route run generator for testing, not for production.
 devRoutes.post("/dev/generate-route-run", async (req: Request, res: Response) => {
     const client = await pool.connect();

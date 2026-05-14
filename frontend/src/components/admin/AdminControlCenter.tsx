@@ -326,7 +326,7 @@ export const AdminControlCenter: React.FC = () => {
                                             {r.has_emergency_additions && <span title="Emergency Additions">🚨</span>}
                                             {r.high_skip_count && <span title="High Skip Count">⏭️</span>}
                                             {!r.has_emergency_additions && !r.high_skip_count && (
-                                                <span className="text-gray-300">—</span>
+                                                <span className="text-gray-500">—</span>
                                             )}
                                         </div>
                                     </OpsTableCell>
@@ -371,7 +371,7 @@ export const AdminControlCenter: React.FC = () => {
 
                             <div className="text-sm font-semibold text-gray-700 mb-2">Skips by Reason</div>
                             {(!stats?.skips_by_reason || stats.skips_by_reason.length === 0) ? (
-                                <div className="py-4 text-center text-gray-300 italic text-sm">No skips recorded today</div>
+                                <div className="py-4 text-center text-gray-500 italic text-sm">No skips recorded today</div>
                             ) : (
                                 <div className="divide-y divide-gray-50">
                                     {stats.skips_by_reason.map((s, i) => (
@@ -394,7 +394,7 @@ export const AdminControlCenter: React.FC = () => {
                             <OpsCard>
                                 <div className="text-sm font-semibold text-gray-500 mb-3">System Hotspots</div>
                                 {(!difficulty?.hotspot_areas || difficulty.hotspot_areas.length === 0) ? (
-                                    <div className="text-sm text-gray-300 italic">None detected today</div>
+                                    <div className="text-sm text-gray-500 italic">None detected today</div>
                                 ) : (
                                     <div className="flex flex-wrap gap-2">
                                         {difficulty.hotspot_areas.map((h, i) => (
@@ -438,7 +438,7 @@ export const AdminControlCenter: React.FC = () => {
                                             </div>
                                         ))}
                                         {(!difficulty?.heavy_stops || difficulty.heavy_stops.length === 0) && (
-                                            <div className="text-xs text-gray-300">Normal Load</div>
+                                            <div className="text-xs text-gray-500">Normal Load</div>
                                         )}
                                     </div>
                                 </OpsCard>
@@ -466,7 +466,7 @@ export const AdminControlCenter: React.FC = () => {
                                             </div>
                                         ))}
                                         {(!difficulty?.heavy_routes || difficulty.heavy_routes.length === 0) && (
-                                            <div className="text-xs text-gray-300">Balanced</div>
+                                            <div className="text-xs text-gray-500">Balanced</div>
                                         )}
                                     </div>
                                 </OpsCard>

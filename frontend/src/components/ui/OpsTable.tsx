@@ -9,7 +9,7 @@ interface OpsTableProps {
 
 export function OpsTable({ headers, children, numericColumns = [] }: OpsTableProps) {
     return (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" tabIndex={0}>
             <table className="w-full border-collapse text-left">
                 <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">

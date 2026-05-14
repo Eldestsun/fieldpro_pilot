@@ -16,6 +16,9 @@ export const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({
 
     return (
         <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Image preview"
             style={{
                 position: "fixed",
                 top: 0,

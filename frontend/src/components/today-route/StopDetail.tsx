@@ -419,7 +419,7 @@ export function StopDetail({
             <UlLayout>
                 <button
                     onClick={onBack}
-                    className="mb-4 text-blue-600 font-medium hover:text-blue-800 transition-colors"
+                    className="mb-4 text-blue-600 font-medium hover:text-blue-800 transition-colors min-h-[44px] flex items-center"
                 >
                     ← Back to Route
                 </button>
@@ -650,7 +650,7 @@ export function StopDetail({
                             <div className="flex flex-col gap-2">
                                 {CHECKLIST_ITEMS.map((item) => (
                                     <div key={item.key} className="flex items-center gap-2">
-                                        <span className={checklist[item.key] ? "text-green-500" : "text-gray-300"}>
+                                        <span className={checklist[item.key] ? "text-green-500" : "text-gray-500"}>
                                             {checklist[item.key] ? "✓" : "○"}
                                         </span>
                                         <span className={cn(
@@ -825,10 +825,15 @@ export function StopDetail({
             {/* Safety Modal */}
             {isReportSafetyOpen && (
                 <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-[2000] p-4">
-                    <div className="bg-white w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden rounded-xl shadow-2xl">
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="safety-modal-title"
+                        className="bg-white w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden rounded-xl shadow-2xl"
+                    >
                         {/* Header */}
                         <div className="px-4 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-                            <h3 className="m-0 text-orange-700 font-bold text-lg">Report Safety Concern</h3>
+                            <h3 id="safety-modal-title" className="m-0 text-orange-700 font-bold text-lg">Report Safety Concern</h3>
                             <button
                                 onClick={() => setIsReportSafetyOpen(false)}
                                 className="bg-transparent border-0 text-2xl text-gray-500 cursor-pointer px-2 min-h-[44px] flex items-center"
@@ -1022,10 +1027,15 @@ export function StopDetail({
             {/* Infra Modal */}
             {isReportInfraOpen && (
                 <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-[2000] p-4">
-                    <div className="bg-white w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden rounded-xl shadow-2xl">
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="infra-modal-title"
+                        className="bg-white w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden rounded-xl shadow-2xl"
+                    >
                         {/* Header */}
                         <div className="px-4 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-                            <h3 className="m-0 text-blue-700 font-bold text-lg">Report Infrastructure</h3>
+                            <h3 id="infra-modal-title" className="m-0 text-blue-700 font-bold text-lg">Report Infrastructure</h3>
                             <button
                                 onClick={() => setIsReportInfraOpen(false)}
                                 className="bg-transparent border-0 text-2xl text-gray-500 cursor-pointer px-2 min-h-[44px] flex items-center"
@@ -1183,6 +1193,7 @@ export function StopDetail({
                             <button
                                 key={val}
                                 onClick={() => onSetChecklist('trashVolume', val)}
+                                aria-pressed={checklist.trashVolume === val}
                                 className={cn(
                                     "flex-1 py-4 font-bold border-0 min-h-[44px] cursor-pointer transition-colors",
                                     val < 4 ? "border-r border-gray-300" : "",

@@ -5,6 +5,7 @@ import type { Stop } from "../../api/routeRuns";
 interface StopListItemProps {
   stop: Stop;
   onClick: () => void;
+  id?: string;
 }
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
@@ -14,13 +15,14 @@ const STATUS_BADGE: Record<string, { label: string; className: string }> = {
   skipped:     { label: "Skipped",     className: "bg-gray-100 text-gray-500"  },
 };
 
-export function StopListItem({ stop, onClick }: StopListItemProps) {
+export function StopListItem({ stop, onClick, id }: StopListItemProps) {
   const badge = STATUS_BADGE[stop.status] ?? STATUS_BADGE.pending;
   const syncState = (stop as any).syncState as string | undefined;
   const location = formatStopLocation(stop);
 
   return (
     <li
+      id={id}
       onClick={onClick}
       className={cn(
         "flex items-start gap-3 p-4 bg-white rounded-lg border border-gray-200",
@@ -30,7 +32,7 @@ export function StopListItem({ stop, onClick }: StopListItemProps) {
       )}
     >
       {/* Sequence number */}
-      <div className="shrink-0 min-w-[2rem] text-center text-xs font-bold text-gray-500 bg-gray-100 border border-gray-200 rounded px-1.5 py-1 mt-0.5">
+      <div className="shrink-0 min-w-[2rem] text-center text-xs font-bold text-gray-600 bg-gray-100 border border-gray-200 rounded px-1.5 py-1 mt-0.5">
         #{Number.isFinite(stop.sequence) ? stop.sequence : Number(stop.stopNumber)}
       </div>
 

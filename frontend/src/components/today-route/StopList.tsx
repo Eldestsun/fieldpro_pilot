@@ -11,12 +11,12 @@ export function StopList({ stops, onSelectStop }: StopListProps) {
   return (
     <ul className="list-none p-0 m-0 flex flex-col gap-3">
       {stops.map((stop) => (
-        <div key={stop.route_run_stop_id} id={getSafeDomId(stop)}>
-          <StopListItem
-            stop={stop}
-            onClick={() => onSelectStop(stop.route_run_stop_id)}
-          />
-        </div>
+        <StopListItem
+          key={stop.route_run_stop_id}
+          id={getSafeDomId(stop)}
+          stop={stop}
+          onClick={() => onSelectStop(stop.route_run_stop_id)}
+        />
       ))}
     </ul>
   );

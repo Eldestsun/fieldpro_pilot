@@ -33,6 +33,9 @@ export function ConflictResolutionModal({ conflicts, onDismiss, onClose }: Props
             onClick={onClose}
         >
             <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="conflict-modal-title"
                 style={{
                     backgroundColor: '#fff',
                     borderRadius: '8px',
@@ -45,12 +48,12 @@ export function ConflictResolutionModal({ conflicts, onDismiss, onClose }: Props
                 onClick={e => e.stopPropagation()}
             >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                    <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600 }}>
+                    <h2 id="conflict-modal-title" style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600 }}>
                         Stops needing attention
                     </h2>
                     <button
                         onClick={onClose}
-                        style={{ background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer', color: '#718096' }}
+                        style={{ background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer', color: '#718096', minHeight: '44px', minWidth: '44px' }}
                     >
                         ✕
                     </button>
@@ -87,6 +90,7 @@ export function ConflictResolutionModal({ conflicts, onDismiss, onClose }: Props
                                             borderRadius: '4px',
                                             cursor: 'pointer',
                                             fontSize: '0.8125rem',
+                                            minHeight: '44px',
                                         }}
                                     >
                                         Dismiss
@@ -101,6 +105,7 @@ export function ConflictResolutionModal({ conflicts, onDismiss, onClose }: Props
                                             borderRadius: '4px',
                                             cursor: 'pointer',
                                             fontSize: '0.8125rem',
+                                            minHeight: '44px',
                                         }}
                                     >
                                         Copy info
