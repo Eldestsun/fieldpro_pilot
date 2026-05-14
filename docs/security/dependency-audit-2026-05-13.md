@@ -7,6 +7,12 @@
 
 ---
 
+## Scope and Method
+
+Both `backend/` and `frontend/` workspaces were scanned using `pnpm audit` (pnpm v10.23.0), which queries the npm advisory registry and reports findings using the npm severity scale (Critical → High → Moderate → Low). Remediation policy: Critical and High findings must be fixed before pilot; Moderate findings are patched if a non-breaking upgrade is available, otherwise documented; Low findings are documented and deferred. A CI gate (`pnpm audit --audit-level=high`) was added to both workspaces so any future High or Critical advisory introduced by a dependency bump fails the build automatically.
+
+---
+
 ## Pre-remediation finding totals
 
 | Workspace | Critical | High | Moderate | Low | Total |
@@ -89,15 +95,15 @@ Severity: 1 moderate
 | GHSA-37qj-frw5-hhjh | fast-xml-parser | >=5.0.9 <=5.3.3 | `pnpm.overrides: fast-xml-parser >=5.5.7` | Override |
 | GHSA-jmr7-xgp7-cmfj | fast-xml-parser | <5.3.6 | `pnpm.overrides: fast-xml-parser >=5.5.7` | Override |
 | GHSA-fj3w-jwp8-x2g3 | fast-xml-parser | <5.5.6 | `pnpm.overrides: fast-xml-parser >=5.5.7` | Override |
-| GHSA-43fc-jf86-j433 | multer | <2.1.0 | `multer ^2.1.1` in dependencies | Direct bump |
-| GHSA (multer DoS) | multer | <2.1.0 | `multer ^2.1.1` in dependencies | Direct bump |
-| GHSA (multer DoS) | multer | <2.1.1 | `multer ^2.1.1` in dependencies | Direct bump |
+| GHSA-v52c-386h-88mc | multer | <2.1.0 | `multer ^2.1.1` in dependencies | Direct bump |
+| GHSA-xf7r-hgr6-v32p | multer | <2.1.0 | `multer ^2.1.1` in dependencies | Direct bump |
+| GHSA-5528-5vmv-3xc2 | multer | <2.1.1 | `multer ^2.1.1` in dependencies | Direct bump |
 | GHSA-37ch-88jc-xwx2 | path-to-regexp | <0.1.13 (via express) | `pnpm.overrides: express>path-to-regexp ^0.1.13` | Override |
 | GHSA-pmwg-cvhr-8vh7 | axios | <1.15.1 | `axios ^1.15.2` in dependencies | Direct bump |
 | GHSA-pf86-5x62-jrwf | axios | <1.15.1 | `axios ^1.15.2` in dependencies | Direct bump |
 | GHSA-6chq-wfr3-2hj9 | axios | <1.15.1 | `axios ^1.15.2` in dependencies | Direct bump |
 | GHSA-43fc-jf86-j433 | axios | <=1.13.4 | `axios ^1.15.2` in dependencies | Direct bump |
-| GHSA-6rw7-vpxm-498p (axios proto) | axios | <1.15.2 | `axios ^1.15.2` in dependencies | Direct bump |
+| GHSA-q8qp-cvcw-x6jj | axios | <1.15.2 | `axios ^1.15.2` in dependencies | Direct bump |
 
 ### MODERATE (patched)
 
@@ -178,3 +184,7 @@ None of the path-scoped overrides successfully updated minimatch 3.1.2 to 3.1.5.
 The minimatch HIGH findings were resolved by upgrading eslint from 9.34.0 → 9.39.4 (and typescript-eslint from 8.41.0 → 8.59.3). eslint 9.39.4 ships with minimatch 3.1.5, which is above the `>=3.1.4` patched threshold. These are devDependency bumps within the same major version (9.x), so they are non-breaking from an API perspective. However, they are functional changes (new lint rules or changed behaviour are possible) and are documented here accordingly.
 
 The eslint/typescript-eslint upgrades are the only deviations from pure pnpm.overrides-based remediation.
+
+---
+
+Audit performed: 2026-05-13 — Status: Complete — Next scheduled audit: triggered by CI on every commit; manual quarterly review.
