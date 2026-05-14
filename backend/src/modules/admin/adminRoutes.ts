@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { requireAuth, requireAnyRole } from "../../authz";
-import { pool } from "../../db";
+import { pool, withOrgContext } from "../../db";
 import * as poolService from "../../services/adminPoolService";
 import * as stopService from "../../services/adminStopService";
 import { auditWrite, reqOrgId } from "../../middleware/auditWrite";
@@ -301,6 +301,128 @@ adminRoutes.get("/admin/clean-logs", async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error("Error in /admin/clean-logs:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** ── Audit Log (S1-3) ─────────────────────────────────────────────────── */
+const AUDIT_KNOWN_ACTIONS = new Set([
+  'auth.login', 'auth.login_failed',
+  'assignment.create', 'assignment.reassign', 'assignment.cancel',
+  'export.data_export', 'export.delete_confirm', 'export.delete_execute',
+  'admin.config_change', 'admin.user_role_change', 'admin.stop_edit', 'admin.route_edit',
+]);
+
+adminRoutes.get("/admin/audit-log", async (req: Request, res: Response) => {
+  try {
+    const format = (req.query.format as string | undefined) ?? 'json';
+    if (format !== 'json' && format !== 'csv') {
+      return res.status(400).json({ error: "Invalid format. Accepted values: 'json', 'csv'." });
+    }
+
+    const now = new Date();
+    const defaultFrom = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    let fromDate: Date;
+    let toDate: Date;
+
+    if (req.query.from) {
+      fromDate = new Date(req.query.from as string);
+      if (isNaN(fromDate.getTime())) {
+        return res.status(400).json({ error: "Invalid 'from' date. Use ISO 8601 format (e.g. 2026-04-01)." });
+      }
+    } else {
+      fromDate = defaultFrom;
+    }
+
+    if (req.query.to) {
+      toDate = new Date(req.query.to as string);
+      if (isNaN(toDate.getTime())) {
+        return res.status(400).json({ error: "Invalid 'to' date. Use ISO 8601 format (e.g. 2026-05-13)." });
+      }
+    } else {
+      toDate = now;
+    }
+
+    const rangeMs = toDate.getTime() - fromDate.getTime();
+    if (rangeMs < 0) {
+      return res.status(400).json({ error: "'from' must be before 'to'." });
+    }
+    if (rangeMs > 365 * 24 * 60 * 60 * 1000) {
+      return res.status(400).json({ error: "Date range exceeds 365 days. Narrow the window to page through the log." });
+    }
+
+    const actionFilter = req.query.action as string | undefined;
+    if (actionFilter && !AUDIT_KNOWN_ACTIONS.has(actionFilter)) {
+      console.warn(`[audit-log] Unknown action filter: "${actionFilter}" — querying anyway`);
+    }
+
+    const orgId = reqOrgId(req);
+
+    const { entries, total } = await withOrgContext(orgId, async (client) => {
+      const conditions: string[] = ['org_id = $1', 'occurred_at >= $2', 'occurred_at <= $3'];
+      const values: unknown[] = [orgId, fromDate.toISOString(), toDate.toISOString()];
+      let idx = 4;
+
+      if (actionFilter) {
+        conditions.push(`action = $${idx++}`);
+        values.push(actionFilter);
+      }
+
+      const where = `WHERE ${conditions.join(' AND ')}`;
+
+      const [rowsRes, countRes] = await Promise.all([
+        client.query(
+          `SELECT id, actor_oid, action, resource_type, resource_id, detail, ip_address, occurred_at
+           FROM audit_log
+           ${where}
+           ORDER BY occurred_at DESC
+           LIMIT 1000`,
+          values,
+        ),
+        client.query(`SELECT COUNT(*)::int AS total FROM audit_log ${where}`, values),
+      ]);
+
+      return { entries: rowsRes.rows, total: countRes.rows[0].total as number };
+    });
+
+    if (format === 'csv') {
+      const headers = ['id', 'actor_oid', 'action', 'resource_type', 'resource_id', 'detail', 'ip_address', 'occurred_at'];
+
+      function csvCell(val: unknown): string {
+        if (val === null || val === undefined) return '';
+        const str = typeof val === 'object' ? JSON.stringify(val) : String(val);
+        // RFC 4180: quote fields containing comma, double-quote, or newline
+        if (str.includes(',') || str.includes('\n') || str.includes('"')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      }
+
+      const csvRows = [
+        headers.join(','),
+        ...entries.map((row: Record<string, unknown>) =>
+          headers.map(h => csvCell(row[h])).join(',')
+        ),
+      ];
+
+      // Filename uses ISO dates with colons replaced for cross-platform compatibility
+      const filenameFrom = fromDate.toISOString().replace(/:/g, '-');
+      const filenameTo   = toDate.toISOString().replace(/:/g, '-');
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="audit-log-${filenameFrom}-to-${filenameTo}.csv"`);
+      return res.send(csvRows.join('\r\n'));
+    }
+
+    return res.json({
+      entries,
+      total,
+      from: fromDate.toISOString(),
+      to: toDate.toISOString(),
+    });
+
+  } catch (err: any) {
+    console.error("Error in /admin/audit-log:", err);
     res.status(500).json({ error: err.message });
   }
 });
