@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { useMsal } from "@azure/msal-react";
 import type { AccountInfo, AuthenticationResult } from "@azure/msal-browser";
+import { getDevAuthBypass } from "./devAuthBypass";
 import { clearOfflineStateForUser } from "../offline/offlineQueue";
 import { clearPhotosForUser } from "../offline/photoStore";
 import { clearDraftsForUser } from "../offline/stopDraftStore";
@@ -26,14 +27,17 @@ const apiScopes = [`${apiAppIdUri}/access_as_user`];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { instance, accounts } = useMsal();
-  const [me, setMe] = useState<Me>(null);
+  const devBypass = useRef(getDevAuthBypass()).current;
+  const [me, setMe] = useState<Me>(() => devBypass?.me ?? null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const inflightToken = useRef<{ accountId: string; promise: Promise<string> } | null>(null);
 
-  const account = (accounts && accounts[0]) || null;
+  const account = devBypass?.account ?? ((accounts && accounts[0]) || null);
   const isSignedIn = !!account;
 
   const getAccessToken = useCallback(async () => {
+    if (devBypass) return 'dev-bypass-token';
+
     const acc =
       instance.getActiveAccount() ||
       account ||

@@ -143,22 +143,95 @@ await page.goto('/routes', { waitUntil: 'domcontentloaded' })
 
 ---
 
-### Axe audit script (S1-8 resumed)
+### Axe audit script (S1-8)
 
-The resumed `axeAudit.spec.ts` will use `setExtraHTTPHeaders` instead of the
-abandoned MSAL localStorage injection approach. Ensure the backend is running
-with `DEV_AUTH_BYPASS=true` before launching the audit:
+The `axeAudit.spec.ts` uses `page.setExtraHTTPHeaders` (backend bypass) combined
+with `VITE_DEV_AUTH_BYPASS=true` and a `__dev_user__` localStorage key
+(frontend bypass) to reach all authenticated surfaces without a real Entra session.
+
+Ensure the backend is running with `DEV_AUTH_BYPASS=true` before launching the audit:
 
 ```bash
 # Terminal 1 — backend
 DEV_AUTH_BYPASS=true pnpm --filter backend dev
 
 # Terminal 2 — frontend
-pnpm --filter frontend dev
+VITE_DEV_AUTH_BYPASS=true pnpm --filter frontend dev
 
 # Terminal 3 — run audit
 pnpm --filter frontend axe:audit
 ```
+
+---
+
+## Frontend bypass
+
+`frontend/src/auth/devAuthBypass.ts` is the symmetrical frontend counterpart.
+
+### Activating
+
+In `frontend/.env.local` (local only, never committed):
+
+```env
+VITE_DEV_AUTH_BYPASS=true
+```
+
+`import.meta.env.MODE` must not be `'production'`. Vite dead-code-eliminates the
+entire bypass module from production bundles at build time.
+
+### Setting the synthetic user
+
+Before navigating to any protected route, seed `localStorage.__dev_user__`:
+
+```javascript
+localStorage.setItem('__dev_user__', JSON.stringify({
+  oid:    'your-test-oid',
+  roles:  ['UL'],          // or 'Lead', 'Admin', etc.
+  org_id: 1,
+}))
+```
+
+The frontend router reads this key via `getDevAuthBypass()` on mount and injects
+a synthetic `AccountInfo` into `AuthContext`, bypassing the MSAL account check.
+The `me` state is pre-populated from the same payload, bypassing the
+`/api/secure/ping` fetch. `getAccessToken()` returns `'dev-bypass-token'`.
+
+### Playwright snippet (full-stack dev bypass)
+
+```typescript
+// In setupAuth() — before page.goto()
+await page.addInitScript(({ devUser }) => {
+  localStorage.setItem('__dev_user__', JSON.stringify(devUser))
+}, { devUser: { oid: 'axe-ul-oid', roles: ['UL'], org_id: 1 } })
+
+await page.setExtraHTTPHeaders({
+  'x-dev-user-oid':    'axe-ul-oid',
+  'x-dev-user-roles':  'UL',
+  'x-dev-user-org-id': '1',
+})
+
+await page.goto('/work')
+```
+
+`addInitScript` seeds localStorage before any page scripts run.
+`setExtraHTTPHeaders` covers all subsequent API requests from that page context.
+
+### Safety gates (frontend)
+
+All three must pass or `getDevAuthBypass()` returns `null`:
+
+1. **MODE gate** — `import.meta.env.MODE === 'production'` → returns `null`.
+   Vite eliminates the code path entirely from production bundles.
+
+2. **VITE_DEV_AUTH_BYPASS gate** — must equal the literal string `'true'`.
+
+3. **Boot banner** — on first activation, emitted once to `console.warn`:
+   ```
+   *** WARNING ***
+   FRONTEND DEV AUTH BYPASS IS ACTIVE
+   ...
+   *** WARNING ***
+   ```
 
 ---
 
