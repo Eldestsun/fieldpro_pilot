@@ -5,7 +5,7 @@
   "surfaces": {
     "login_auth_flow": {
       "surface": "Login / Auth Flow",
-      "url": "http://localhost:5174/",
+      "url": "http://localhost:5173/",
       "role": null,
       "violations": [
         {
@@ -67,9 +67,155 @@
       "passes_count": 10,
       "incomplete_count": 0,
       "inapplicable_count": 51
+    },
+    "ul_stop_list": {
+      "surface": "UL Stop List",
+      "url": "http://localhost:5173/work",
+      "role": "UL",
+      "fixture_note": "Scanned in empty state — axe-audit-ul OID has no route_run assigned. Zero violations may reflect absence of data-rendered elements. Fixture requirement: a planned route_run assigned to axe-audit-ul with ≥3 stops.",
+      "violations": [],
+      "incomplete": [],
+      "passes_count": 15,
+      "incomplete_count": 0,
+      "inapplicable_count": 46
+    },
+    "ul_stop_wizard": {
+      "surface": "UL Stop Wizard",
+      "url": "http://localhost:5173/work",
+      "role": "UL",
+      "fixture_note": "Scanned in empty state — axe-audit-ul OID has no route_run assigned. Stop wizard could not be entered. Fixture requirement: same as ul_stop_list. Re-run after adding fixture data.",
+      "violations": [],
+      "incomplete": [],
+      "passes_count": 15,
+      "incomplete_count": 0,
+      "inapplicable_count": 46
+    },
+    "lead_routes": {
+      "surface": "Lead Routes",
+      "url": "http://localhost:5173/routes",
+      "role": "Lead",
+      "violations": [
+        {
+          "id": "scrollable-region-focusable",
+          "impact": "serious",
+          "description": "Ensure elements that have scrollable content are accessible by keyboard in Safari",
+          "help": "Scrollable region must have keyboard access",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.11/scrollable-region-focusable?application=playwright",
+          "nodes": [
+            {
+              "html": "<div class=\"overflow-x-auto\">",
+              "target": [".mb-6 > .overflow-x-auto"],
+              "failureSummary": "Fix any of the following:\n  Element should have focusable content\n  Element should be focusable"
+            },
+            {
+              "html": "<div class=\"overflow-x-auto\">",
+              "target": [".rounded-lg.p-6.bg-white:nth-child(2) > .overflow-x-auto"],
+              "failureSummary": "Fix any of the following:\n  Element should have focusable content\n  Element should be focusable"
+            }
+          ]
+        }
+      ],
+      "incomplete": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+          "nodes": [
+            {
+              "html": "<td class=\"px-4 py-3 text-left\">5/13/2026</td>",
+              "target": [".mb-6 > .overflow-x-auto > table > tbody > .hover\\:bg-gray-50.cursor-pointer > td:nth-child(5)"],
+              "reason": "axe could not determine foreground/background colors due to dynamic styling"
+            }
+          ]
+        }
+      ],
+      "passes_count": 18,
+      "incomplete_count": 1,
+      "inapplicable_count": 42
+    },
+    "admin_panel": {
+      "surface": "Admin Panel",
+      "url": "http://localhost:5173/admin/pools",
+      "role": "Admin",
+      "violations": [],
+      "incomplete": [],
+      "passes_count": 18,
+      "incomplete_count": 0,
+      "inapplicable_count": 43
+    },
+    "control_center": {
+      "surface": "Control Center",
+      "url": "http://localhost:5173/admin/control-center",
+      "role": "Admin",
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+          "help": "Elements must meet minimum color contrast ratio thresholds",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.11/color-contrast?application=playwright",
+          "nodes": [
+            {
+              "html": "<div class=\"py-4 text-center text-gray-300 italic text-sm\">No skips recorded today</div>",
+              "target": [".py-4"],
+              "failureSummary": "Element has insufficient color contrast of 1.47 (foreground color: #d1d5dc, background color: #ffffff, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+            },
+            {
+              "html": "<div class=\"text-sm text-gray-300 italic\">None detected today</div>",
+              "target": [".flex-col.gap-4.flex > .rounded-lg.p-6.bg-white > .italic.text-gray-300.text-sm"],
+              "failureSummary": "Element has insufficient color contrast of 1.47 (foreground color: #d1d5dc, background color: #ffffff, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1"
+            },
+            {
+              "html": "<div class=\"text-xs text-gray-300\">Normal Load</div>",
+              "target": [".rounded-lg.p-6.bg-white:nth-child(1) > .max-h-48.overflow-y-auto > .text-gray-300.text-xs"],
+              "failureSummary": "Element has insufficient color contrast of 1.47 (foreground color: #d1d5dc, background color: #ffffff, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+            },
+            {
+              "html": "<div class=\"text-xs text-gray-300\">Balanced</div>",
+              "target": [".rounded-lg.p-6.bg-white:nth-child(2) > .max-h-48.overflow-y-auto > .text-gray-300.text-xs"],
+              "failureSummary": "Element has insufficient color contrast of 1.47 (foreground color: #d1d5dc, background color: #ffffff, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1"
+            }
+          ]
+        },
+        {
+          "id": "scrollable-region-focusable",
+          "impact": "serious",
+          "description": "Ensure elements that have scrollable content are accessible by keyboard in Safari",
+          "help": "Scrollable region must have keyboard access",
+          "helpUrl": "https://dequeuniversity.com/rules/axe/4.11/scrollable-region-focusable?application=playwright",
+          "nodes": [
+            {
+              "html": "<div class=\"overflow-x-auto\">",
+              "target": [".overflow-x-auto"],
+              "failureSummary": "Fix any of the following:\n  Element should have focusable content\n  Element should be focusable"
+            }
+          ]
+        }
+      ],
+      "incomplete": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+          "nodes": [
+            {
+              "html": "<td class=\"px-4 py-3 text-left\">0m</td>",
+              "target": ["td:nth-child(4)"],
+              "reason": "axe could not determine foreground/background colors due to dynamic styling"
+            }
+          ]
+        }
+      ],
+      "passes_count": 17,
+      "incomplete_count": 1,
+      "inapplicable_count": 43
     }
   },
-  "total_violations": 1,
+  "total_violations": 4,
   "critical_violations": 0,
-  "serious_violations": 1
+  "serious_violations": 4,
+  "fixture_gaps": [
+    "ul_stop_list: scanned in empty state — add a planned route_run for axe-audit-ul with ≥3 stops to get data-rendered scan",
+    "ul_stop_wizard: same fixture gap — wizard could not be entered without a stop to click"
+  ]
 }
