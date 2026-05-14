@@ -61,6 +61,7 @@ Analysis-only tasks (no code or schema changes) do not require a changelog entry
 
 ### Step 4 — Required Reads for Code/Data Tasks
 
+- `PROJECT_CONTEXT.md` (repo root) — always, at session start alongside this file
 - `planning/architecture/target_architecture.md` — always
 - `planning/architecture/current_state.md` — always (marks broken state + must-not-regress list)
 - `pg_state.sql` — DB-related tasks only. **Note: this file becomes stale after any schema-changing tier or migration. If the task involves tables added or dropped after 2026-05-08 (Tiers 4, 5, R10), regenerate it first:** `PGPASSWORD=fieldpro_pass pg_dump -h localhost -U fieldpro -d fieldpro_db --schema-only > pg_state.sql`
@@ -88,6 +89,27 @@ See `planning/architecture/target_architecture.md` §8 for the intelligence cons
 
 ---
 
+## Environment Requirements
+
+Tasks that produce code, schema, configuration, or any artifact that must be committed and pushed MUST run in Claude Code on desktop, not in browser-based Claude Code.
+
+Browser Claude Code runs in an ephemeral sandbox. When the session ends, the working directory and any local-only commits are destroyed. Any code-producing task run in the browser environment is at risk of silent loss if push fails or if the session ends before verification.
+
+**Browser Claude Code is appropriate for:**
+- Reading and analyzing code
+- Planning and architecture discussion
+- Drafting specs that will be committed in a later session
+- Investigating bugs without changing code
+
+**Browser Claude Code is NOT appropriate for:**
+- Implementing tier or refinement or security sprint tasks
+- Schema migrations
+- Any task whose definition of done includes a commit + push
+
+If a session is opened in the wrong environment, the agent should stop and report rather than proceed.
+
+---
+
 ## Git Commit Convention
 
 Every task that produces code, schema, or configuration changes must follow this branch pattern — no exceptions:
@@ -97,6 +119,12 @@ Every task that produces code, schema, or configuration changes must follow this
 3. Merge `refactor/baseline` into `main`
 4. Push `main` to `origin/main`
 5. Push `refactor/baseline` to `origin/refactor/baseline` to keep remote in sync
+6. Verify push success. Run:
+   ```
+   git fetch origin
+   git log origin/refactor/baseline --oneline | head -3
+   ```
+   The new commit must appear in the output. If it does not, the push silently failed — STOP, do not mark the task complete, and report the discrepancy to the operator. Do not retry without diagnosis.
 
 Do not commit directly to `main`. Do not cherry-pick. Do not leave `refactor/baseline` ahead of its remote after a merge.
 
