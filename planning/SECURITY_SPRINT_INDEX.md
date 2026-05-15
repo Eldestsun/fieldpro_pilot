@@ -45,7 +45,7 @@ Sprints 1 and 2 are agent-executable. Sprint 3 requires the founder for infrastr
 | **Sprint 2 — Policy Documents** | | | | | |
 | S2-1 | NIST SP 800-53 Control Mapping Document | Document | Agent | Hosting decision | 🔴 Not started |
 | S2-2 | WA OCIO 141.10 Alignment Statement | Document | Agent | Hosting decision | 🔴 Not started |
-| S2-3 | Incident Response Plan (24-hr Breach Notification) | Document | Agent | Hosting decision | 🔴 Not started |
+| S2-3 | Incident Response Plan (24-hr Breach Notification) | Document | Agent | Hosting decision | 🟢 Done 2026-05-14 |
 | S2-4 | Business Continuity Summary — Backup, HA, RTO/RPO, SLA | Document | Agent | Hosting decision | 🔴 Not started |
 | S2-5 | Data Classification Document for Exports | Document | Agent | None | 🔴 Not started |
 | S2-6 | Log Retention Policy (>= 1 Year) | Document | Agent | None | 🔴 Not started |
@@ -121,7 +121,7 @@ Three items were deferred out of S1-9 scope. They must be completed before S2-9 
 **Documents**
 - [ ] NIST SP 800-53 control mapping — reviewed and signed off
 - [ ] WA OCIO 141.10 alignment statement — reviewed and signed off
-- [ ] Incident Response Plan — reviewed and signed off
+- [ ] Incident Response Plan — written 2026-05-14; pending founder review (S3-5)
 - [ ] Business Continuity summary — reviewed and signed off
 - [ ] Data classification document — reviewed and signed off
 - [ ] Log retention policy — reviewed and signed off
