@@ -11,6 +11,8 @@
  */
 
 import { pool } from "../db";
+import { writeAuditLog } from "../middleware/auditLog";
+import { SYSTEM_ACTOR_OID } from "../constants";
 import { PoolClient } from "pg";
 
 interface RouteRunRow {
@@ -112,6 +114,22 @@ export async function populate(): Promise<{ inserted: number; skipped: number }>
         [maxFinishedAt]
       );
     }
+
+    const runAt = new Date().toISOString();
+    const actorOid = process.env.SYSTEM_ACTOR_OID ?? SYSTEM_ACTOR_OID;
+
+    // Await directly — fire-and-forget is unsafe in a script that calls pool.end()
+    // immediately after populate() returns.
+    await writeAuditLog({
+      actor_oid: actorOid,
+      org_id: process.env.AZURE_TENANT_ID ?? 'system',
+      action: 'admin.eam_bridge_populate',
+      detail: {
+        rows_written: inserted,
+        run_at: runAt,
+        route_run_ids_processed_count: runs.length,
+      },
+    });
 
     return { inserted, skipped };
   } finally {

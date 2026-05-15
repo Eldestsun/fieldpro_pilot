@@ -21,4 +21,5 @@ export const AUDIT_KNOWN_ACTIONS: ReadonlySet<string> = new Set([
   'admin.oid_decrypt', // S1-13: logged on every captured_by_oid decryption
   'auth.dev_bypass',  // DEV_TOKEN_INJECTION: logged on every dev-bypass use
   'admin.audit_log_read', // S1-3 deferred: written on every successful audit-log query
+  'admin.eam_bridge_populate', // S1-7 gap: written by populateEamBridge.ts after each run
 ]);
