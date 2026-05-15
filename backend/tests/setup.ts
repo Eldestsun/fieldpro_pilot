@@ -31,6 +31,10 @@ export type RouteRunFixture = {
  * Returns ids for use in tests. Cleanup via cleanupFixture().
  */
 export async function createRouteRunFixture(client: PoolClient): Promise<RouteRunFixture> {
+  // core.v_locations_transit uses FORCE RLS; set org context so the view is
+  // readable when ensureVisitForRouteRunStop queries it during tests.
+  await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(FIXTURE_ORG_ID)]);
+
   const runRes = await client.query(
     `INSERT INTO route_runs (route_pool_id, run_date, status)
      VALUES ($1, CURRENT_DATE, 'planned')
@@ -82,6 +86,9 @@ export async function cleanupFixture(client: PoolClient, f: RouteRunFixture): Pr
   // route_run_stops: FK from stop_photos already deleted, hazards/infra are nullable.
   // route_runs delete cascades route_run_stops.
   await client.query(`DELETE FROM route_runs WHERE id = $1`, [f.routeRunId]);
+
+  // Reset org context so this connection is clean when returned to the pool.
+  await client.query(`SELECT set_config('app.current_org_id', '', false)`);
 }
 
 // Local copy of deriveClientVisitId — tests should not depend on src/ implementation
