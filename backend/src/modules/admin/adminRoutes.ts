@@ -864,6 +864,14 @@ adminRoutes.get("/admin/audit-log", async (req: Request, res: Response) => {
       return { entries: rowsRes.rows, total: countRes.rows[0].total as number };
     });
 
+    auditWrite({
+      actor_oid: (req as any).user?.oid ?? 'unknown',
+      org_id: orgId,
+      action: 'admin.audit_log_read',
+      detail: { from: fromDate.toISOString(), to: toDate.toISOString(), format, result_count: total },
+      ip_address: req.ip,
+    });
+
     if (format === 'csv') {
       const headers = ['id', 'actor_oid', 'action', 'resource_type', 'resource_id', 'detail', 'ip_address', 'occurred_at'];
 
