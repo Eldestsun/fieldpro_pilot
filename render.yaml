@@ -7,6 +7,8 @@ services:
     dockerContext: ./backend
     plan: free
     healthCheckPath: /api/health
+    buildArgs:
+      CACHEBUST: $RENDER_GIT_COMMIT
     envVars:
       - key: NODE_ENV
         value: production
