@@ -48,10 +48,27 @@ async function main() {
       .sort();
 
     const applied = await getApplied(client);
-    let consolidatedApplied = applied.has(CONSOLIDATED_SCHEMA);
+
+    // Build an augmented set that also covers renamed files.
+    // If the DB has "20251130_base_schema.sql" recorded (old pre-rename name),
+    // treat "legacy_20251130_base_schema.sql" as already applied so we never
+    // try to re-run migration content that the DB already has.
+    const effectivelyApplied = new Set(applied);
+    for (const f of applied) {
+      effectivelyApplied.add(`legacy_${f}`);
+    }
+
+    // Consolidated is applied if: (a) explicitly recorded, or (b) the DB has
+    // pre-rename entries that map to legacy_ files — meaning the old per-file
+    // sequence ran and the DB already has the schema those files produced.
+    const hasPreRenameEntries = files.some(
+      (f) => f.startsWith("legacy_") && applied.has(f.slice("legacy_".length))
+    );
+    let consolidatedApplied =
+      applied.has(CONSOLIDATED_SCHEMA) || hasPreRenameEntries;
 
     for (const filename of files) {
-      if (applied.has(filename)) {
+      if (effectivelyApplied.has(filename)) {
         console.log(`  skip  ${filename}`);
         continue;
       }
