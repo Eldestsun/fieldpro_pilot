@@ -27,7 +27,7 @@ SET row_security = off;
 -- Name: core; Type: SCHEMA; Schema: -; Owner: -
 --
 
-CREATE SCHEMA IF NOT EXISTS IF NOT EXISTS core;
+CREATE SCHEMA IF NOT EXISTS core;
 
 
 --
