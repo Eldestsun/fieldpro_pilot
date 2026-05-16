@@ -3,7 +3,7 @@
 > Orchestration layer for the Security Hardening & Procurement Compliance track.
 > Based on: `BASELINE_Security_Hardening_Plan.docx` + `BASELINE_Gap_Analysis.docx`
 > Prerequisite: Refactor (Tiers 1–8) and Refinement (R1–R10) tracks complete or stable.
-> Last updated: 2026-05-13
+> Last updated: 2026-05-15
 
 ---
 
@@ -18,9 +18,10 @@ Sprints 1 and 2 are agent-executable. Sprint 3 requires the founder for infrastr
 
 ## Pre-Sprint Requirement
 
-> **Sprint 2 cannot begin until the hosting platform decision is made.**
-> Azure Government, AWS GovCloud, or standard managed hosting must be selected by the founder.
-> This decision determines FedRAMP inheritance claims and directly affects all policy documents.
+> **Hosting-dependent S2 documents (S2-1, S2-2, S2-3, S2-4) have been written at demo posture.**
+> Hosting-dependent sections are marked "Planned — pending S3-1" inline. These documents must be
+> updated once the founder selects a hosting platform (S3-1). The hosting decision also determines
+> which FedRAMP controls are inherited and what SLA claims are supportable.
 
 ---
 
@@ -43,15 +44,15 @@ Sprints 1 and 2 are agent-executable. Sprint 3 requires the founder for infrastr
 | S1-12 | File Upload Path Traversal & Validation Hardening | Code | Agent | None | 🟢 Done 2026-05-13 |
 | S1-13 | KMS-Encrypted captured_by_oid on core.visits | Code | Agent | None | 🟢 Done 2026-05-13 |
 | **Sprint 2 — Policy Documents** | | | | | |
-| S2-1 | NIST SP 800-53 Control Mapping Document | Document | Agent | Hosting decision | 🔴 Not started |
-| S2-2 | WA OCIO 141.10 Alignment Statement | Document | Agent | Hosting decision | 🔴 Not started |
+| S2-1 | NIST SP 800-53 Control Mapping Document | Document | Agent | Hosting decision | 🟢 Done 2026-05-14 |
+| S2-2 | WA OCIO 141.10 Alignment Statement | Document | Agent | Hosting decision | 🟢 Done 2026-05-14 |
 | S2-3 | Incident Response Plan (24-hr Breach Notification) | Document | Agent | Hosting decision | 🟢 Done 2026-05-14 |
-| S2-4 | Business Continuity Summary — Backup, HA, RTO/RPO, SLA | Document | Agent | Hosting decision | 🔴 Not started |
-| S2-5 | Data Classification Document for Exports | Document | Agent | None | 🔴 Not started |
-| S2-6 | Log Retention Policy (>= 1 Year) | Document | Agent | None | 🔴 Not started |
-| S2-7 | Data Use Limitation Policy (WA Public-Sector Privacy) | Document | Agent | None | 🔴 Not started |
-| S2-8 | ArcGIS Integration Roadmap Narrative (TPRA) | Document | Agent | None | 🔴 Not started |
-| S2-9 | WCAG 2.1 AA Conformance Statement | Document | Agent | S1-8 + S1-9 + S2-9-prereqs | 🔴 Not started |
+| S2-4 | Business Continuity Summary — Backup, HA, RTO/RPO, SLA | Document | Agent | Hosting decision | 🟢 Done 2026-05-14 |
+| S2-5 | Data Classification Document for Exports | Document | Agent | None | 🟢 Done 2026-05-14 |
+| S2-6 | Log Retention Policy (>= 1 Year) | Document | Agent | None | 🟢 Done 2026-05-14 |
+| S2-7 | Data Use Limitation Policy (WA Public-Sector Privacy) | Document | Agent | None | 🟢 Done 2026-05-14 |
+| S2-8 | ArcGIS Integration Roadmap Narrative (TPRA) | Document | Agent | None | 🟢 Done 2026-05-14 |
+| S2-9 | WCAG 2.1 AA Conformance Statement | Document | Agent | S1-8 + S1-9 + S2-9-prereqs | 🟠 In review — prereqs 1+2 open; S3-4 pending |
 | S2-10 | TPRA Questionnaire Answers + Integration Options Matrix | Document | Agent | All S2 docs | 🔴 Not started |
 | **Sprint 3 — Founder Tasks & Final Validation** | | | | | |
 | S3-1 | Select and Configure Hosting Platform | Infra | Founder | — blocks S2 | 🔴 Not started |
@@ -94,17 +95,19 @@ S2 complete ──► S3-5 ──► S3-7
 
 ---
 
-## S2-9 Prerequisites (must resolve before conformance statement can be written)
+## S2-9 Prerequisites
 
-Three items were deferred out of S1-9 scope. They must be completed before S2-9 is dispatched — a conformance statement that omits known gaps is a false claim.
+Three items were deferred out of S1-9 scope. S2-9 was written on 2026-05-14 with prerequisites 1 and 2
+still open — the conformance statement documents them as known deviations with WCAG level assessments.
+The statement is marked 🟠 In review until all three are resolved and S3-5 sign-off is complete.
 
 | # | Item | Type | Owner | Status |
 |---|------|------|-------|--------|
-| 1 | **Modal focus management JS** — add `useEffect`-based focus trap to all 5 dialog components (ConfirmDialog, ImagePreviewModal, ConflictResolutionModal, Safety Modal, Infra Modal): move focus to first interactive element on open, contain Tab, return focus to trigger on close | Code | Agent | 🔴 Open |
-| 2 | **Photo remove button touch target** — the × overlay on photo thumbnails is 20×20px (below WCAG 2.5.5 44×44px). Expanding it requires a product/design decision: options are (a) remove the button and replace with a swipe gesture, (b) show a separate remove step below the thumbnail strip, or (c) accept the AAA deviation and document it explicitly in the conformance statement | Product decision | Founder | 🔴 Open |
-| 3 | **VoiceOver / TalkBack manual run** — already tracked as S3-4 (Founder task) | QA | Founder | 🔴 Open (S3-4) |
+| 1 | **Modal focus management JS** — `useEffect`-based focus trap on 5 dialog components (ConfirmDialog, ImagePreviewModal, ConflictResolutionModal, Safety Modal, Infra Modal): move focus to first element on open, contain Tab, return focus on close. ARIA roles applied in S1-9; JS behavior deferred. Assessed as not a WCAG 2.1 AA failure in S2-9 (§6.1). | Code | Agent | 🔴 Open |
+| 2 | **Photo remove button touch target** — 20×20px on photo strip overlay; below WCAG 2.5.5 AAA minimum. Not a Level AA violation. Documented in S2-9 §6.2. Requires product/design decision before closing. | Product decision | Founder | 🔴 Open |
+| 3 | **VoiceOver / TalkBack manual run** — tracked as S3-4 (Founder task). Specific verification targets documented in S2-9 §6.3. | QA | Founder | 🔴 Open (S3-4) |
 
-**Reference**: `docs/security/axe-audit-2026-05-14.md` → Part C Manual Audit section for full context on each item.
+**Reference**: `docs/security/axe-audit-2026-05-14.md` § Part C; `docs/security/wcag-conformance-statement.md` § 6.
 
 ---
 
@@ -119,14 +122,16 @@ Three items were deferred out of S1-9 scope. They must be completed before S2-9 
 - [x] axe-core findings remediated — no WCAG AA violations in automated scan (S1-9 complete 2026-05-14)
 
 **Documents**
-- [ ] NIST SP 800-53 control mapping — reviewed and signed off
-- [ ] WA OCIO 141.10 alignment statement — reviewed and signed off
-- [ ] Incident Response Plan — written 2026-05-14; pending founder review (S3-5)
-- [ ] Business Continuity summary — reviewed and signed off
-- [ ] Data classification document — reviewed and signed off
-- [ ] Log retention policy — reviewed and signed off
-- [ ] WCAG 2.1 AA Conformance Statement — reviewed and signed off
-- [ ] TPRA questionnaire answers + integration options matrix — complete
+- [ ] NIST SP 800-53 control mapping — written 2026-05-14; pending S3-1 update + S3-5 sign-off
+- [ ] WA OCIO 141.10 alignment statement — written 2026-05-14; pending S3-1 update + S3-5 sign-off
+- [ ] Incident Response Plan — written 2026-05-14; pending S3-1 update + S3-5 sign-off
+- [ ] Business Continuity summary — written 2026-05-14; pending S3-2 update + S3-5 sign-off
+- [ ] Data classification document — written 2026-05-14; pending S3-5 sign-off
+- [ ] Log retention policy — written 2026-05-14; pending S3-5 sign-off
+- [ ] Data use limitation policy — written 2026-05-14; pending S3-5 sign-off
+- [ ] ArcGIS integration roadmap — written 2026-05-14; pending S3-5 sign-off
+- [ ] WCAG 2.1 AA Conformance Statement — written 2026-05-14; S2-9 prereqs 1+2 open; pending S3-4 + S3-5
+- [ ] TPRA questionnaire answers + integration options matrix — not started (S2-10)
 
 **Infrastructure**
 - [ ] Hosting platform selected and configured

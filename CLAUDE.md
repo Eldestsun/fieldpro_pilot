@@ -110,6 +110,18 @@ If a session is opened in the wrong environment, the agent should stop and repor
 
 ---
 
+## Dev Auth Bypass — Intended Use
+
+The dev bypass (`localStorage.__dev_user__` / `dev-bypass-token`) exists exclusively for headless agent sessions running remotely in terminal via tools like Prompt 3. It allows a coding agent to interact with the application without a real Entra account.
+
+The founder uses real Azure Entra authentication (personal business tenant) with actual role assignments for all live browser testing. Do NOT suggest switching the founder to dev bypass when auth issues arise in the browser — the correct fix is always on the real MSAL/Entra path.
+
+Two auth paths, two separate contexts:
+- Agent in terminal → dev bypass
+- Founder in browser → real Entra, v2.0 tokens, role-based
+
+---
+
 ## Git Commit Convention
 
 Every task that produces code, schema, or configuration changes must follow this branch pattern — no exceptions:

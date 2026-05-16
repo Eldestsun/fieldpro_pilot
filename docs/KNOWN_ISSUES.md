@@ -154,3 +154,20 @@ Fix: define a canonical "condition" observation type with a consistent
 payload shape, then rewrite the complexity subquery against it.
 Priority: post-pilot — complexity_score is not consumed by any 
 current surface.
+
+---
+
+## ISSUE-011 — Dev bypass Bearer token enhancement (deferred)
+**Status:** Deferred
+**Discovered:** 2026-05-15
+**Area:** backend — `backend/src/middleware/devAuthBypass.ts`
+**Severity:** low
+
+A partially-implemented enhancement to the dev auth bypass middleware added Bearer sentinel support and env-var fallback identity (`DEV_BYPASS_OID`, `DEV_BYPASS_ROLES`, `DEV_BYPASS_ORG_ID`). This work was reverted on 2026-05-15 because the audit detail payload was renamed (`x-dev-user-oid` → `resolved-oid`) without a corresponding update to the test assertion at `devAuthBypass.test.ts` ~line 192–196.
+
+**When re-implementing:**
+- Update the audit detail assertion in `devAuthBypass.test.ts` (~line 192–196) to expect `resolved-oid`
+- Implement Bearer token + env-var fallback together as one commit
+- Verify 99/99 test baseline holds
+
+**Deferred because:** The current header-based bypass (`X-Dev-User-*`) works for all agent terminal sessions. Bearer token support is only needed if remote agent tooling changes to Bearer token auth.
