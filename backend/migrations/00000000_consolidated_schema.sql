@@ -27,7 +27,7 @@ SET row_security = off;
 -- Name: core; Type: SCHEMA; Schema: -; Owner: -
 --
 
-CREATE SCHEMA IF NOT EXISTS core;
+CREATE SCHEMA IF NOT EXISTS IF NOT EXISTS core;
 
 
 --
@@ -48,7 +48,7 @@ COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
 -- Name: enforce_location_external_ids_org_match(); Type: FUNCTION; Schema: core; Owner: -
 --
 
-CREATE FUNCTION core.enforce_location_external_ids_org_match() RETURNS trigger
+CREATE OR REPLACE FUNCTION core.enforce_location_external_ids_org_match() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 declare loc_org bigint;
@@ -75,7 +75,7 @@ $$;
 -- Name: enforce_route_runs_pool_invariant(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION public.enforce_route_runs_pool_invariant() RETURNS trigger
+CREATE OR REPLACE FUNCTION public.enforce_route_runs_pool_invariant() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 DECLARE
@@ -127,7 +127,7 @@ $$;
 -- Name: prevent_route_pool_org_base_change_if_used(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION public.prevent_route_pool_org_base_change_if_used() RETURNS trigger
+CREATE OR REPLACE FUNCTION public.prevent_route_pool_org_base_change_if_used() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 BEGIN
@@ -154,7 +154,7 @@ $$;
 -- Name: stops_readonly(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION public.stops_readonly() RETURNS trigger
+CREATE OR REPLACE FUNCTION public.stops_readonly() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 begin
@@ -167,7 +167,7 @@ $$;
 -- Name: sync_transit_stop_primary_asset(); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION public.sync_transit_stop_primary_asset() RETURNS trigger
+CREATE OR REPLACE FUNCTION public.sync_transit_stop_primary_asset() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 BEGIN
@@ -206,7 +206,7 @@ SET default_table_access_method = heap;
 -- Name: asset_locations; Type: TABLE; Schema: core; Owner: -
 --
 
-CREATE TABLE core.asset_locations (
+CREATE TABLE IF NOT EXISTS core.asset_locations (
     id bigint NOT NULL,
     org_id bigint NOT NULL,
     asset_id bigint NOT NULL,
@@ -227,7 +227,7 @@ ALTER TABLE ONLY core.asset_locations FORCE ROW LEVEL SECURITY;
 -- Name: asset_locations_id_seq; Type: SEQUENCE; Schema: core; Owner: -
 --
 
-CREATE SEQUENCE core.asset_locations_id_seq
+CREATE SEQUENCE IF NOT EXISTS core.asset_locations_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -246,7 +246,7 @@ ALTER SEQUENCE core.asset_locations_id_seq OWNED BY core.asset_locations.id;
 -- Name: asset_types; Type: TABLE; Schema: core; Owner: -
 --
 
-CREATE TABLE core.asset_types (
+CREATE TABLE IF NOT EXISTS core.asset_types (
     id bigint NOT NULL,
     org_id bigint NOT NULL,
     type_key text NOT NULL,
@@ -305,7 +305,7 @@ ALTER TABLE core.asset_types ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 -- Name: assignments; Type: TABLE; Schema: core; Owner: -
 --
 
-CREATE TABLE core.assignments (
+CREATE TABLE IF NOT EXISTS core.assignments (
     id bigint NOT NULL,
     org_id bigint NOT NULL,
     assignment_type text NOT NULL,
@@ -330,7 +330,7 @@ ALTER TABLE ONLY core.assignments FORCE ROW LEVEL SECURITY;
 -- Name: assignments_id_seq; Type: SEQUENCE; Schema: core; Owner: -
 --
 
-CREATE SEQUENCE core.assignments_id_seq
+CREATE SEQUENCE IF NOT EXISTS core.assignments_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -349,7 +349,7 @@ ALTER SEQUENCE core.assignments_id_seq OWNED BY core.assignments.id;
 -- Name: evidence; Type: TABLE; Schema: core; Owner: -
 --
 
-CREATE TABLE core.evidence (
+CREATE TABLE IF NOT EXISTS core.evidence (
     id bigint NOT NULL,
     org_id bigint NOT NULL,
     visit_id bigint NOT NULL,
@@ -369,7 +369,7 @@ ALTER TABLE ONLY core.evidence FORCE ROW LEVEL SECURITY;
 -- Name: evidence_id_seq; Type: SEQUENCE; Schema: core; Owner: -
 --
 
-CREATE SEQUENCE core.evidence_id_seq
+CREATE SEQUENCE IF NOT EXISTS core.evidence_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -388,7 +388,7 @@ ALTER SEQUENCE core.evidence_id_seq OWNED BY core.evidence.id;
 -- Name: location_external_ids; Type: TABLE; Schema: core; Owner: -
 --
 
-CREATE TABLE core.location_external_ids (
+CREATE TABLE IF NOT EXISTS core.location_external_ids (
     id bigint NOT NULL,
     org_id bigint NOT NULL,
     location_id bigint NOT NULL,
@@ -404,7 +404,7 @@ ALTER TABLE ONLY core.location_external_ids FORCE ROW LEVEL SECURITY;
 -- Name: location_external_ids_id_seq; Type: SEQUENCE; Schema: core; Owner: -
 --
 
-CREATE SEQUENCE core.location_external_ids_id_seq
+CREATE SEQUENCE IF NOT EXISTS core.location_external_ids_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -423,7 +423,7 @@ ALTER SEQUENCE core.location_external_ids_id_seq OWNED BY core.location_external
 -- Name: locations; Type: TABLE; Schema: core; Owner: -
 --
 
-CREATE TABLE core.locations (
+CREATE TABLE IF NOT EXISTS core.locations (
     id bigint NOT NULL,
     org_id bigint NOT NULL,
     location_type text NOT NULL,
@@ -443,7 +443,7 @@ ALTER TABLE ONLY core.locations FORCE ROW LEVEL SECURITY;
 -- Name: locations_id_seq; Type: SEQUENCE; Schema: core; Owner: -
 --
 
-CREATE SEQUENCE core.locations_id_seq
+CREATE SEQUENCE IF NOT EXISTS core.locations_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -462,7 +462,7 @@ ALTER SEQUENCE core.locations_id_seq OWNED BY core.locations.id;
 -- Name: observation_type_registry; Type: TABLE; Schema: core; Owner: -
 --
 
-CREATE TABLE core.observation_type_registry (
+CREATE TABLE IF NOT EXISTS core.observation_type_registry (
     id bigint NOT NULL,
     org_id bigint NOT NULL,
     asset_type_id bigint NOT NULL,
@@ -539,7 +539,7 @@ ALTER TABLE core.observation_type_registry ALTER COLUMN id ADD GENERATED ALWAYS 
 -- Name: observations; Type: TABLE; Schema: core; Owner: -
 --
 
-CREATE TABLE core.observations (
+CREATE TABLE IF NOT EXISTS core.observations (
     id bigint NOT NULL,
     org_id bigint NOT NULL,
     visit_id bigint NOT NULL,
@@ -560,7 +560,7 @@ ALTER TABLE ONLY core.observations FORCE ROW LEVEL SECURITY;
 -- Name: observations_id_seq; Type: SEQUENCE; Schema: core; Owner: -
 --
 
-CREATE SEQUENCE core.observations_id_seq
+CREATE SEQUENCE IF NOT EXISTS core.observations_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -616,7 +616,7 @@ CREATE VIEW core.v_asset_locations_transit AS
 -- Name: assets; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.assets (
+CREATE TABLE IF NOT EXISTS public.assets (
     id bigint NOT NULL,
     org_id bigint NOT NULL,
     asset_type_id bigint NOT NULL,
@@ -682,7 +682,7 @@ CREATE VIEW core.v_assets AS
 -- Name: route_run_stops; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.route_run_stops (
+CREATE TABLE IF NOT EXISTS public.route_run_stops (
     id bigint NOT NULL,
     route_run_id bigint NOT NULL,
     stop_id text NOT NULL,
@@ -715,7 +715,7 @@ COMMENT ON COLUMN public.route_run_stops.trash_volume IS 'Trash volume at time t
 -- Name: route_runs; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.route_runs (
+CREATE TABLE IF NOT EXISTS public.route_runs (
     id bigint NOT NULL,
     user_id bigint,
     route_pool_id text,
@@ -769,7 +769,7 @@ CREATE VIEW core.v_stop_location_map AS
 -- Name: clean_logs; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.clean_logs (
+CREATE TABLE IF NOT EXISTS public.clean_logs (
     id bigint NOT NULL,
     route_run_stop_id bigint,
     stop_id text NOT NULL,
@@ -822,7 +822,7 @@ CREATE VIEW core.v_clean_logs_transit AS
 -- Name: hazards; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.hazards (
+CREATE TABLE IF NOT EXISTS public.hazards (
     id bigint NOT NULL,
     stop_id text NOT NULL,
     route_run_stop_id bigint,
@@ -867,7 +867,7 @@ CREATE VIEW core.v_hazards_transit AS
 -- Name: infrastructure_issues; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.infrastructure_issues (
+CREATE TABLE IF NOT EXISTS public.infrastructure_issues (
     id bigint NOT NULL,
     stop_id text NOT NULL,
     route_run_stop_id bigint,
@@ -920,7 +920,7 @@ CREATE VIEW core.v_infra_transit AS
 -- Name: level3_logs; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.level3_logs (
+CREATE TABLE IF NOT EXISTS public.level3_logs (
     id bigint NOT NULL,
     route_run_stop_id bigint,
     stop_id text NOT NULL,
@@ -977,7 +977,7 @@ CREATE VIEW core.v_locations AS
 -- Name: stop_photos; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.stop_photos (
+CREATE TABLE IF NOT EXISTS public.stop_photos (
     id bigint NOT NULL,
     route_run_stop_id bigint NOT NULL,
     s3_key text NOT NULL,
@@ -1015,7 +1015,7 @@ CREATE VIEW core.v_stop_photos_transit AS
 -- Name: trash_volume_logs; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.trash_volume_logs (
+CREATE TABLE IF NOT EXISTS public.trash_volume_logs (
     id bigint NOT NULL,
     route_run_stop_id bigint,
     stop_id text NOT NULL,
@@ -1070,7 +1070,7 @@ CREATE VIEW core.v_trash_volume_logs_transit AS
 -- Name: visits; Type: TABLE; Schema: core; Owner: -
 --
 
-CREATE TABLE core.visits (
+CREATE TABLE IF NOT EXISTS core.visits (
     id bigint NOT NULL,
     org_id bigint NOT NULL,
     location_id bigint,
@@ -1111,7 +1111,7 @@ COMMENT ON COLUMN core.visits.captured_by_oid_key_id IS 'KMS key version used to
 -- Name: visits_id_seq; Type: SEQUENCE; Schema: core; Owner: -
 --
 
-CREATE SEQUENCE core.visits_id_seq
+CREATE SEQUENCE IF NOT EXISTS core.visits_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -1130,7 +1130,7 @@ ALTER SEQUENCE core.visits_id_seq OWNED BY core.visits.id;
 -- Name: asset_external_ids; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.asset_external_ids (
+CREATE TABLE IF NOT EXISTS public.asset_external_ids (
     id bigint NOT NULL,
     asset_id bigint NOT NULL,
     external_system text NOT NULL,
@@ -1157,7 +1157,7 @@ ALTER TABLE public.asset_external_ids ALTER COLUMN id ADD GENERATED BY DEFAULT A
 -- Name: asset_types; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.asset_types (
+CREATE TABLE IF NOT EXISTS public.asset_types (
     id bigint NOT NULL,
     code text NOT NULL,
     name text NOT NULL,
@@ -1197,7 +1197,7 @@ ALTER TABLE public.assets ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
 -- Name: audit_log; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.audit_log (
+CREATE TABLE IF NOT EXISTS public.audit_log (
     id bigint NOT NULL,
     actor_oid text NOT NULL,
     org_id uuid NOT NULL,
@@ -1223,7 +1223,7 @@ COMMENT ON TABLE public.audit_log IS 'Append-only compliance audit trail. Stores
 -- Name: audit_log_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE public.audit_log_id_seq
+CREATE SEQUENCE IF NOT EXISTS public.audit_log_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -1242,7 +1242,7 @@ ALTER SEQUENCE public.audit_log_id_seq OWNED BY public.audit_log.id;
 -- Name: bases; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.bases (
+CREATE TABLE IF NOT EXISTS public.bases (
     id text NOT NULL,
     name text NOT NULL,
     lon double precision NOT NULL,
@@ -1259,7 +1259,7 @@ CREATE TABLE public.bases (
 -- Name: clean_logs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE public.clean_logs_id_seq
+CREATE SEQUENCE IF NOT EXISTS public.clean_logs_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -1278,7 +1278,7 @@ ALTER SEQUENCE public.clean_logs_id_seq OWNED BY public.clean_logs.id;
 -- Name: stop_risk_snapshot; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.stop_risk_snapshot (
+CREATE TABLE IF NOT EXISTS public.stop_risk_snapshot (
     stop_id text NOT NULL,
     is_hotspot boolean DEFAULT false NOT NULL,
     days_since_last_l3 integer,
@@ -1304,7 +1304,7 @@ CREATE TABLE public.stop_risk_snapshot (
 -- Name: stops_legacy; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.stops_legacy (
+CREATE TABLE IF NOT EXISTS public.stops_legacy (
     "STOP_ID" text NOT NULL,
     "TRF_DISTRICT_CODE" text,
     "BAY_CODE" text,
@@ -1368,7 +1368,7 @@ CREATE MATERIALIZED VIEW public.cleanliness_risk_mv AS
 -- Name: eam_bridge_populate_state; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.eam_bridge_populate_state (
+CREATE TABLE IF NOT EXISTS public.eam_bridge_populate_state (
     id integer DEFAULT 1 NOT NULL,
     watermark timestamp with time zone DEFAULT '1970-01-01 00:00:00+00'::timestamp with time zone NOT NULL,
     CONSTRAINT eam_bridge_populate_state_id_check CHECK ((id = 1))
@@ -1379,7 +1379,7 @@ CREATE TABLE public.eam_bridge_populate_state (
 -- Name: eam_bridge_route_log; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.eam_bridge_route_log (
+CREATE TABLE IF NOT EXISTS public.eam_bridge_route_log (
     id bigint NOT NULL,
     org_id bigint NOT NULL,
     route_run_id bigint NOT NULL,
@@ -1402,7 +1402,7 @@ COMMENT ON TABLE public.eam_bridge_route_log IS 'EAMS-facing contract surface. O
 -- Name: eam_bridge_route_log_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE public.eam_bridge_route_log_id_seq
+CREATE SEQUENCE IF NOT EXISTS public.eam_bridge_route_log_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -1421,7 +1421,7 @@ ALTER SEQUENCE public.eam_bridge_route_log_id_seq OWNED BY public.eam_bridge_rou
 -- Name: export_delete_tokens; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.export_delete_tokens (
+CREATE TABLE IF NOT EXISTS public.export_delete_tokens (
     id bigint NOT NULL,
     token_hash text NOT NULL,
     org_id text NOT NULL,
@@ -1444,7 +1444,7 @@ COMMENT ON TABLE public.export_delete_tokens IS 'Confirmation tokens for the two
 -- Name: export_delete_tokens_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE public.export_delete_tokens_id_seq
+CREATE SEQUENCE IF NOT EXISTS public.export_delete_tokens_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -1650,7 +1650,7 @@ CREATE VIEW public.export_stop_status_v1 AS
 -- Name: hazards_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE public.hazards_id_seq
+CREATE SEQUENCE IF NOT EXISTS public.hazards_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -1669,7 +1669,7 @@ ALTER SEQUENCE public.hazards_id_seq OWNED BY public.hazards.id;
 -- Name: identity_directory; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.identity_directory (
+CREATE TABLE IF NOT EXISTS public.identity_directory (
     oid text NOT NULL,
     display_name text,
     email text,
@@ -1692,7 +1692,7 @@ COMMENT ON TABLE public.identity_directory IS 'Operational identity registry —
 -- Name: infrastructure_issues_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE public.infrastructure_issues_id_seq
+CREATE SEQUENCE IF NOT EXISTS public.infrastructure_issues_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -1731,7 +1731,7 @@ CREATE MATERIALIZED VIEW public.infrastructure_risk_mv AS
 -- Name: lead_route_overrides; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.lead_route_overrides (
+CREATE TABLE IF NOT EXISTS public.lead_route_overrides (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     pool_id text NOT NULL,
     stop_id text NOT NULL,
@@ -1774,7 +1774,7 @@ CREATE MATERIALIZED VIEW public.level3_compliance_mv AS
 -- Name: level3_logs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE public.level3_logs_id_seq
+CREATE SEQUENCE IF NOT EXISTS public.level3_logs_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -1793,7 +1793,7 @@ ALTER SEQUENCE public.level3_logs_id_seq OWNED BY public.level3_logs.id;
 -- Name: organizations; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.organizations (
+CREATE TABLE IF NOT EXISTS public.organizations (
     id bigint NOT NULL,
     name text NOT NULL,
     slug text NOT NULL,
@@ -1827,7 +1827,7 @@ ALTER TABLE public.organizations ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDE
 -- Name: route_pools; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.route_pools (
+CREATE TABLE IF NOT EXISTS public.route_pools (
     id text NOT NULL,
     label text NOT NULL,
     trf_district text,
@@ -1844,7 +1844,7 @@ CREATE TABLE public.route_pools (
 -- Name: route_run_stops_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE public.route_run_stops_id_seq
+CREATE SEQUENCE IF NOT EXISTS public.route_run_stops_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -1863,7 +1863,7 @@ ALTER SEQUENCE public.route_run_stops_id_seq OWNED BY public.route_run_stops.id;
 -- Name: route_runs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE public.route_runs_id_seq
+CREATE SEQUENCE IF NOT EXISTS public.route_runs_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -1934,7 +1934,7 @@ CREATE VIEW public.stop_assets_v1 AS
 -- Name: stop_condition_history; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.stop_condition_history (
+CREATE TABLE IF NOT EXISTS public.stop_condition_history (
     id bigint NOT NULL,
     stop_id text NOT NULL,
     visit_id bigint NOT NULL,
@@ -1973,7 +1973,7 @@ ALTER TABLE public.stop_condition_history ALTER COLUMN id ADD GENERATED ALWAYS A
 -- Name: stop_effort_history; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.stop_effort_history (
+CREATE TABLE IF NOT EXISTS public.stop_effort_history (
     id bigint NOT NULL,
     stop_id text NOT NULL,
     visit_id bigint NOT NULL,
@@ -2016,7 +2016,7 @@ ALTER TABLE public.stop_effort_history ALTER COLUMN id ADD GENERATED ALWAYS AS I
 -- Name: stop_photos_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE public.stop_photos_id_seq
+CREATE SEQUENCE IF NOT EXISTS public.stop_photos_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2035,7 +2035,7 @@ ALTER SEQUENCE public.stop_photos_id_seq OWNED BY public.stop_photos.id;
 -- Name: transit_stops; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.transit_stops (
+CREATE TABLE IF NOT EXISTS public.transit_stops (
     stop_id text NOT NULL,
     trf_district_code text,
     bay_code text,
@@ -2096,7 +2096,7 @@ CREATE VIEW public.stops AS
 -- Name: transit_stop_assets; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.transit_stop_assets (
+CREATE TABLE IF NOT EXISTS public.transit_stop_assets (
     id bigint NOT NULL,
     stop_id text NOT NULL,
     asset_id bigint NOT NULL,
@@ -2114,7 +2114,7 @@ CREATE TABLE public.transit_stop_assets (
 -- Name: transit_stop_assets_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE public.transit_stop_assets_id_seq
+CREATE SEQUENCE IF NOT EXISTS public.transit_stop_assets_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2155,7 +2155,7 @@ CREATE VIEW public.transit_stop_assets_v1 AS
 -- Name: trash_volume_logs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE public.trash_volume_logs_id_seq
+CREATE SEQUENCE IF NOT EXISTS public.trash_volume_logs_id_seq
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2693,503 +2693,504 @@ ALTER TABLE ONLY public.trash_volume_logs
 -- Name: idx_core_asset_locations_asset; Type: INDEX; Schema: core; Owner: -
 --
 
-CREATE INDEX idx_core_asset_locations_asset ON core.asset_locations USING btree (org_id, asset_id);
+CREATE INDEX IF NOT EXISTS idx_core_asset_locations_asset ON core.asset_locations USING btree (org_id, asset_id);
 
 
 --
 -- Name: idx_core_asset_locations_location; Type: INDEX; Schema: core; Owner: -
 --
 
-CREATE INDEX idx_core_asset_locations_location ON core.asset_locations USING btree (org_id, location_id);
+CREATE INDEX IF NOT EXISTS idx_core_asset_locations_location ON core.asset_locations USING btree (org_id, location_id);
 
 
 --
 -- Name: idx_core_assignments_org_status; Type: INDEX; Schema: core; Owner: -
 --
 
-CREATE INDEX idx_core_assignments_org_status ON core.assignments USING btree (org_id, status);
+CREATE INDEX IF NOT EXISTS idx_core_assignments_org_status ON core.assignments USING btree (org_id, status);
 
 
 --
 -- Name: idx_core_evidence_visit; Type: INDEX; Schema: core; Owner: -
 --
 
-CREATE INDEX idx_core_evidence_visit ON core.evidence USING btree (visit_id);
+CREATE INDEX IF NOT EXISTS idx_core_evidence_visit ON core.evidence USING btree (visit_id);
 
 
 --
 -- Name: idx_core_observations_visit; Type: INDEX; Schema: core; Owner: -
 --
 
-CREATE INDEX idx_core_observations_visit ON core.observations USING btree (visit_id);
+CREATE INDEX IF NOT EXISTS idx_core_observations_visit ON core.observations USING btree (visit_id);
 
 
 --
 -- Name: idx_core_visits_asset_time; Type: INDEX; Schema: core; Owner: -
 --
 
-CREATE INDEX idx_core_visits_asset_time ON core.visits USING btree (org_id, primary_asset_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_core_visits_asset_time ON core.visits USING btree (org_id, primary_asset_id, started_at DESC);
 
 
 --
 -- Name: idx_core_visits_location_time; Type: INDEX; Schema: core; Owner: -
 --
 
-CREATE INDEX idx_core_visits_location_time ON core.visits USING btree (org_id, location_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_core_visits_location_time ON core.visits USING btree (org_id, location_id, started_at DESC);
 
 
 --
 -- Name: ux_location_one_id_per_system; Type: INDEX; Schema: core; Owner: -
 --
 
-CREATE UNIQUE INDEX ux_location_one_id_per_system ON core.location_external_ids USING btree (org_id, location_id, source_system);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_location_one_id_per_system ON core.location_external_ids USING btree (org_id, location_id, source_system);
 
 
 --
 -- Name: asset_external_ids_asset_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX asset_external_ids_asset_idx ON public.asset_external_ids USING btree (asset_id);
+CREATE INDEX IF NOT EXISTS asset_external_ids_asset_idx ON public.asset_external_ids USING btree (asset_id);
 
 
 --
 -- Name: assets_lon_lat_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX assets_lon_lat_idx ON public.assets USING btree (lon, lat);
+CREATE INDEX IF NOT EXISTS assets_lon_lat_idx ON public.assets USING btree (lon, lat);
 
 
 --
 -- Name: assets_org_type_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX assets_org_type_idx ON public.assets USING btree (org_id, asset_type_id);
+CREATE INDEX IF NOT EXISTS assets_org_type_idx ON public.assets USING btree (org_id, asset_type_id);
 
 
 --
 -- Name: audit_log_actor; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX audit_log_actor ON public.audit_log USING btree (actor_oid, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS audit_log_actor ON public.audit_log USING btree (actor_oid, occurred_at DESC);
 
 
 --
 -- Name: audit_log_org_occurred; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX audit_log_org_occurred ON public.audit_log USING btree (org_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS audit_log_org_occurred ON public.audit_log USING btree (org_id, occurred_at DESC);
 
 
 --
 -- Name: cleanliness_risk_mv_pool_cleanliness_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX cleanliness_risk_mv_pool_cleanliness_idx ON public.cleanliness_risk_mv USING btree (pool_id, cleanliness_score DESC);
+CREATE INDEX IF NOT EXISTS cleanliness_risk_mv_pool_cleanliness_idx ON public.cleanliness_risk_mv USING btree (pool_id, cleanliness_score DESC);
 
 
 --
 -- Name: cleanliness_risk_mv_pool_overdue_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX cleanliness_risk_mv_pool_overdue_idx ON public.cleanliness_risk_mv USING btree (pool_id, is_overdue_30d, days_since_last_l3 DESC);
+CREATE INDEX IF NOT EXISTS cleanliness_risk_mv_pool_overdue_idx ON public.cleanliness_risk_mv USING btree (pool_id, is_overdue_30d, days_since_last_l3 DESC);
 
 
 --
 -- Name: cleanliness_risk_mv_stop_id_uniq; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX cleanliness_risk_mv_stop_id_uniq ON public.cleanliness_risk_mv USING btree (stop_id);
+CREATE UNIQUE INDEX IF NOT EXISTS cleanliness_risk_mv_stop_id_uniq ON public.cleanliness_risk_mv USING btree (stop_id);
 
 
 --
 -- Name: eam_bridge_completed_at; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX eam_bridge_completed_at ON public.eam_bridge_route_log USING btree (completed_at DESC);
+CREATE INDEX IF NOT EXISTS eam_bridge_completed_at ON public.eam_bridge_route_log USING btree (completed_at DESC);
 
 
 --
 -- Name: eam_bridge_org_logged; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX eam_bridge_org_logged ON public.eam_bridge_route_log USING btree (org_id, logged_at DESC);
+CREATE INDEX IF NOT EXISTS eam_bridge_org_logged ON public.eam_bridge_route_log USING btree (org_id, logged_at DESC);
 
 
 --
 -- Name: export_delete_tokens_org_expires; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX export_delete_tokens_org_expires ON public.export_delete_tokens USING btree (org_id, expires_at);
+CREATE INDEX IF NOT EXISTS export_delete_tokens_org_expires ON public.export_delete_tokens USING btree (org_id, expires_at);
 
 
 --
 -- Name: hazards_stop_id_reported_at_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX hazards_stop_id_reported_at_idx ON public.hazards USING btree (stop_id, reported_at);
+CREATE INDEX IF NOT EXISTS hazards_stop_id_reported_at_idx ON public.hazards USING btree (stop_id, reported_at);
 
 
 --
 -- Name: idx_assets_org_external_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_assets_org_external_id ON public.assets USING btree (org_id, external_id) WHERE (external_id IS NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_assets_org_external_id ON public.assets USING btree (org_id, external_id) WHERE (external_id IS NOT NULL);
 
 
 --
 -- Name: idx_bases_org_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_bases_org_id ON public.bases USING btree (org_id);
+CREATE INDEX IF NOT EXISTS idx_bases_org_id ON public.bases USING btree (org_id);
 
 
 --
 -- Name: idx_clean_logs_stop_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_clean_logs_stop_id ON public.clean_logs USING btree (stop_id);
+CREATE INDEX IF NOT EXISTS idx_clean_logs_stop_id ON public.clean_logs USING btree (stop_id);
 
 
 --
 -- Name: idx_clean_logs_visit_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_clean_logs_visit_id ON public.clean_logs USING btree (visit_id);
+CREATE INDEX IF NOT EXISTS idx_clean_logs_visit_id ON public.clean_logs USING btree (visit_id);
 
 
 --
 -- Name: idx_hazards_stop_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_hazards_stop_id ON public.hazards USING btree (stop_id);
+CREATE INDEX IF NOT EXISTS idx_hazards_stop_id ON public.hazards USING btree (stop_id);
 
 
 --
 -- Name: idx_hazards_visit_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_hazards_visit_id ON public.hazards USING btree (visit_id);
+CREATE INDEX IF NOT EXISTS idx_hazards_visit_id ON public.hazards USING btree (visit_id);
 
 
 --
 -- Name: idx_identity_directory_org_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_identity_directory_org_id ON public.identity_directory USING btree (org_id);
+CREATE INDEX IF NOT EXISTS idx_identity_directory_org_id ON public.identity_directory USING btree (org_id);
 
 
 --
 -- Name: idx_infrastructure_issues_stop_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_infrastructure_issues_stop_id ON public.infrastructure_issues USING btree (stop_id);
+CREATE INDEX IF NOT EXISTS idx_infrastructure_issues_stop_id ON public.infrastructure_issues USING btree (stop_id);
 
 
 --
 -- Name: idx_infrastructure_issues_visit_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_infrastructure_issues_visit_id ON public.infrastructure_issues USING btree (visit_id);
+CREATE INDEX IF NOT EXISTS idx_infrastructure_issues_visit_id ON public.infrastructure_issues USING btree (visit_id);
 
 
 --
 -- Name: idx_level3_logs_stop_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_level3_logs_stop_id ON public.level3_logs USING btree (stop_id);
+CREATE INDEX IF NOT EXISTS idx_level3_logs_stop_id ON public.level3_logs USING btree (stop_id);
 
 
 --
 -- Name: idx_level3_logs_visit_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_level3_logs_visit_id ON public.level3_logs USING btree (visit_id);
+CREATE INDEX IF NOT EXISTS idx_level3_logs_visit_id ON public.level3_logs USING btree (visit_id);
 
 
 --
 -- Name: idx_overrides_pool_stop; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_overrides_pool_stop ON public.lead_route_overrides USING btree (pool_id, stop_id);
+CREATE INDEX IF NOT EXISTS idx_overrides_pool_stop ON public.lead_route_overrides USING btree (pool_id, stop_id);
 
 
 --
 -- Name: idx_overrides_pool_type; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_overrides_pool_type ON public.lead_route_overrides USING btree (pool_id, override_type);
+CREATE INDEX IF NOT EXISTS idx_overrides_pool_type ON public.lead_route_overrides USING btree (pool_id, override_type);
 
 
 --
 -- Name: idx_riskmap_combined_score; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_riskmap_combined_score ON public.stop_risk_snapshot USING btree (combined_risk_score DESC);
+CREATE INDEX IF NOT EXISTS idx_riskmap_combined_score ON public.stop_risk_snapshot USING btree (combined_risk_score DESC);
 
 
 --
 -- Name: idx_riskmap_l3; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_riskmap_l3 ON public.stop_risk_snapshot USING btree (days_since_last_l3 DESC);
+CREATE INDEX IF NOT EXISTS idx_riskmap_l3 ON public.stop_risk_snapshot USING btree (days_since_last_l3 DESC);
 
 
 --
 -- Name: idx_route_pools_org_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_route_pools_org_id ON public.route_pools USING btree (org_id);
+CREATE INDEX IF NOT EXISTS idx_route_pools_org_id ON public.route_pools USING btree (org_id);
 
 
 --
 -- Name: idx_route_run_stops_asset_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_route_run_stops_asset_id ON public.route_run_stops USING btree (asset_id);
+CREATE INDEX IF NOT EXISTS idx_route_run_stops_asset_id ON public.route_run_stops USING btree (asset_id);
 
 
 --
 -- Name: idx_route_run_stops_run_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_route_run_stops_run_id ON public.route_run_stops USING btree (route_run_id, sequence);
+CREATE INDEX IF NOT EXISTS idx_route_run_stops_run_id ON public.route_run_stops USING btree (route_run_id, sequence);
 
 
 --
 -- Name: idx_route_run_stops_stop_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_route_run_stops_stop_id ON public.route_run_stops USING btree (stop_id);
+CREATE INDEX IF NOT EXISTS idx_route_run_stops_stop_id ON public.route_run_stops USING btree (stop_id);
 
 
 --
 -- Name: idx_route_runs_assigned_user_oid; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_route_runs_assigned_user_oid ON public.route_runs USING btree (assigned_user_oid);
+CREATE INDEX IF NOT EXISTS idx_route_runs_assigned_user_oid ON public.route_runs USING btree (assigned_user_oid);
 
 
 --
 -- Name: idx_route_runs_created_by_oid; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_route_runs_created_by_oid ON public.route_runs USING btree (created_by_oid);
+CREATE INDEX IF NOT EXISTS idx_route_runs_created_by_oid ON public.route_runs USING btree (created_by_oid);
 
 
 --
 -- Name: idx_route_runs_org_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_route_runs_org_id ON public.route_runs USING btree (org_id);
+CREATE INDEX IF NOT EXISTS idx_route_runs_org_id ON public.route_runs USING btree (org_id);
 
 
 --
 -- Name: idx_stop_condition_stop_scored; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_stop_condition_stop_scored ON public.stop_condition_history USING btree (stop_id, scored_at DESC);
+CREATE INDEX IF NOT EXISTS idx_stop_condition_stop_scored ON public.stop_condition_history USING btree (stop_id, scored_at DESC);
 
 
 --
 -- Name: idx_stop_effort_run_date; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_stop_effort_run_date ON public.stop_effort_history USING btree (run_date);
+CREATE INDEX IF NOT EXISTS idx_stop_effort_run_date ON public.stop_effort_history USING btree (run_date);
 
 
 --
 -- Name: idx_stop_effort_stop_date; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_stop_effort_stop_date ON public.stop_effort_history USING btree (stop_id, run_date);
+CREATE INDEX IF NOT EXISTS idx_stop_effort_stop_date ON public.stop_effort_history USING btree (stop_id, run_date);
 
 
 --
 -- Name: idx_stop_photos_route_run_stop_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_stop_photos_route_run_stop_id ON public.stop_photos USING btree (route_run_stop_id);
+CREATE INDEX IF NOT EXISTS idx_stop_photos_route_run_stop_id ON public.stop_photos USING btree (route_run_stop_id);
 
 
 --
 -- Name: idx_stop_photos_visit_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_stop_photos_visit_id ON public.stop_photos USING btree (visit_id);
+CREATE INDEX IF NOT EXISTS idx_stop_photos_visit_id ON public.stop_photos USING btree (visit_id);
 
 
 --
 -- Name: idx_stop_risk_snapshot_stop_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_stop_risk_snapshot_stop_id ON public.stop_risk_snapshot USING btree (stop_id);
+CREATE INDEX IF NOT EXISTS idx_stop_risk_snapshot_stop_id ON public.stop_risk_snapshot USING btree (stop_id);
 
 
 --
 -- Name: idx_stops_pool_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_stops_pool_id ON public.stops_legacy USING btree (pool_id);
+CREATE INDEX IF NOT EXISTS idx_stops_pool_id ON public.stops_legacy USING btree (pool_id);
 
 
 --
 -- Name: idx_trash_volume_logs_stop_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_trash_volume_logs_stop_id ON public.trash_volume_logs USING btree (stop_id);
+CREATE INDEX IF NOT EXISTS idx_trash_volume_logs_stop_id ON public.trash_volume_logs USING btree (stop_id);
 
 
 --
 -- Name: idx_trash_volume_logs_visit_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_trash_volume_logs_visit_id ON public.trash_volume_logs USING btree (visit_id);
+CREATE INDEX IF NOT EXISTS idx_trash_volume_logs_visit_id ON public.trash_volume_logs USING btree (visit_id);
 
 
 --
 -- Name: infrastructure_issues_stop_id_reported_at_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX infrastructure_issues_stop_id_reported_at_idx ON public.infrastructure_issues USING btree (stop_id, reported_at);
+CREATE INDEX IF NOT EXISTS infrastructure_issues_stop_id_reported_at_idx ON public.infrastructure_issues USING btree (stop_id, reported_at);
 
 
 --
 -- Name: infrastructure_risk_mv_pool_infra_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX infrastructure_risk_mv_pool_infra_idx ON public.infrastructure_risk_mv USING btree (pool_id, infrastructure_score DESC);
+CREATE INDEX IF NOT EXISTS infrastructure_risk_mv_pool_infra_idx ON public.infrastructure_risk_mv USING btree (pool_id, infrastructure_score DESC);
 
 
 --
 -- Name: infrastructure_risk_mv_stop_id_uniq; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX infrastructure_risk_mv_stop_id_uniq ON public.infrastructure_risk_mv USING btree (stop_id);
+CREATE UNIQUE INDEX IF NOT EXISTS infrastructure_risk_mv_stop_id_uniq ON public.infrastructure_risk_mv USING btree (stop_id);
 
 
 --
 -- Name: level3_compliance_mv_pool_overdue_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX level3_compliance_mv_pool_overdue_idx ON public.level3_compliance_mv USING btree (pool_id, is_overdue_30d, days_since_last_l3 DESC);
+CREATE INDEX IF NOT EXISTS level3_compliance_mv_pool_overdue_idx ON public.level3_compliance_mv USING btree (pool_id, is_overdue_30d, days_since_last_l3 DESC);
 
 
 --
 -- Name: level3_compliance_mv_stop_id_uniq; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX level3_compliance_mv_stop_id_uniq ON public.level3_compliance_mv USING btree (stop_id);
+CREATE UNIQUE INDEX IF NOT EXISTS level3_compliance_mv_stop_id_uniq ON public.level3_compliance_mv USING btree (stop_id);
 
 
 --
 -- Name: level3_logs_stop_id_cleaned_at_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX level3_logs_stop_id_cleaned_at_idx ON public.level3_logs USING btree (stop_id, cleaned_at);
+CREATE INDEX IF NOT EXISTS level3_logs_stop_id_cleaned_at_idx ON public.level3_logs USING btree (stop_id, cleaned_at);
 
 
 --
 -- Name: organizations_tenant_uuid_key; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX organizations_tenant_uuid_key ON public.organizations USING btree (tenant_uuid) WHERE (tenant_uuid IS NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS organizations_tenant_uuid_key ON public.organizations USING btree (tenant_uuid) WHERE (tenant_uuid IS NOT NULL);
 
 
 --
 -- Name: route_pools_base_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX route_pools_base_id_idx ON public.route_pools USING btree (base_id);
+CREATE INDEX IF NOT EXISTS route_pools_base_id_idx ON public.route_pools USING btree (base_id);
 
 
 --
 -- Name: route_run_stops_origin_type_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX route_run_stops_origin_type_idx ON public.route_run_stops USING btree (origin_type);
+CREATE INDEX IF NOT EXISTS route_run_stops_origin_type_idx ON public.route_run_stops USING btree (origin_type);
 
 
 --
 -- Name: route_run_stops_route_run_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX route_run_stops_route_run_id_idx ON public.route_run_stops USING btree (route_run_id);
+CREATE INDEX IF NOT EXISTS route_run_stops_route_run_id_idx ON public.route_run_stops USING btree (route_run_id);
 
 
 --
 -- Name: route_runs_run_date_status_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX route_runs_run_date_status_idx ON public.route_runs USING btree (run_date, status);
+CREATE INDEX IF NOT EXISTS route_runs_run_date_status_idx ON public.route_runs USING btree (run_date, status);
 
 
 --
 -- Name: safety_risk_mv_pool_safety_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX safety_risk_mv_pool_safety_idx ON public.safety_risk_mv USING btree (pool_id, safety_score DESC);
+CREATE INDEX IF NOT EXISTS safety_risk_mv_pool_safety_idx ON public.safety_risk_mv USING btree (pool_id, safety_score DESC);
 
 
 --
 -- Name: safety_risk_mv_recent_hazard_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX safety_risk_mv_recent_hazard_idx ON public.safety_risk_mv USING btree (has_recent_hazard, hazard_days_ago);
+CREATE INDEX IF NOT EXISTS safety_risk_mv_recent_hazard_idx ON public.safety_risk_mv USING btree (has_recent_hazard, hazard_days_ago);
 
 
 --
 -- Name: safety_risk_mv_stop_id_uniq; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX safety_risk_mv_stop_id_uniq ON public.safety_risk_mv USING btree (stop_id);
+CREATE UNIQUE INDEX IF NOT EXISTS safety_risk_mv_stop_id_uniq ON public.safety_risk_mv USING btree (stop_id);
 
 
 --
 -- Name: stop_status_mv_pool_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX stop_status_mv_pool_idx ON public.stop_status_mv USING btree (pool_id);
+CREATE INDEX IF NOT EXISTS stop_status_mv_pool_idx ON public.stop_status_mv USING btree (pool_id);
 
 
 --
 -- Name: stop_status_mv_stop_id_uniq; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX stop_status_mv_stop_id_uniq ON public.stop_status_mv USING btree (stop_id);
+CREATE UNIQUE INDEX IF NOT EXISTS stop_status_mv_stop_id_uniq ON public.stop_status_mv USING btree (stop_id);
 
 
 --
 -- Name: trash_volume_logs_route_run_stop_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX trash_volume_logs_route_run_stop_id_idx ON public.trash_volume_logs USING btree (route_run_stop_id);
+CREATE INDEX IF NOT EXISTS trash_volume_logs_route_run_stop_id_idx ON public.trash_volume_logs USING btree (route_run_stop_id);
 
 
 --
 -- Name: trash_volume_logs_stop_id_logged_at_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX trash_volume_logs_stop_id_logged_at_idx ON public.trash_volume_logs USING btree (stop_id, logged_at);
+CREATE INDEX IF NOT EXISTS trash_volume_logs_stop_id_logged_at_idx ON public.trash_volume_logs USING btree (stop_id, logged_at);
 
 
 --
 -- Name: ux_transit_stop_assets_active; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX ux_transit_stop_assets_active ON public.transit_stop_assets USING btree (stop_id, asset_id, role) WHERE (active = true);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_transit_stop_assets_active ON public.transit_stop_assets USING btree (stop_id, asset_id, role) WHERE (active = true);
 
 
 --
 -- Name: ux_transit_stop_assets_one_primary; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX ux_transit_stop_assets_one_primary ON public.transit_stop_assets USING btree (stop_id) WHERE ((active = true) AND (role = 'primary'::text));
+CREATE UNIQUE INDEX IF NOT EXISTS ux_transit_stop_assets_one_primary ON public.transit_stop_assets USING btree (stop_id) WHERE ((active = true) AND (role = 'primary'::text));
 
 
 --
 -- Name: location_external_ids trg_location_external_ids_org_match; Type: TRIGGER; Schema: core; Owner: -
 --
 
+DROP TRIGGER IF EXISTS trg_location_external_ids_org_match ON core.location_external_ids;
 CREATE TRIGGER trg_location_external_ids_org_match BEFORE INSERT OR UPDATE ON core.location_external_ids FOR EACH ROW EXECUTE FUNCTION core.enforce_location_external_ids_org_match();
 
 
@@ -3197,6 +3198,7 @@ CREATE TRIGGER trg_location_external_ids_org_match BEFORE INSERT OR UPDATE ON co
 -- Name: route_pools trg_route_pools_lock_org_base; Type: TRIGGER; Schema: public; Owner: -
 --
 
+DROP TRIGGER IF EXISTS trg_route_pools_lock_org_base ON public.route_pools;
 CREATE TRIGGER trg_route_pools_lock_org_base BEFORE UPDATE OF org_id, base_id ON public.route_pools FOR EACH ROW EXECUTE FUNCTION public.prevent_route_pool_org_base_change_if_used();
 
 
@@ -3204,6 +3206,7 @@ CREATE TRIGGER trg_route_pools_lock_org_base BEFORE UPDATE OF org_id, base_id ON
 -- Name: route_runs trg_route_runs_pool_invariant; Type: TRIGGER; Schema: public; Owner: -
 --
 
+DROP TRIGGER IF EXISTS trg_route_runs_pool_invariant ON public.route_runs;
 CREATE TRIGGER trg_route_runs_pool_invariant BEFORE INSERT OR UPDATE OF route_pool_id, org_id, base_id ON public.route_runs FOR EACH ROW EXECUTE FUNCTION public.enforce_route_runs_pool_invariant();
 
 
@@ -3211,6 +3214,7 @@ CREATE TRIGGER trg_route_runs_pool_invariant BEFORE INSERT OR UPDATE OF route_po
 -- Name: stops trg_stops_readonly; Type: TRIGGER; Schema: public; Owner: -
 --
 
+DROP TRIGGER IF EXISTS trg_stops_readonly ON public.stops;
 CREATE TRIGGER trg_stops_readonly INSTEAD OF INSERT OR DELETE OR UPDATE ON public.stops FOR EACH ROW EXECUTE FUNCTION public.stops_readonly();
 
 
@@ -3218,6 +3222,7 @@ CREATE TRIGGER trg_stops_readonly INSTEAD OF INSERT OR DELETE OR UPDATE ON publi
 -- Name: transit_stops trg_sync_transit_stop_primary_asset; Type: TRIGGER; Schema: public; Owner: -
 --
 
+DROP TRIGGER IF EXISTS trg_sync_transit_stop_primary_asset ON public.transit_stops;
 CREATE TRIGGER trg_sync_transit_stop_primary_asset AFTER INSERT OR UPDATE OF asset_id ON public.transit_stops FOR EACH ROW EXECUTE FUNCTION public.sync_transit_stop_primary_asset();
 
 

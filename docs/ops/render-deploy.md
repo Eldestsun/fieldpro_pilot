@@ -127,6 +127,34 @@ render deploy --service-id <srv-id>
 
 ---
 
+## Recovering from a failed consolidated schema migration
+
+If the backend logs show:
+
+```
+FAIL  00000000_consolidated_schema.sql
+<error message about already-existing object>
+```
+
+This means the Render DB has partial state from a previous deployment attempt
+(e.g. some objects were created by legacy migrations before the consolidated
+schema approach was introduced). The consolidated schema is now fully idempotent
+(CREATE OR REPLACE FUNCTION, CREATE TABLE IF NOT EXISTS, DROP TRIGGER IF EXISTS,
+etc.), so this should not recur — but if it does on an existing Render DB:
+
+**Required action: reset the Render database before redeploying.**
+
+1. Go to Render dashboard → `baseline-db` → **Reset Database**.
+2. Confirm the reset. This drops all data and schema on the Render DB.
+3. Redeploy `baseline-backend` (Manual Deploy → Deploy latest commit).
+4. The migration runner will apply `00000000_consolidated_schema.sql` cleanly
+   on the empty DB and skip all `legacy_*` files automatically.
+
+> This reset is only needed when the DB has partial schema state from earlier
+> deployments. A clean DB (first deploy or after reset) will always succeed.
+
+---
+
 ## Checking logs if something fails
 
 **Backend fails to start:**
