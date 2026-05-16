@@ -2,7 +2,8 @@ import fs from "fs";
 import path from "path";
 import { Client } from "pg";
 
-const MIGRATIONS_DIR = path.resolve(__dirname, "../migrations");
+// Relative to dist/scripts/ at runtime, or src/scripts/ via ts-node
+const MIGRATIONS_DIR = path.resolve(__dirname, "../../migrations");
 
 const CREATE_TRACKING_TABLE = `
   CREATE TABLE IF NOT EXISTS schema_migrations (
