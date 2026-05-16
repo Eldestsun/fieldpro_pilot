@@ -24,3 +24,5 @@ The `column h.asset_id does not exist` error reported in the Render logs was cau
 
 - `backend/migrations/00000000_consolidated_schema.sql` (fix already committed)
 - `docs/changelog/2026-05-15-fix-consolidated-schema-complete.md` (this file)
+
+# Render cache-bust: forced fresh build
