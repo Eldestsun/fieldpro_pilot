@@ -631,6 +631,12 @@ CREATE TABLE IF NOT EXISTS public.assets (
     external_id text
 );
 
+-- Guard: if public.assets already existed before Tier-8 (partial-state Render DB),
+-- CREATE TABLE IF NOT EXISTS above is a no-op and the column won't be present.
+-- These are safe no-ops when the table was just created with the columns above.
+ALTER TABLE public.assets ADD COLUMN IF NOT EXISTS attributes jsonb DEFAULT '{}'::jsonb NOT NULL;
+ALTER TABLE public.assets ADD COLUMN IF NOT EXISTS external_id text;
+
 
 --
 -- Name: TABLE assets; Type: COMMENT; Schema: public; Owner: -
