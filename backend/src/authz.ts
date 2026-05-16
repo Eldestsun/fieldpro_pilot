@@ -2,7 +2,7 @@ import "dotenv/config";
 import jwksClient from "jwks-rsa";
 import jwt, { JwtHeader, JwtPayload, VerifyErrors } from "jsonwebtoken";
 import { NextFunction, Request, Response } from "express";
-import { pool } from "./db";
+import { pool, withOrgContext } from "./db";
 import { writeAuditLog } from "./middleware/auditLog";
 
 type AuthedRequest = Request & { user?: JwtPayload; roles?: string[] };
@@ -75,17 +75,40 @@ function upsertIdentity(user: JwtPayload, roles: string[]) {
       const displayName = user.name || user.preferred_username || "Unknown";
       const email = user.email || user.preferred_username || null; // fallback to upn if email missing
       const lastSeenRole = roles.length > 0 ? roles[0] : null;
+      const tenantUuid = (user as any).tid ?? null;
 
-      const query = `
-        INSERT INTO identity_directory (oid, display_name, email, last_seen_role, last_seen_at)
-        VALUES ($1, $2, $3, $4, NOW())
-        ON CONFLICT (oid) DO UPDATE SET
-          display_name = EXCLUDED.display_name,
-          email = EXCLUDED.email,
-          last_seen_role = EXCLUDED.last_seen_role,
-          last_seen_at = EXCLUDED.last_seen_at
-      `;
-      await pool.query(query, [oid, displayName, email, lastSeenRole]);
+      // Resolve numeric org_id from tenant UUID so RLS allows the write.
+      // Falls back to the first org (by id) for single-tenant pilot deployments
+      // where organizations.tenant_uuid is not yet populated.
+      const orgRes = await pool.query(
+        `SELECT id FROM organizations
+         WHERE tenant_uuid = $1
+         UNION ALL
+         SELECT id FROM organizations
+         ORDER BY id
+         LIMIT 1`,
+        [tenantUuid],
+      );
+      if (!orgRes.rows[0]) {
+        console.warn("[AUTHZ] upsertIdentity: no organization found, skipping");
+        return;
+      }
+      const orgId = orgRes.rows[0].id;
+
+      // identity_directory has FORCE ROW LEVEL SECURITY — the INSERT must run
+      // inside withOrgContext so app.current_org_id is set for the session.
+      await withOrgContext(orgId, async (client) => {
+        await client.query(
+          `INSERT INTO identity_directory (oid, org_id, display_name, email, last_seen_role, last_seen_at)
+           VALUES ($1, $2, $3, $4, $5, NOW())
+           ON CONFLICT (oid) DO UPDATE SET
+             display_name   = EXCLUDED.display_name,
+             email          = EXCLUDED.email,
+             last_seen_role = EXCLUDED.last_seen_role,
+             last_seen_at   = EXCLUDED.last_seen_at`,
+          [oid, orgId, displayName, email, lastSeenRole],
+        );
+      });
     } catch (err) {
       // Log only, do not fail
       console.warn("[AUTHZ] Identity upsert failed:", err);
