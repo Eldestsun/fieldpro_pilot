@@ -106,7 +106,7 @@ curl https://baseline-backend.onrender.com/api/health
 4. The server line `API listening on http://localhost:4000` confirms startup.
 
 **Frontend:**
-Open `https://baseline-frontend.onrender.com` in a browser.
+Open `https://baseline-frontend-9dad.onrender.com` in a browser.
 The Azure Entra login should appear. Log in with your Entra account.
 
 ---
