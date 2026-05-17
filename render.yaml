@@ -26,9 +26,7 @@ services:
     dockerContext: ./frontend
     plan: free
     envVars:
-      # Set to the backend's Render URL after first deploy.
-      # Format: https://baseline-backend.onrender.com
-      # Override in the Render dashboard if the service was renamed.
+      # Set to the backend's actual Render URL (check Render dashboard for the hash suffix).
       - key: BACKEND_URL
         value: https://baseline-backend.onrender.com
 
