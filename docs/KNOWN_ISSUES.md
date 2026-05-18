@@ -171,3 +171,21 @@ A partially-implemented enhancement to the dev auth bypass middleware added Bear
 - Verify 99/99 test baseline holds
 
 **Deferred because:** The current header-based bypass (`X-Dev-User-*`) works for all agent terminal sessions. Bearer token support is only needed if remote agent tooling changes to Bearer token auth.
+
+---
+
+## ISSUE-012 — GET /api/users returns empty list in local dev; assignment dropdown blank
+**Status:** Fixed 2026-05-18
+**Discovered:** 2026-05-18
+**Area:** backend — `backend/src/modules/admin/resourceRoutes.ts`
+
+**Symptom:**
+The Lead route-creation flow and any Admin surface listing assignable users showed an empty dropdown. No error — just no users to assign to.
+
+**Root cause:**
+`identity_directory` has `FORCE ROW LEVEL SECURITY` with an `org_isolation` policy that requires `app.current_org_id` to be set on the connection before any query runs. The `GET /api/users` handler used a bare `pool.query()` with no org context, so RLS filtered out every row silently. The bug was invisible on Render because Render's managed Postgres connection has elevated privileges that bypass RLS; locally the `fieldpro` role has neither `rolsuper` nor `rolbypassrls`, so RLS was correctly enforced.
+
+**Resolution:**
+`GET /api/users` now wraps the `identity_directory` query in `withOrgContext`. Numeric org ID resolves from `req.user.org_id` for dev bypass requests, falls back to a tenant UUID lookup against `organizations` for real Entra auth.
+
+**Changelog:** `docs/changelog/bugfix/2026-05-18-fix-users-rls-org-context.md`
