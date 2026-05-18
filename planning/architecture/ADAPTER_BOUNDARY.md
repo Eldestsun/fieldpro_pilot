@@ -102,7 +102,7 @@ Tables in `public.*` that carry operational meaning for the transit vertical. Th
 | `transit_stop_assets` | Maps transit `stop_id` (text) → canonical `assets.id`. The translation table between vertical identity and canonical identity. |
 | `assets` | Shared table (public schema, canonical FK target). Transit stops are represented as asset rows. Also the source of `org_id` for canonical writes — `core.assignments` and `core.visits` both derive `org_id` by joining `route_run_stops → assets.org_id`. Schema: `id bigint PK`, `org_id bigint NOT NULL FK→organizations`, `asset_type_id bigint NOT NULL`, `seed_key text NOT NULL` (unique with org_id+type), `lon/lat float`, `display_name text`, `active bool`. |
 | `route_runs` | A planned or active route for a given date and pool. Transit workflow artifact. |
-| `route_run_stops` | One row per stop on a route run. The transit execution unit. Has `stop_id` (text FK → transit_stops), `asset_id` (FK → assets). |
+| `route_run_stops` | One row per stop on a route run. The transit execution unit. Has `stop_id` (text FK → transit_stops), `asset_id` (FK → assets). Now has `org_id bigint NOT NULL` + RLS (Phase 2, 2026-05-18). |
 | `clean_logs` | Boolean action log: what a worker *did* at a stop. Has `route_run_stop_id`, `stop_id`, `visit_id`, `asset_id`. Transit adapter bridge into canonical visits. |
 | `stop_photos` | Photo record at the transit vertical level. Has `route_run_stop_id`, `visit_id`, `asset_id`. |
 | `hazards` | Safety hazard records. Has `route_run_stop_id`, `visit_id`. |
@@ -114,6 +114,7 @@ Tables in `public.*` that carry operational meaning for the transit vertical. Th
 | `trash_volume_logs` | Trash volume records. Has `route_run_stop_id`, `visit_id`. |
 | `lead_route_overrides` | Lead-driven stop reassignment overrides. |
 | `route_run_audit` | Audit log for route run mutations. |
+| `stop_pool_memberships` | Junction table for many-to-many stop-to-pool relationships (Phase 3, 2026-05-18). Schema: `stop_id text`, `pool_id text` (composite PK), `org_id bigint NOT NULL`, `shift_type text DEFAULT NULL` (day/night/all_day), `active boolean DEFAULT true`, `created_at timestamptz`. Authoritative stop-to-pool mapping — `transit_stops.pool_id` is retained only as a deprecated denormalized cache. |
 
 ---
 

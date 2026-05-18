@@ -198,6 +198,55 @@ whole point.
 
 ---
 
+## Hosting Strategy and Deployment Timeline
+
+### Hosting (decided 2026-05-18)
+
+| Environment | Platform | Purpose |
+|-------------|----------|---------|
+| Testing / demos | Render | Internal debugging, field demos, pre-pilot validation |
+| Pilot / contract | Azure Enterprise | Contracted pilot deployment. TPRA package commits to Azure Enterprise. |
+
+TPRA documents and compliance claims are written against the Azure Enterprise commitment. Render is not a compliance target.
+
+### 3-Month Timeline to Pilot-Ready
+
+| Phase | Duration | Focus |
+|-------|----------|-------|
+| Debug | 2 weeks | Fix open issues, stabilize Render deployment, validate RLS end-to-end |
+| UI/UX redesign | 2 weeks | Field worker flow improvements identified in pre-pilot testing |
+| Azure migration | — | Provision Azure Enterprise environment, deploy stack, run migrations |
+| Azure testing | 2 months | Field validation, KCM Entra SSO integration, TPRA submission window |
+
+**Pilot-ready and TPRA-ready are synced milestones, not sequential.** The application enters the KCM IT review process at the same time the pilot field test begins.
+
+---
+
+## Route Pool Architecture (updated 2026-05-18)
+
+The stop-to-pool relationship is now managed via a dedicated junction table.
+
+### `stop_pool_memberships`
+
+Many-to-many mapping of stops to pools, with shift-specific eligibility:
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `stop_id` | text | PK (composite) |
+| `pool_id` | text | PK (composite) |
+| `org_id` | bigint NOT NULL | RLS-protected |
+| `shift_type` | text DEFAULT NULL | `day` / `night` / `all_day` |
+| `active` | boolean DEFAULT true | Soft-delete |
+| `created_at` | timestamptz | — |
+
+`transit_stops.pool_id` is **retained as a deprecated denormalized cache** for backwards compatibility. The authoritative stop-to-pool relationship is `stop_pool_memberships`.
+
+### Shift support
+
+`route_runs.shift_type` (text: `day` / `night` / `all_day`) supports day/night route separation. `stop_pool_memberships.shift_type` enables stops to be eligible for specific shifts within a pool.
+
+---
+
 ## What "Pitch-Ready" Means
 
 The pilot audience is King County Metro Transit Facilities Division leadership.

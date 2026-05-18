@@ -6,6 +6,10 @@
 > **Prerequisite**: Refactor (Tiers 1–8) and Refinement (R1–R10) complete or stable
 > **Last updated**: 2026-05-13
 
+> **Post-sprint notes (2026-05-18)**
+> - `devAuthBypass.ts` enhancement committed: `eb6a49b feat(security): DEV_TOKEN_INJECTION — dev-only auth bypass middleware`. The uncommitted change flagged in S1-AUDIT-REPORT has landed.
+> - `admin.audit_log_read` meta-trigger implemented: `auditActions.ts` registers the action string; `adminRoutes.ts` writes the audit entry on every successful audit-log query. ISSUE-011 (deferred revert) is separate.
+
 | Task | Status | Completed |
 |------|--------|-----------|
 | S1-1 Admin Action Audit Log | ✅ Complete | 2026-05-13 |

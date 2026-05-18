@@ -178,6 +178,7 @@ A partially-implemented enhancement to the dev auth bypass middleware added Bear
 **Status:** Fixed 2026-05-18
 **Discovered:** 2026-05-18
 **Area:** backend — `backend/src/modules/admin/resourceRoutes.ts`
+**Severity:** medium
 
 **Symptom:**
 The Lead route-creation flow and any Admin surface listing assignable users showed an empty dropdown. No error — just no users to assign to.
