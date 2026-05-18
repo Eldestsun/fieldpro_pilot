@@ -3,7 +3,7 @@
 > Orchestration layer for the Security Hardening & Procurement Compliance track.
 > Based on: `BASELINE_Security_Hardening_Plan.docx` + `BASELINE_Gap_Analysis.docx`
 > Prerequisite: Refactor (Tiers 1–8) and Refinement (R1–R10) tracks complete or stable.
-> Last updated: 2026-05-15
+> Last updated: 2026-05-18
 
 ---
 
@@ -22,6 +22,11 @@ Sprints 1 and 2 are agent-executable. Sprint 3 requires the founder for infrastr
 > Hosting-dependent sections are marked "Planned — pending S3-1" inline. These documents must be
 > updated once the founder selects a hosting platform (S3-1). The hosting decision also determines
 > which FedRAMP controls are inherited and what SLA claims are supportable.
+>
+> **S3-1 decided 2026-05-18.** Hosting strategy: Render for internal testing and field demos; Azure
+> Enterprise for contracted pilot deployment. TPRA package commits to Azure Enterprise. S2-1
+> through S2-4 hosting-dependent sections can now be finalized against the Azure Enterprise
+> commitment.
 
 ---
 
@@ -55,7 +60,7 @@ Sprints 1 and 2 are agent-executable. Sprint 3 requires the founder for infrastr
 | S2-9 | WCAG 2.1 AA Conformance Statement | Document | Agent | S1-8 + S1-9 + S2-9-prereqs | 🟠 In review — prereqs 1+2 open; S3-4 pending |
 | S2-10 | TPRA Questionnaire Answers + Integration Options Matrix | Document | Agent | All S2 docs | 🔴 Not started |
 | **Sprint 3 — Founder Tasks & Final Validation** | | | | | |
-| S3-1 | Select and Configure Hosting Platform | Infra | Founder | — blocks S2 | 🔴 Not started |
+| S3-1 | Select and Configure Hosting Platform | Infra | Founder | — blocks S2 | 🟢 Done 2026-05-18 — Render (testing/demos) + Azure Enterprise (pilot) |
 | S3-2 | Configure Managed DB Backups + Multi-AZ | Infra | Founder | S3-1 | 🔴 Not started |
 | S3-3 | Confirm 99.9% Uptime SLA from Hosting Provider | Infra | Founder | S3-1 | 🔴 Not started |
 | S3-4 | VoiceOver / TalkBack Manual Test — UL Mobile Stop Flow | QA | Founder | S1-9 | 🔴 Not started |
@@ -65,7 +70,7 @@ Sprints 1 and 2 are agent-executable. Sprint 3 requires the founder for infrastr
 | S3-8 | Rotate All Secrets Post-S1 | Ops | Founder | S1-10 | 🔴 Not started |
 | S3-9 | GitHub Branch Protection on `main` | Ops | Founder | R8 done | 🔴 Not started |
 | S3-10 | Container Registry Configuration (GHCR or ECR) | Ops | Founder | S3-1 | 🔴 Not started |
-| S3-11 | Azure Entra Domain Verification for Production | External | Founder | S3-1 | 🔴 Not started |
+| S3-11 | Azure Entra Domain Verification for Production | External | Founder | S3-1 | 🔴 Not started — Render redirect URI mismatch identified (AADSTS50011); config task only |
 
 ---
 
@@ -92,6 +97,20 @@ S3-1 ──► S3-2, S3-3
 S1-9 ──► S3-4
 S2 complete ──► S3-5 ──► S3-7
 ```
+
+---
+
+## Post-Sprint-1 RLS Extension (2026-05-18)
+
+Delivered as three additional phases after Tier 7 (8 core tables) shipped. Total RLS-protected tables raised from 8 to 29.
+
+| Phase | Tables | Notes |
+|-------|--------|-------|
+| Phase 1 | 7 public tables with existing org_id | `assets`, `bases`, `eam_bridge_route_log`, `route_pools`, `route_runs`, `transit_stops`, `export_delete_tokens` |
+| Phase 2 | 14 public tables — org_id added + RLS | `route_run_stops`, `stop_condition_history`, `stop_effort_history`, `stop_risk_snapshot`, `hazards`, `infrastructure_issues`, `clean_logs`, `level3_logs`, `trash_volume_logs`, `stop_photos`, `lead_route_overrides`, `stops_legacy`, `transit_stop_assets`, `asset_external_ids` |
+| Phase 3 | Reconciliation + new tables | `audit_log.org_id` uuid→bigint, WITH CHECK on `core.asset_locations` + `core.location_external_ids`, `shift_type` added to `route_runs`, `stop_pool_memberships` junction table created |
+
+Test suite: 99/99 passing. RLS verification: 26/26 checks passing.
 
 ---
 
@@ -134,7 +153,7 @@ The statement is marked 🟠 In review until all three are resolved and S3-5 sig
 - [ ] TPRA questionnaire answers + integration options matrix — not started (S2-10)
 
 **Infrastructure**
-- [ ] Hosting platform selected and configured
+- [x] Hosting platform selected — Render (testing/demos) + Azure Enterprise (pilot deployment)
 - [ ] Managed DB backups confirmed, schedule documented
 - [ ] Multi-AZ or equivalent HA configured
 - [ ] Staging environment accessible at a stable URL

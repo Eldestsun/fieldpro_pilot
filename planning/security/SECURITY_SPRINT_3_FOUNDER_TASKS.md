@@ -21,8 +21,17 @@ These are not large in number, but each is a hard gate on downstream work. **S3-
 **Type**: Infrastructure decision
 **Blocks**: S2-1, S2-2, S2-3, S2-4, S3-2, S3-3
 **Owner**: Founder
+**Status**: ✅ Decision made 2026-05-18
 
-### The decision
+### Decision
+
+**Hosting strategy (two-tier)**:
+- **Render**: Internal testing, debugging, and field demos during the pre-pilot phase.
+- **Azure Enterprise**: Contracted pilot deployment. TPRA package commits to Azure Enterprise.
+
+This decision unblocks finalization of S2-1, S2-2, S2-3, and S2-4 — those documents' hosting-dependent sections should now be updated against the Azure Enterprise commitment.
+
+### The options considered
 
 Select one of the following hosting options:
 
@@ -52,12 +61,12 @@ Select one of the following hosting options:
 
 ### Done criteria
 
-- [ ] Hosting platform selected and documented
-- [ ] Application deployed and reachable at a stable HTTPS URL
+- [x] Hosting platform selected and documented — Render (testing/demos) + Azure Enterprise (pilot)
+- [ ] Application deployed and reachable at a stable HTTPS URL (Render currently partial; Azure Enterprise pending)
 - [ ] TLS certificate active
 - [ ] All environment variables set (AZURE_CLIENT_ID, AZURE_TENANT_ID, DATABASE_URL, etc.)
 - [ ] Migration runner executed successfully in production
-- [ ] Notify agent to complete S2-1 through S2-4 with hosting details
+- [x] Notify agent to complete S2-1 through S2-4 with hosting details — unblocked 2026-05-18
 
 ---
 
@@ -406,6 +415,15 @@ Set up the container registry that R8's CI pipeline pushes Docker images to. Eit
 **Type**: External coordination
 **Depends on**: S3-1 (hosting decision)
 **Owner**: Founder
+
+### Render redirect URI mismatch — identified 2026-05-18
+
+`AADSTS50011` error observed on the Render deployment for:
+`https://baseline-frontend-9dad.onrender.com/auth-silent.html`
+
+The Render frontend URL is not in the BASELINE Entra app registration's redirect URIs. **Fix**: in Azure Portal → App registrations → BASELINE app → Authentication, add the Render URL. This is a configuration-only change — no code changes required.
+
+This same task must be repeated for the Azure Enterprise deployment URL once provisioned.
 
 ### What to verify
 

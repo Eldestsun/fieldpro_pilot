@@ -127,6 +127,8 @@ Status: Complete — changelog written 2026-05-12. Migration `20260512_row_level
 
 **Hard dependency note**: `withOrgContext()` requires `org_id` to be resolved from the authenticated user's Entra tenant ID. The application path always sets the variable; the bypass-when-unset branch exists for migrations only and is unreachable from request handlers that go through `withOrgContext`.
 
+**Extended 2026-05-18**: Three additional RLS phases delivered. Phase 1 added org_isolation policies to 7 public tables with existing org_id columns (`assets`, `bases`, `eam_bridge_route_log`, `route_pools`, `route_runs`, `transit_stops`, `export_delete_tokens`). Phase 2 added org_id columns + RLS to 14 tables that held tenant-specific data without org_id (`route_run_stops`, `stop_condition_history`, `stop_effort_history`, `stop_risk_snapshot`, `hazards`, `infrastructure_issues`, `clean_logs`, `level3_logs`, `trash_volume_logs`, `stop_photos`, `lead_route_overrides`, `stops_legacy`, `transit_stop_assets`, `asset_external_ids`). Phase 3 reconciled `audit_log.org_id` from uuid to bigint with org-scoped policies, added WITH CHECK to `core.asset_locations` and `core.location_external_ids`, added `shift_type` to `route_runs`, and created `stop_pool_memberships` junction table. Total RLS-protected tables: 29 (up from 8). Test suite: 99/99 passing. RLS verification: 26/26 checks passing.
+
 ---
 
 ### Tier 8 — Asset Type Abstraction
