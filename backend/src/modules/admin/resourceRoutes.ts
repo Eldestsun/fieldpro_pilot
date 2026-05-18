@@ -1,6 +1,6 @@
-import { Router } from "express";
+import { Router, Request } from "express";
 import { requireAuth, requireAnyRole } from "../../authz";
-import { pool } from "../../db";
+import { pool, withOrgContext } from "../../db";
 
 export const resourceRoutes = Router();
 
@@ -134,8 +134,22 @@ resourceRoutes.get(
   "/users",
   requireAuth,
   requireAnyRole(["Lead", "Admin"]),
-  async (_req, res) => {
+  async (req: Request, res) => {
     try {
+      const user = (req as any).user;
+      // dev bypass sets numeric org_id on req.user directly;
+      // real Entra path requires lookup by tid (tenant UUID)
+      const numericOrgId: number =
+        user?.org_id != null
+          ? Number(user.org_id)
+          : await pool
+              .query(
+                `SELECT id FROM organizations WHERE tenant_uuid = $1
+                 UNION ALL SELECT id FROM organizations ORDER BY id LIMIT 1`,
+                [user?.tid ?? null],
+              )
+              .then((r) => r.rows[0]?.id ?? 1);
+
       const query = `
         SELECT
           oid AS id,
@@ -147,7 +161,9 @@ resourceRoutes.get(
         ORDER BY display_name ASC;
       `;
 
-      const result = await pool.query(query);
+      const result = await withOrgContext(numericOrgId, (client) =>
+        client.query(query),
+      );
       return res.json({ ok: true, users: result.rows });
     } catch (err: any) {
       console.error("Error in GET /api/users:", err);
