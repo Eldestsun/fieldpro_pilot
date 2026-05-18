@@ -217,6 +217,47 @@ async function verifyRLS(): Promise<boolean> {
       return res.rows[0].n as number;
     });
 
+    // ---- Phase 2 spot checks: org=1 sees rows; org=999 sees none ----
+    // Uses existing KCM data (org_id=1). Tables with rows: route_run_stops,
+    // stop_risk_snapshot, hazards, infrastructure_issues, stop_photos, clean_logs,
+    // trash_volume_logs, stop_condition_history, stop_effort_history,
+    // stops_legacy, transit_stop_assets, asset_external_ids.
+    const EXISTING_ORG = 1;
+    const PHANTOM_ORG  = 999;
+
+    type P2Check = { table: string; orgId: number; expectAny: boolean };
+    const p2Targets: P2Check[] = [
+      { table: "public.route_run_stops",       orgId: EXISTING_ORG, expectAny: true  },
+      { table: "public.route_run_stops",       orgId: PHANTOM_ORG,  expectAny: false },
+      { table: "public.stop_risk_snapshot",    orgId: EXISTING_ORG, expectAny: true  },
+      { table: "public.stop_risk_snapshot",    orgId: PHANTOM_ORG,  expectAny: false },
+      { table: "public.hazards",               orgId: EXISTING_ORG, expectAny: true  },
+      { table: "public.hazards",               orgId: PHANTOM_ORG,  expectAny: false },
+      { table: "public.stop_photos",           orgId: EXISTING_ORG, expectAny: true  },
+      { table: "public.stop_photos",           orgId: PHANTOM_ORG,  expectAny: false },
+      { table: "public.clean_logs",            orgId: EXISTING_ORG, expectAny: true  },
+      { table: "public.clean_logs",            orgId: PHANTOM_ORG,  expectAny: false },
+      { table: "public.stops_legacy",          orgId: EXISTING_ORG, expectAny: true  },
+      { table: "public.stops_legacy",          orgId: PHANTOM_ORG,  expectAny: false },
+      { table: "public.transit_stop_assets",   orgId: EXISTING_ORG, expectAny: true  },
+      { table: "public.transit_stop_assets",   orgId: PHANTOM_ORG,  expectAny: false },
+      { table: "public.asset_external_ids",    orgId: EXISTING_ORG, expectAny: true  },
+      { table: "public.asset_external_ids",    orgId: PHANTOM_ORG,  expectAny: false },
+    ];
+
+    const p2Results: Array<[string, boolean, unknown]> = [];
+    for (const { table, orgId, expectAny } of p2Targets) {
+      const n = await withOrgContext(orgId, async (c) => {
+        const res = await c.query(`SELECT COUNT(*)::int AS n FROM ${table}`);
+        return res.rows[0].n as number;
+      });
+      const ok = expectAny ? n > 0 : n === 0;
+      const label = expectAny
+        ? `[P2] ${table}: org ${orgId} sees rows`
+        : `[P2] ${table}: org ${orgId} (phantom) sees 0 rows`;
+      p2Results.push([label, ok, n]);
+    }
+
     const checks: Array<[string, boolean, unknown]> = [
       // Tier 7: core.locations
       ["[T7] org A sees exactly 1 verify row",       aSeenForA === 1,       aSeenForA],
@@ -231,6 +272,8 @@ async function verifyRLS(): Promise<boolean> {
       // Phase 1: public.transit_stops
       ["[P1] transit_stops: org A sees only A's stop", p1StopsVisibleToA === 1, p1StopsVisibleToA],
       ["[P1] transit_stops: org B sees only B's stop", p1StopsVisibleToB === 1, p1StopsVisibleToB],
+      // Phase 2: spot checks on 14 new tables
+      ...p2Results,
     ];
 
     let allPass = true;
@@ -247,7 +290,7 @@ async function verifyRLS(): Promise<boolean> {
 }
 
 (async () => {
-  console.log("RLS verification — Tier 7 (core.*) + Phase 1 (public.*)");
+  console.log("RLS verification — Tier 7 (core.*) + Phase 1 (public.*) + Phase 2 (public.* 14 tables)");
   let ok = false;
   try {
     ok = await verifyRLS();

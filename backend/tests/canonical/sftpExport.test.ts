@@ -229,16 +229,16 @@ test("sftpExport: org with no tenant_uuid gets synthetic audit UUID", async () =
     });
     assert(files.length > 0, "export produced files");
 
-    // Verify audit_log entry was written with synthetic UUID.
+    // Verify audit_log entry was written with the org's numeric id.
     const auditRes = await pool.query(
       `SELECT detail FROM audit_log
        WHERE actor_oid = 'sftp-export-system'
-         AND org_id = '00000000-0000-0000-0000-000000000007'::uuid
+         AND org_id = 7
        ORDER BY occurred_at DESC LIMIT 1`,
     );
     assert(
       auditRes.rowCount! > 0,
-      "audit_log entry written with synthetic UUID for org without tenant_uuid",
+      "audit_log entry written with numeric org id for org without tenant_uuid",
     );
   } finally {
     client.release();
@@ -261,10 +261,9 @@ test("sftpExport: audit_log entry written after successful local export", async 
     const res = await pool.query(
       `SELECT action, detail FROM audit_log
        WHERE actor_oid = 'sftp-export-system'
-         AND org_id = $1::uuid
+         AND org_id = 1
          AND action = 'export.data_export'
        ORDER BY occurred_at DESC LIMIT 1`,
-      [org.tenant_uuid],
     );
 
     assert(res.rowCount! > 0, "audit_log row exists after export");
@@ -554,7 +553,7 @@ test("sftpExport: mock SFTP server receives expected files for org export", asyn
       const auditRes = await pool.query(
         `SELECT detail FROM audit_log
          WHERE actor_oid = 'sftp-export-system'
-           AND org_id = '00000000-0000-0000-0000-000000000055'::uuid
+           AND org_id = 1
            AND action = 'export.data_export'
          ORDER BY occurred_at DESC LIMIT 1`,
       );

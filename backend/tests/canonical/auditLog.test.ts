@@ -2,7 +2,7 @@ import { pool, test, assert, assertEqual } from "../setup";
 import { writeAuditLog } from "../../src/middleware/auditLog";
 import { withOrgContext } from "../../src/db";
 
-const TEST_ORG_ID = "00000000-0000-0000-0000-000000000001";
+const TEST_ORG_ID = 1; // bigint org_id (Phase 3: audit_log.org_id uuid → bigint)
 const TEST_ACTOR_OID = "test-audit-oid-s1-1";
 
 test("audit_log: writeAuditLog inserts a row readable by the app role", async () => {
@@ -29,7 +29,7 @@ test("audit_log: writeAuditLog inserts a row readable by the app role", async ()
     assertEqual(res.rowCount, 1, "exactly one audit_log row inserted");
     const row = res.rows[0];
     assertEqual(row.actor_oid, TEST_ACTOR_OID, "actor_oid matches");
-    assertEqual(row.org_id, TEST_ORG_ID, "org_id matches");
+    assertEqual(Number(row.org_id), TEST_ORG_ID, "org_id matches");
     assertEqual(row.action, "auth.login", "action matches");
     assertEqual(row.resource_type, "route", "resource_type matches");
     assertEqual(row.resource_id, "test-resource-1", "resource_id matches");
@@ -114,14 +114,14 @@ test("audit_log: DELETE is blocked by RLS — row survives", async () => {
 
 // ── S1-3 query logic tests ────────────────────────────────────────────────
 
-const S13_ORG_ID = "00000000-0000-0000-0000-000000000099";
+const S13_ORG_ID = 99; // bigint org_id for S1-3 isolation tests
 const S13_ACTOR = "test-s13-query-oid";
 
 test("audit_log query: S1-3 date range and org filtering returns correct entries", async () => {
   // Insert entries for the test org and one for a different org to confirm isolation.
   await writeAuditLog({ actor_oid: S13_ACTOR, org_id: S13_ORG_ID, action: "auth.login",       ip_address: "10.0.0.1" });
   await writeAuditLog({ actor_oid: S13_ACTOR, org_id: S13_ORG_ID, action: "admin.stop_edit",  ip_address: "10.0.0.2" });
-  await writeAuditLog({ actor_oid: S13_ACTOR, org_id: "00000000-0000-0000-0000-000000000098", action: "auth.login", ip_address: "10.0.0.3" });
+  await writeAuditLog({ actor_oid: S13_ACTOR, org_id: 98, action: "auth.login", ip_address: "10.0.0.3" });
 
   const fromDate = new Date(Date.now() - 60 * 1000); // 1 minute ago
   const toDate   = new Date(Date.now() + 60 * 1000); // 1 minute from now

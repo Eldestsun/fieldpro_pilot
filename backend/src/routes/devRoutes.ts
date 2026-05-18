@@ -143,9 +143,9 @@ devRoutes.post("/dev/seed-axe-fixture", async (req: Request, res: Response) => {
             const { stop_id, asset_id } = stopsRes.rows[i];
             await client.query(
                 `INSERT INTO route_run_stops
-                   (route_run_id, stop_id, sequence, status, origin_type, asset_id)
-                 VALUES ($1, $2, $3, 'pending', 'planned', $4)`,
-                [routeRunId, stop_id, i + 1, asset_id]
+                   (route_run_id, stop_id, sequence, status, origin_type, asset_id, org_id)
+                 VALUES ($1, $2, $3, 'pending', 'planned', $4, $5)`,
+                [routeRunId, stop_id, i + 1, asset_id, org_id]
             );
         }
 

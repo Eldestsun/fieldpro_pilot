@@ -553,7 +553,7 @@ routeRunRoutes.post(
     requireAuth,
     requireAnyRole(["Lead", "Admin"]),
     async (req: any, res: Response) => {
-        const { stop_ids, base_id, route_pool_id, pool_id, run_date, ul_id } = req.body;
+        const { stop_ids, base_id, route_pool_id, pool_id, run_date, ul_id, shift_type } = req.body;
 
         const createdByOid = req.user?.oid;
         if (!createdByOid) {
@@ -623,6 +623,7 @@ routeRunRoutes.post(
                     route_pool_id: targetPoolId,
                     base_id: resolvedBaseId,
                     run_date,
+                    shift_type: shift_type ?? 'day',
                 });
             });
 

@@ -25,11 +25,12 @@ export async function createHazardForRouteRunStop(
 ) {
     const { routeRunStopId, userId, hazardTypes, severity, notes, photoKey, photoKeys, actorOid } = params;
 
-    // 1. Look up stop_id from route_run_stops
+    // 1. Look up stop_id and org_id from route_run_stops
     const lookupQuery = `
-        SELECT stop_id, asset_id
-        FROM route_run_stops 
-        WHERE id = $1
+        SELECT rrs.stop_id, rrs.asset_id, rr.org_id
+        FROM route_run_stops rrs
+        JOIN route_runs rr ON rr.id = rrs.route_run_id
+        WHERE rrs.id = $1
     `;
     const lookupRes = await client.query(lookupQuery, [routeRunStopId]);
 
@@ -37,7 +38,7 @@ export async function createHazardForRouteRunStop(
         throw new Error(`Route run stop ${routeRunStopId} not found`);
     }
 
-    const { stop_id: stopId, asset_id: assetId } = lookupRes.rows[0];
+    const { stop_id: stopId, asset_id: assetId, org_id: orgId } = lookupRes.rows[0];
 
     // Determine primary hazard type (old string column)
     let hazardType = "other";
@@ -67,8 +68,9 @@ export async function createHazardForRouteRunStop(
             severity,
             notes,
             details,
-            reported_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+            reported_at,
+            org_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11)
         RETURNING *
     `;
 
@@ -89,6 +91,7 @@ export async function createHazardForRouteRunStop(
         toNumericSeverity(severity), // Convert string label to smallint
         notes || null, // Store UL notes in notes column
         details,
+        orgId,
     ]);
 
     return insertRes.rows[0];

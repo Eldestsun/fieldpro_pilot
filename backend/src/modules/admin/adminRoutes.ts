@@ -720,10 +720,12 @@ adminRoutes.get("/admin/clean-logs", async (req: Request, res: Response) => {
     const queryValues = [...values, pageSize, offset];
     const countValues = [...values];
 
-    const [result, countResult] = await Promise.all([
-      pool.query(query, queryValues),
-      pool.query(countQuery, countValues)
-    ]);
+    const numericOrgId = await resolveNumericOrgId(req);
+    const { result, countResult } = await withOrgContext(numericOrgId, async (client) => {
+      const result = await client.query(query, queryValues);
+      const countResult = await client.query(countQuery, countValues);
+      return { result, countResult };
+    });
 
     res.json({
       clean_logs: result.rows,
@@ -856,7 +858,7 @@ adminRoutes.get("/admin/audit-log", async (req: Request, res: Response) => {
       console.warn(`[audit-log] Unknown action filter: "${actionFilter}" — querying anyway`);
     }
 
-    const orgId = reqOrgId(req);
+    const orgId = await reqOrgId(req);
 
     const { entries, total } = await withOrgContext(orgId, async (client) => {
       const conditions: string[] = ['org_id = $1', 'occurred_at >= $2', 'occurred_at <= $3'];
@@ -1249,9 +1251,11 @@ ORDER BY rb.route_run_id;
  *         $ref: '#/components/responses/InternalError'
  */
 // 3. Exceptions (Strict Guardrails - Phase B)
-ccRouter.get("/exceptions", async (_req: Request, res: Response) => {
+ccRouter.get("/exceptions", async (req: Request, res: Response) => {
+  const numericOrgId = await resolveNumericOrgId(req);
   const client = await pool.connect();
   try {
+    await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(numericOrgId)]);
     const queries = {
       // 1. Skips by Reason
       skips: `
@@ -1317,6 +1321,7 @@ ccRouter.get("/exceptions", async (_req: Request, res: Response) => {
     console.error("Error in /api/admin/control-center/exceptions:", err);
     res.status(500).json({ error: "Failed to fetch exceptions" });
   } finally {
+    try { await client.query(`SELECT set_config('app.current_org_id', '', false)`); } catch { /* best-effort reset */ }
     client.release();
   }
 });
@@ -1356,9 +1361,11 @@ ccRouter.get("/exceptions", async (_req: Request, res: Response) => {
  *         $ref: '#/components/responses/InternalError'
  */
 // 4. Difficulty Indicators (Observational Intelligence - Phase B)
-ccRouter.get("/difficulty", async (_req: Request, res: Response) => {
+ccRouter.get("/difficulty", async (req: Request, res: Response) => {
+  const numericOrgId = await resolveNumericOrgId(req);
   const client = await pool.connect();
   try {
+    await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(numericOrgId)]);
     const queries = {
       // A. Heavy Stops (Location Difficulty)
       heavyStops: `
@@ -1474,6 +1481,7 @@ ccRouter.get("/difficulty", async (_req: Request, res: Response) => {
     console.error("Error in /api/admin/control-center/difficulty:", err);
     res.status(500).json({ error: "Failed to fetch difficulty indicators" });
   } finally {
+    try { await client.query(`SELECT set_config('app.current_org_id', '', false)`); } catch { /* best-effort reset */ }
     client.release();
   }
 });

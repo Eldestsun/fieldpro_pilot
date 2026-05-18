@@ -48,7 +48,7 @@ export async function listStops(params: {
     }
 
     if (pool_id) {
-        conditions.push(`pool_id = $${idx++}`);
+        conditions.push(`stop_id IN (SELECT stop_id FROM public.stop_pool_memberships WHERE pool_id = $${idx++} AND active = true)`);
         values.push(pool_id);
     }
 
@@ -100,7 +100,10 @@ export async function updateStop(
 ): Promise<Stop | null> {
     const ownClient = client ?? await pool.connect();
     const release = client ? () => {} : () => ownClient.release();
+    const ownTx = !client && data.pool_id !== undefined;
     try {
+        if (ownTx) await ownClient.query("BEGIN");
+
         // Validate pool_id if provided
         if (data.pool_id) {
             const poolCheck = await ownClient.query("SELECT 1 FROM route_pools WHERE id = $1", [
@@ -116,6 +119,7 @@ export async function updateStop(
         let idx = 1;
 
         if (data.pool_id !== undefined) {
+            // DEPRECATED: transit_stops.pool_id is a cache column. Use stop_pool_memberships.
             fields.push(`pool_id = $${idx++}`);
             values.push(data.pool_id);
         }
@@ -124,7 +128,10 @@ export async function updateStop(
             values.push(data.notes);
         }
 
-        if (fields.length === 0) return null;
+        if (fields.length === 0) {
+            if (ownTx) await ownClient.query("ROLLBACK");
+            return null;
+        }
 
         values.push(stopId);
         const query = `
@@ -149,7 +156,33 @@ export async function updateStop(
         `;
 
         const result = await ownClient.query(query, values);
+
+        // Dual write: keep stop_pool_memberships in sync with transit_stops.pool_id
+        if (data.pool_id !== undefined) {
+            if (data.pool_id === null) {
+                await ownClient.query(
+                    `UPDATE public.stop_pool_memberships SET active = false WHERE stop_id = $1`,
+                    [stopId],
+                );
+            } else {
+                await ownClient.query(`
+                    INSERT INTO public.stop_pool_memberships (stop_id, pool_id, org_id)
+                    SELECT $1, $2, org_id FROM public.transit_stops WHERE stop_id = $1
+                    ON CONFLICT (stop_id, pool_id) DO UPDATE SET active = true
+                `, [stopId, data.pool_id]);
+                await ownClient.query(
+                    `UPDATE public.stop_pool_memberships SET active = false
+                     WHERE stop_id = $1 AND pool_id != $2`,
+                    [stopId, data.pool_id],
+                );
+            }
+        }
+
+        if (ownTx) await ownClient.query("COMMIT");
         return result.rows[0] || null;
+    } catch (err) {
+        if (ownTx) await ownClient.query("ROLLBACK");
+        throw err;
     } finally {
         release();
     }
@@ -185,11 +218,32 @@ export async function bulkUpdateStops(
         let totalUpdated = 0;
 
         if (data.pool_id !== undefined) {
+            // DEPRECATED: transit_stops.pool_id is a cache column. Use stop_pool_memberships.
             const res = await ownClient.query(
                 `UPDATE public.transit_stops SET pool_id = $1 WHERE stop_id = ANY($2::text[])`,
                 [data.pool_id, stopIds]
             );
             totalUpdated = Math.max(totalUpdated, res.rowCount || 0);
+
+            // Dual write: keep stop_pool_memberships in sync
+            if (data.pool_id === null) {
+                await ownClient.query(
+                    `UPDATE public.stop_pool_memberships SET active = false WHERE stop_id = ANY($1::text[])`,
+                    [stopIds],
+                );
+            } else {
+                await ownClient.query(`
+                    INSERT INTO public.stop_pool_memberships (stop_id, pool_id, org_id)
+                    SELECT ts.stop_id, $1, ts.org_id FROM public.transit_stops ts
+                    WHERE ts.stop_id = ANY($2::text[])
+                    ON CONFLICT (stop_id, pool_id) DO UPDATE SET active = true
+                `, [data.pool_id, stopIds]);
+                await ownClient.query(
+                    `UPDATE public.stop_pool_memberships SET active = false
+                     WHERE stop_id = ANY($1::text[]) AND pool_id != $2`,
+                    [stopIds, data.pool_id],
+                );
+            }
         }
 
         if (data.is_hotspot !== undefined) {

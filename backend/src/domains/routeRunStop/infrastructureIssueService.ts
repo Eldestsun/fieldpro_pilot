@@ -23,18 +23,15 @@ export async function createInfrastructureIssuesForRouteRunStop(
         return [];
     }
 
-    let assetId = params.assetId;
-
-    // Derive assetId if missing
-    if (!assetId) {
-        const lookupRes = await client.query(
-            `SELECT asset_id FROM route_run_stops WHERE id = $1`,
-            [params.routeRunStopId]
-        );
-        if (lookupRes.rows.length > 0) {
-            assetId = lookupRes.rows[0].asset_id;
-        }
-    }
+    const ctxRes = await client.query(
+        `SELECT rrs.asset_id, rr.org_id
+         FROM route_run_stops rrs
+         JOIN route_runs rr ON rr.id = rrs.route_run_id
+         WHERE rrs.id = $1`,
+        [params.routeRunStopId]
+    );
+    let assetId = params.assetId ?? (ctxRes.rows[0]?.asset_id ?? null);
+    const orgId: number = ctxRes.rows[0]?.org_id;
 
     // Ensure visit exists (idempotent)
     // Using reportedBy as transitional actorOid
@@ -62,9 +59,10 @@ export async function createInfrastructureIssuesForRouteRunStop(
                 notes,
                 details,
                 needs_facilities,
-                reported_at
+                reported_at,
+                org_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), $13)
             RETURNING *
             `,
             [
@@ -80,6 +78,7 @@ export async function createInfrastructureIssuesForRouteRunStop(
                 issue.notes ?? null,
                 JSON.stringify({ source: 'ul_flow' }),
                 true,
+                orgId,
             ]
         );
         insertedRows.push(result.rows[0]);
