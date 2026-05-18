@@ -1,4 +1,4 @@
-import { pool } from "../../db";
+import { pool, withOrgContext } from "../../db";
 import { loadRouteRunById } from "./loaders/loadRouteRunById";
 import { planRouteWithOsrm, OsrmStop } from "../../osrmClient";
 import { makeLegCostCache } from "../../routing/routeCost";
@@ -442,8 +442,7 @@ function normalize(s?: string) { return (s || "").trim().toUpperCase(); }
 /**
  * Start a route run
  */
-export async function startRouteRun(id: number | string) {
-  // Mark run as in_progress and set started_at if not already set
+export async function startRouteRun(id: number | string, orgId: number) {
   const updateQuery = `
     UPDATE route_runs
     SET
@@ -454,21 +453,21 @@ export async function startRouteRun(id: number | string) {
     RETURNING id;
       `;
 
-  const result = await pool.query(updateQuery, [id]);
+  const result = await withOrgContext(orgId, (client) =>
+    client.query(updateQuery, [id]),
+  );
 
   if (result.rowCount === 0) {
     return null;
   }
 
-  // Reload full run
   return await loadRouteRunById(id);
 }
 
 /**
  * Finish a route run
  */
-export async function finishRouteRun(id: number | string) {
-  // Update status
+export async function finishRouteRun(id: number | string, orgId: number) {
   const updateQuery = `
     UPDATE route_runs
     SET status = 'completed',
@@ -477,13 +476,14 @@ export async function finishRouteRun(id: number | string) {
     WHERE id = $1
     RETURNING id
         `;
-  const result = await pool.query(updateQuery, [id]);
+  const result = await withOrgContext(orgId, (client) =>
+    client.query(updateQuery, [id]),
+  );
 
   if (result.rowCount === 0) {
     return null;
   }
 
-  // Return updated run
   return await loadRouteRunById(id);
 }
 

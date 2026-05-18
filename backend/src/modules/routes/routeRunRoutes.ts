@@ -1,7 +1,8 @@
 import { Router, Request, Response } from "express";
 import { requireAuth, requireAnyRole } from "../../authz";
-import { pool } from "../../db";
+import { pool, withOrgContext } from "../../db";
 import { auditWrite, reqOrgId } from "../../middleware/auditWrite";
+import { resolveNumericOrgId } from "../../middleware/resolveOrgId";
 import { planRouteWithOsrm, OsrmStop } from "../../osrmClient";
 import {
     createRouteRun,
@@ -106,7 +107,7 @@ routeRunRoutes.get(
     "/lead/todays-runs",
     requireAuth,
     requireAnyRole(["Lead", "Admin"]),
-    async (_req, res) => {
+    async (req: Request, res) => {
         try {
             const query = `
         SELECT
@@ -131,7 +132,10 @@ routeRunRoutes.get(
         WHERE rr.status IN ('planned', 'in_progress')
         ORDER BY rr.created_at DESC;
       `;
-            const result = await pool.query(query);
+            const numericOrgId = await resolveNumericOrgId(req);
+            const result = await withOrgContext(numericOrgId, (client) =>
+                client.query(query),
+            );
             return res.json({ ok: true, route_runs: result.rows });
         } catch (err: any) {
             console.error("Error in /lead/todays-runs:", err);
@@ -549,87 +553,77 @@ routeRunRoutes.post(
     requireAuth,
     requireAnyRole(["Lead", "Admin"]),
     async (req: any, res: Response) => {
-        const client = await pool.connect();
+        const { stop_ids, base_id, route_pool_id, pool_id, run_date, ul_id } = req.body;
+
+        const createdByOid = req.user?.oid;
+        if (!createdByOid) {
+            return res.status(401).json({ error: "Missing authenticated user identity" });
+        }
+
+        const assignedUserOid = ul_id;
+        const targetPoolId = route_pool_id || pool_id;
+
+        if (!targetPoolId) {
+            return res.status(400).json({ error: "Missing required field: pool_id" });
+        }
+
         try {
-            const { stop_ids, base_id, route_pool_id, pool_id, run_date, ul_id } = req.body;
+            const numericOrgId = await resolveNumericOrgId(req);
+            const { routeRunId, planned } = await withOrgContext(numericOrgId, async (client) => {
+                let resolvedBaseId = base_id;
 
-            // Enterprise Identity: Creator
-            const createdByOid = req.user?.oid;
-            if (!createdByOid) {
-                return res.status(401).json({ error: "Missing authenticated user identity" });
-            }
-
-            // Enterprise Identity: Assignment
-            // ul_id is assumed to be an OID payload from the frontend.
-            const assignedUserOid = ul_id; // No translation, exact mapping.
-
-            // Normalize inputs
-            const targetPoolId = route_pool_id || pool_id;
-
-            let resolvedBaseId = base_id;
-
-            if (!resolvedBaseId) {
-                const baseRes = await client.query(
-                    `SELECT base_id FROM route_pools WHERE id = $1 AND active = true`,
-                    [targetPoolId]
-                );
-
-                if (baseRes.rows.length === 0 || !baseRes.rows[0].base_id) {
-                    return res.status(400).json({
-                        error: "No base_id provided and route pool has no base assigned",
-                    });
+                if (!resolvedBaseId) {
+                    const baseRes = await client.query(
+                        `SELECT base_id FROM route_pools WHERE id = $1 AND active = true`,
+                        [targetPoolId]
+                    );
+                    if (baseRes.rows.length === 0 || !baseRes.rows[0].base_id) {
+                        throw Object.assign(
+                            new Error("No base_id provided and route pool has no base assigned"),
+                            { status: 400 }
+                        );
+                    }
+                    resolvedBaseId = baseRes.rows[0].base_id;
                 }
 
-                resolvedBaseId = baseRes.rows[0].base_id;
-            }
+                let stopsToPlan: OsrmStop[] | undefined = [];
 
-            if (!targetPoolId) {
-                return res.status(400).json({ error: "Missing required field: pool_id" });
-            }
-
-            let stopsToPlan: OsrmStop[] | undefined = [];
-
-            // Option A: Explicit stop_ids
-            if (Array.isArray(stop_ids) && stop_ids.length >= 2) {
-                const query = `
+                if (Array.isArray(stop_ids) && stop_ids.length >= 2) {
+                    const query = `
         SELECT stop_id, lon, lat, on_street_name, bearing_code
         FROM stops
         WHERE stop_id = ANY($1::text[])
       `;
-                const result = await client.query(query, [stop_ids]);
-                if (result.rows.length < 2) {
-                    return res.status(400).json({
-                        error: "Not enough stops found with coordinates",
-                        found: result.rows.length,
-                    });
+                    const result = await client.query(query, [stop_ids]);
+                    if (result.rows.length < 2) {
+                        throw Object.assign(
+                            new Error("Not enough stops found with coordinates"),
+                            { status: 400, found: result.rows.length }
+                        );
+                    }
+                    stopsToPlan = result.rows.map((r: any) => ({
+                        lon: r.lon,
+                        lat: r.lat,
+                        stop_id: r.stop_id,
+                        on_street_name: r.on_street_name,
+                        bearing_code: r.bearing_code,
+                    }));
+                    if (stopsToPlan.length > MAX_OSRM_STOPS) {
+                        stopsToPlan = stopsToPlan.slice(0, MAX_OSRM_STOPS);
+                    }
+                } else {
+                    stopsToPlan = undefined;
                 }
-                stopsToPlan = result.rows.map((r: any) => ({
-                    lon: r.lon,
-                    lat: r.lat,
-                    stop_id: r.stop_id,
-                    on_street_name: r.on_street_name,
-                    bearing_code: r.bearing_code,
-                }));
 
-                // Apply truncation for explicit list
-                if (stopsToPlan.length > MAX_OSRM_STOPS) {
-                    stopsToPlan = stopsToPlan.slice(0, MAX_OSRM_STOPS);
-                }
-            }
-            // Option B: pool_id - Pass undefined/empty to createRouteRun to let it fetch
-            else {
-                stopsToPlan = undefined;
-            }
-
-            const { routeRunId, planned } = await createRouteRun(client, {
-                stops: stopsToPlan,
-                // Assign explicit OIDs
-                assigned_user_oid: assignedUserOid,
-                created_by_oid: createdByOid,
-                user_id: LEGACY_TRANSIT_USER_ID,
-                route_pool_id: targetPoolId,
-                base_id: resolvedBaseId,
-                run_date,
+                return createRouteRun(client, {
+                    stops: stopsToPlan,
+                    assigned_user_oid: assignedUserOid,
+                    created_by_oid: createdByOid,
+                    user_id: LEGACY_TRANSIT_USER_ID,
+                    route_pool_id: targetPoolId,
+                    base_id: resolvedBaseId,
+                    run_date,
+                });
             });
 
             auditWrite({
@@ -652,11 +646,12 @@ routeRunRoutes.post(
             });
         } catch (err: any) {
             console.error("Error in /api/route-runs:", err);
+            if (err.status === 400) {
+                return res.status(400).json({ error: err.message, ...(err.found != null ? { found: err.found } : {}) });
+            }
             return res
                 .status(500)
                 .json({ error: err.message || "Internal server error" });
-        } finally {
-            client.release();
         }
     }
 );
@@ -762,7 +757,8 @@ routeRunRoutes.post(
     async (req: Request, res: Response) => {
         try {
             const { id } = req.params;
-            const routeRun = await startRouteRun(id);
+            const numericOrgId = await resolveNumericOrgId(req);
+            const routeRun = await startRouteRun(id, numericOrgId);
 
             if (!routeRun) {
                 return res.status(404).json({ error: "Route run not found" });
@@ -932,7 +928,8 @@ routeRunRoutes.post(
     async (req: Request, res: Response) => {
         try {
             const { id } = req.params;
-            const routeRun = await finishRouteRun(id);
+            const numericOrgId = await resolveNumericOrgId(req);
+            const routeRun = await finishRouteRun(id, numericOrgId);
 
             if (!routeRun) {
                 return res.status(404).json({ error: "Route run not found" });
@@ -1013,27 +1010,25 @@ routeRunRoutes.patch(
     requireAuth,
     requireAnyRole(["Lead", "Admin"]),
     async (req: Request, res: Response) => {
-        const client = await pool.connect();
+        const { id } = req.params;
+        const { assigned_user_oid } = req.body;
+
+        if (assigned_user_oid === "") {
+            return res.status(400).json({ error: "assigned_user_oid cannot be empty string" });
+        }
+
         try {
-            const { id } = req.params;
-            const { assigned_user_oid } = req.body;
+            const numericOrgId = await resolveNumericOrgId(req);
+            const prevOid = await withOrgContext(numericOrgId, async (client) => {
+                const prevRes = await client.query(
+                    `SELECT assigned_user_oid FROM route_runs WHERE id = $1`,
+                    [id]
+                );
+                const prevOid: string | null = prevRes.rows[0]?.assigned_user_oid ?? null;
+                await assignRouteRun(client, id, assigned_user_oid);
+                return prevOid;
+            });
 
-            // Input Validation
-            if (assigned_user_oid === "") {
-                return res.status(400).json({ error: "assigned_user_oid cannot be empty string" });
-            }
-
-            // Read previous assignment before update so we can log the correct action.
-            const prevRes = await client.query(
-                `SELECT assigned_user_oid FROM route_runs WHERE id = $1`,
-                [id]
-            );
-            const prevOid: string | null = prevRes.rows[0]?.assigned_user_oid ?? null;
-
-            // Execute Assignment
-            await assignRouteRun(client, id, assigned_user_oid);
-
-            // Determine audit action based on old/new state.
             const actorOid: string = (req as any).user?.oid ?? 'unknown';
             if (assigned_user_oid == null) {
                 auditWrite({
@@ -1060,7 +1055,6 @@ routeRunRoutes.patch(
                 });
             }
 
-            // Reload & Return
             const routeRun = await loadRouteRunById(id);
             return res.json({ ok: true, route_run: routeRun });
 
@@ -1072,8 +1066,6 @@ routeRunRoutes.patch(
             return res
                 .status(500)
                 .json({ error: err.message || "Internal server error" });
-        } finally {
-            client.release();
         }
     }
 );

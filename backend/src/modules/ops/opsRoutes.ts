@@ -1,8 +1,9 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { requireAuth, requireAnyRole } from "../../authz";
-import { pool } from "../../db";
+import { pool, withOrgContext } from "../../db";
 import * as poolService from "../../services/adminPoolService";
 import * as stopService from "../../services/adminStopService";
+import { resolveNumericOrgId } from "../../middleware/resolveOrgId";
 
 export const opsRoutes = Router();
 
@@ -50,21 +51,19 @@ opsRoutes.use("/ops", requireAuth, requireOps);
  */
 // Explicit path: /api/ops/dashboard
 // Duplicate of Admin Dashboard logic (Read-Only)
-opsRoutes.get("/ops/dashboard", async (_req: Request, res: Response) => {
+opsRoutes.get("/ops/dashboard", async (req: Request, res: Response) => {
     try {
-        const client = await pool.connect();
-        try {
+        const numericOrgId = await resolveNumericOrgId(req);
+        await withOrgContext(numericOrgId, async (client) => {
             const stopsRes = await client.query('SELECT COUNT(*) FROM stops');
             const poolsRes = await client.query('SELECT COUNT(*) FROM route_pools');
 
-            // Active runs: planned or in_progress today
             const activeRunsRes = await client.query(`
                 SELECT COUNT(*) FROM route_runs
                 WHERE run_date = CURRENT_DATE
                 AND status IN ('planned', 'in_progress')
             `);
 
-            // Completed runs: done today
             const completedRunsRes = await client.query(`
                 SELECT COUNT(*) FROM route_runs
                 WHERE run_date = CURRENT_DATE
@@ -77,9 +76,7 @@ opsRoutes.get("/ops/dashboard", async (_req: Request, res: Response) => {
                 active_runs_today: parseInt(activeRunsRes.rows[0].count, 10),
                 completed_runs_today: parseInt(completedRunsRes.rows[0].count, 10),
             });
-        } finally {
-            client.release();
-        }
+        });
     } catch (err: any) {
         console.error("Error in /ops/dashboard:", err);
         res.status(500).json({ error: err.message });
@@ -121,9 +118,12 @@ opsRoutes.get("/ops/dashboard", async (_req: Request, res: Response) => {
  */
 // Explicit path: /api/ops/pools
 // Read-only wrapper for poolService
-opsRoutes.get("/ops/pools", async (_req: Request, res: Response) => {
+opsRoutes.get("/ops/pools", async (req: Request, res: Response) => {
     try {
-        const pools = await poolService.getAllPools();
+        const numericOrgId = await resolveNumericOrgId(req);
+        const pools = await withOrgContext(numericOrgId, (client) =>
+            poolService.getAllPools(client),
+        );
         res.json({ pools });
     } catch (err: any) {
         console.error("Error in /ops/pools:", err);
@@ -185,8 +185,11 @@ opsRoutes.get("/ops/stops", async (req: Request, res: Response) => {
         const q = (req.query.q as string) || "";
         const pool_id = (req.query.pool_id as string) || undefined;
 
-        const result = await stopService.listStops({ page, pageSize, q, pool_id });
-        res.json(result); // { items, total }
+        const numericOrgId = await resolveNumericOrgId(req);
+        const result = await withOrgContext(numericOrgId, (client) =>
+            stopService.listStops({ page, pageSize, q, pool_id }, client),
+        );
+        res.json(result);
     } catch (err: any) {
         console.error("Error in /ops/stops:", err);
         res.status(500).json({ error: err.message });
@@ -293,7 +296,10 @@ opsRoutes.get("/ops/route-runs", async (req: Request, res: Response) => {
         `;
         values.push(pageSize, offset);
 
-        const result = await pool.query(query, values);
+        const numericOrgId = await resolveNumericOrgId(req);
+        const result = await withOrgContext(numericOrgId, (client) =>
+            client.query(query, values),
+        );
         res.json({ route_runs: result.rows });
     } catch (err: any) {
         console.error("Error in /ops/route-runs:", err);
@@ -414,10 +420,13 @@ opsRoutes.get("/ops/clean-logs", async (req: Request, res: Response) => {
         const queryValues = [...values, pageSize, offset];
         const countValues = [...values];
 
-        const [result, countResult] = await Promise.all([
-            pool.query(query, queryValues),
-            pool.query(countQuery, countValues)
-        ]);
+        const numericOrgId = await resolveNumericOrgId(req);
+        const [result, countResult] = await withOrgContext(numericOrgId, async (client) =>
+            Promise.all([
+                client.query(query, queryValues),
+                client.query(countQuery, countValues),
+            ]),
+        );
 
         res.json({
             clean_logs: result.rows,
