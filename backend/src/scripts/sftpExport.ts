@@ -517,7 +517,7 @@ export async function exportOrg(
   // Audit entry written after successful export (or local-only run).
   await writeAuditLog({
     actor_oid: "sftp-export-system",
-    org_id: orgAuditUuid(org),
+    org_id: org.id,
     action: "export.data_export",
     resource_type: "export",
     detail: {

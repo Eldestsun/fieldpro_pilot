@@ -48,9 +48,9 @@ export async function addOverride(
 
     const query = `
     INSERT INTO lead_route_overrides (
-      id, pool_id, stop_id, override_type, value, created_by
+      id, pool_id, stop_id, override_type, value, created_by, org_id
     )
-    VALUES ($1, $2, $3, $4, $5, $6)
+    VALUES ($1, $2, $3, $4, $5, $6, (SELECT org_id FROM route_pools WHERE id = $2))
     RETURNING *
   `;
 

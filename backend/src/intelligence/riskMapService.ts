@@ -60,11 +60,12 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
         const query = `
             WITH base AS (
                 SELECT
-                    stop_id,
-                    is_hotspot
-                FROM stops
-                WHERE pool_id IS NOT NULL
-                  AND (has_trash = TRUE OR compactor = TRUE)
+                    ts.stop_id,
+                    ts.is_hotspot,
+                    ts.org_id
+                FROM transit_stops ts
+                WHERE ts.pool_id IS NOT NULL
+                  AND (ts.has_trash = TRUE OR ts.compactor = TRUE)
             ),
             -- Days since last completed visit (replaces level3_logs).
             -- core.visits → transit_stop_assets (asset_id translation) → stop_id.
@@ -133,6 +134,7 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
                 SELECT
                     b.stop_id,
                     b.is_hotspot,
+                    b.org_id,
 
                     -- Cap days_since_last_l3 at 365 so scores fit into numeric(4,2)
                     LEAST(COALESCE(l3.days_since_last_l3, ${L3_DAYS_CAP}), ${L3_DAYS_CAP}) AS days_since_last_l3,
@@ -144,7 +146,7 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
                     i.infra_issue_score,
 
                     (CASE WHEN b.is_hotspot THEN ${HOTSPOT_BASE_WEIGHT} ELSE 0 END)::numeric(4,2) AS hotspot_weight,
-                    
+
                     -- Hazard recency flag (for routing caution)
                     (CASE
                         WHEN h.last_hazard_at IS NOT NULL
@@ -171,7 +173,7 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
                             0
                         )
                     )::numeric(4,2) AS l3_urgency_weight,
-                    
+
                     -- Cleanliness Score
                     (
                         (CASE WHEN b.is_hotspot THEN ${HOTSPOT_BASE_WEIGHT} ELSE 0 END) +
@@ -225,7 +227,8 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
                 safety_score,
                 infrastructure_score,
                 combined_risk_score,
-                computed_at
+                computed_at,
+                org_id
             )
             SELECT
                 stop_id,
@@ -244,7 +247,8 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
                 safety_score,
                 infrastructure_score,
                 (cleanliness_score + safety_score + infrastructure_score)::numeric(6,3) AS combined_risk_score,
-                NOW() AS computed_at
+                NOW() AS computed_at,
+                org_id
             FROM scored;
         `;
 
@@ -254,7 +258,7 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
         // route_run_stop_id is not yet on core.visits (Tier 5), so we use the transit_stop_assets
         // one-hop translation (Path B/C, tolerated per ADAPTER_BOUNDARY.md §5).
         await client.query(`
-            INSERT INTO stop_condition_history (stop_id, visit_id, scored_at, cleanliness_score, safety_score, infra_score, asset_id)
+            INSERT INTO stop_condition_history (stop_id, visit_id, scored_at, cleanliness_score, safety_score, infra_score, asset_id, org_id)
             SELECT
                 srs.stop_id,
                 v.id,
@@ -262,7 +266,8 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
                 srs.cleanliness_score,
                 srs.safety_score,
                 srs.infrastructure_score,
-                tsa.asset_id
+                tsa.asset_id,
+                v.org_id
             FROM stop_risk_snapshot srs
             JOIN transit_stop_assets tsa
               ON tsa.stop_id = srs.stop_id
@@ -303,11 +308,12 @@ export async function rebuildStopRiskSnapshotLegacy(pool: Pool): Promise<number>
         const query = `
             WITH base AS (
                 SELECT
-                    stop_id,
-                    is_hotspot
-                FROM stops
-                WHERE pool_id IS NOT NULL
-                  AND (has_trash = TRUE OR compactor = TRUE)
+                    ts.stop_id,
+                    ts.is_hotspot,
+                    ts.org_id
+                FROM transit_stops ts
+                WHERE ts.pool_id IS NOT NULL
+                  AND (ts.has_trash = TRUE OR ts.compactor = TRUE)
             ),
             l3 AS (
                 SELECT
@@ -346,6 +352,7 @@ export async function rebuildStopRiskSnapshotLegacy(pool: Pool): Promise<number>
                 SELECT
                     b.stop_id,
                     b.is_hotspot,
+                    b.org_id,
 
                     LEAST(COALESCE(l3.days_since_last_l3, ${L3_DAYS_CAP}), ${L3_DAYS_CAP}) AS days_since_last_l3,
 
@@ -431,7 +438,8 @@ export async function rebuildStopRiskSnapshotLegacy(pool: Pool): Promise<number>
                 safety_score,
                 infrastructure_score,
                 combined_risk_score,
-                computed_at
+                computed_at,
+                org_id
             )
             SELECT
                 stop_id,
@@ -450,7 +458,8 @@ export async function rebuildStopRiskSnapshotLegacy(pool: Pool): Promise<number>
                 safety_score,
                 infrastructure_score,
                 (cleanliness_score + safety_score + infrastructure_score)::numeric(6,3) AS combined_risk_score,
-                NOW() AS computed_at
+                NOW() AS computed_at,
+                org_id
             FROM scored;
         `;
 

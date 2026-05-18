@@ -12,6 +12,7 @@ import {
 } from "../../domains/visit/visitService";
 import { loadRouteRunById } from "../../domains/routeRun/loaders/loadRouteRunById";
 import { startRouteRunStopInternal } from "../../domains/routeRun/operations/startRouteRunStop";
+import { resolveNumericOrgId } from "../../middleware/resolveOrgId";
 
 export const routeRunStopRoutes = Router();
 
@@ -153,8 +154,10 @@ routeRunStopRoutes.post(
     requireAuth,
     requireAnyRole(["UL", "Lead", "Admin"]),
     async (req: Request, res: Response) => {
+        const numericOrgId = await resolveNumericOrgId(req);
         const client = await pool.connect();
         try {
+            await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(numericOrgId)]);
             const { id } = req.params;
             // Accept both shapes:
             //  - legacy: { hazard_types, notes, severity, safety_photo_key, photo_keys }
@@ -290,6 +293,7 @@ routeRunStopRoutes.post(
             console.error("Error in /api/route-run-stops/:id/skip-with-hazard:", err);
             return res.status(500).json({ error: err.message || "Internal server error" });
         } finally {
+            try { await client.query(`SELECT set_config('app.current_org_id', '', false)`); } catch { /* best-effort reset */ }
             client.release();
         }
     }
@@ -478,9 +482,11 @@ routeRunStopRoutes.post(
 
 
             // Single atomic transaction: hazard write + all stop completion writes
+            const numericOrgId = await resolveNumericOrgId(req);
             const client = await pool.connect();
             let result: { cleanLogId: number; routeRunId: number } | null = null;
             try {
+                await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(numericOrgId)]);
                 await client.query("BEGIN");
 
                 // 1. If hazard present in safety object, create it (Safety step)
@@ -531,6 +537,7 @@ routeRunStopRoutes.post(
                 await client.query("ROLLBACK");
                 throw err;
             } finally {
+                try { await client.query(`SELECT set_config('app.current_org_id', '', false)`); } catch { /* best-effort reset */ }
                 client.release();
             }
 

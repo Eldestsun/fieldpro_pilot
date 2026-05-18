@@ -5,6 +5,7 @@ import * as poolService from "../../services/adminPoolService";
 import * as stopService from "../../services/adminStopService";
 import { auditWrite, reqOrgId } from "../../middleware/auditWrite";
 import { AUDIT_KNOWN_ACTIONS } from "../../middleware/auditActions";
+import { resolveNumericOrgId } from "../../middleware/resolveOrgId";
 
 export const adminRoutes = Router();
 
@@ -50,21 +51,19 @@ adminRoutes.use("/admin", requireAuth, requireAdmin);
  *       500:
  *         $ref: '#/components/responses/InternalError'
  */
-adminRoutes.get("/admin/dashboard", async (_req: Request, res: Response) => {
+adminRoutes.get("/admin/dashboard", async (req: Request, res: Response) => {
   try {
-    const client = await pool.connect();
-    try {
+    const numericOrgId = await resolveNumericOrgId(req);
+    await withOrgContext(numericOrgId, async (client) => {
       const stopsRes = await client.query('SELECT COUNT(*) FROM stops');
       const poolsRes = await client.query('SELECT COUNT(*) FROM route_pools');
 
-      // Active runs: planned or in_progress today
       const activeRunsRes = await client.query(`
                 SELECT COUNT(*) FROM route_runs
                 WHERE run_date = CURRENT_DATE
                 AND status IN ('planned', 'in_progress')
             `);
 
-      // Completed runs: done today
       const completedRunsRes = await client.query(`
                 SELECT COUNT(*) FROM route_runs
                 WHERE run_date = CURRENT_DATE
@@ -77,9 +76,7 @@ adminRoutes.get("/admin/dashboard", async (_req: Request, res: Response) => {
         active_runs_today: parseInt(activeRunsRes.rows[0].count, 10),
         completed_runs_today: parseInt(completedRunsRes.rows[0].count, 10),
       });
-    } finally {
-      client.release();
-    }
+    });
   } catch (err: any) {
     console.error("Error in /admin/dashboard:", err);
     res.status(500).json({ error: err.message });
@@ -119,9 +116,12 @@ adminRoutes.get("/admin/dashboard", async (_req: Request, res: Response) => {
  *       500:
  *         $ref: '#/components/responses/InternalError'
  */
-adminRoutes.get("/admin/pools", async (_req: Request, res: Response) => {
+adminRoutes.get("/admin/pools", async (req: Request, res: Response) => {
   try {
-    const pools = await poolService.getAllPools();
+    const numericOrgId = await resolveNumericOrgId(req);
+    const pools = await withOrgContext(numericOrgId, (client) =>
+      poolService.getAllPools(client),
+    );
     res.json({ pools });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -176,7 +176,10 @@ adminRoutes.post("/admin/pools", async (req: Request, res: Response) => {
     if (!id || !label) {
       return res.status(400).json({ error: "id and label are required" });
     }
-    const newPool = await poolService.createPool(req.body);
+    const numericOrgId = await resolveNumericOrgId(req);
+    const newPool = await withOrgContext(numericOrgId, (client) =>
+      poolService.createPool(req.body, numericOrgId, client),
+    );
     auditWrite({
       actor_oid: (req as any).user?.oid ?? 'unknown',
       org_id: reqOrgId(req),
@@ -237,7 +240,10 @@ adminRoutes.post("/admin/pools", async (req: Request, res: Response) => {
  */
 adminRoutes.patch("/admin/pools/:id", async (req: Request, res: Response) => {
   try {
-    const updated = await poolService.updatePool(req.params.id, req.body);
+    const numericOrgId = await resolveNumericOrgId(req);
+    const updated = await withOrgContext(numericOrgId, (client) =>
+      poolService.updatePool(req.params.id, req.body, client),
+    );
     if (!updated) return res.status(404).json({ error: "Pool not found" });
     auditWrite({
       actor_oid: (req as any).user?.oid ?? 'unknown',
@@ -290,7 +296,10 @@ adminRoutes.patch("/admin/pools/:id", async (req: Request, res: Response) => {
  */
 adminRoutes.delete("/admin/pools/:id", async (req: Request, res: Response) => {
   try {
-    const updated = await poolService.softDeletePool(req.params.id);
+    const numericOrgId = await resolveNumericOrgId(req);
+    const updated = await withOrgContext(numericOrgId, (client) =>
+      poolService.softDeletePool(req.params.id, client),
+    );
     if (!updated) return res.status(404).json({ error: "Pool not found" });
     auditWrite({
       actor_oid: (req as any).user?.oid ?? 'unknown',
@@ -356,7 +365,10 @@ adminRoutes.get("/admin/stops", async (req: Request, res: Response) => {
     const q = req.query.q as string;
     const pool_id = req.query.pool_id as string;
 
-    const result = await stopService.listStops({ page, pageSize, q, pool_id });
+    const numericOrgId = await resolveNumericOrgId(req);
+    const result = await withOrgContext(numericOrgId, (client) =>
+      stopService.listStops({ page, pageSize, q, pool_id }, client),
+    );
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -410,7 +422,10 @@ adminRoutes.get("/admin/stops", async (req: Request, res: Response) => {
  */
 adminRoutes.patch("/admin/stops/:id", async (req: Request, res: Response) => {
   try {
-    const updated = await stopService.updateStop(req.params.id, req.body);
+    const numericOrgId = await resolveNumericOrgId(req);
+    const updated = await withOrgContext(numericOrgId, (client) =>
+      stopService.updateStop(req.params.id, req.body, client),
+    );
     if (!updated) return res.status(404).json({ error: "Stop not found" });
     auditWrite({
       actor_oid: (req as any).user?.oid ?? 'unknown',
@@ -472,7 +487,10 @@ adminRoutes.post("/admin/stops/bulk", async (req: Request, res: Response) => {
     if (!Array.isArray(stop_ids) || stop_ids.length === 0) {
       return res.status(400).json({ error: "stop_ids array is required" });
     }
-    const result = await stopService.bulkUpdateStops(stop_ids, data);
+    const numericOrgId = await resolveNumericOrgId(req);
+    const result = await withOrgContext(numericOrgId, (client) =>
+      stopService.bulkUpdateStops(stop_ids, data, client),
+    );
     auditWrite({
       actor_oid: (req as any).user?.oid ?? 'unknown',
       org_id: reqOrgId(req),
@@ -584,7 +602,10 @@ adminRoutes.get("/admin/route-runs", async (req: Request, res: Response) => {
         `;
     values.push(pageSize, offset);
 
-    const result = await pool.query(query, values);
+    const numericOrgId = await resolveNumericOrgId(req);
+    const result = await withOrgContext(numericOrgId, (client) =>
+      client.query(query, values),
+    );
     res.json({ route_runs: result.rows });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -699,10 +720,12 @@ adminRoutes.get("/admin/clean-logs", async (req: Request, res: Response) => {
     const queryValues = [...values, pageSize, offset];
     const countValues = [...values];
 
-    const [result, countResult] = await Promise.all([
-      pool.query(query, queryValues),
-      pool.query(countQuery, countValues)
-    ]);
+    const numericOrgId = await resolveNumericOrgId(req);
+    const { result, countResult } = await withOrgContext(numericOrgId, async (client) => {
+      const result = await client.query(query, queryValues);
+      const countResult = await client.query(countQuery, countValues);
+      return { result, countResult };
+    });
 
     res.json({
       clean_logs: result.rows,
@@ -835,7 +858,7 @@ adminRoutes.get("/admin/audit-log", async (req: Request, res: Response) => {
       console.warn(`[audit-log] Unknown action filter: "${actionFilter}" — querying anyway`);
     }
 
-    const orgId = reqOrgId(req);
+    const orgId = await reqOrgId(req);
 
     const { entries, total } = await withOrgContext(orgId, async (client) => {
       const conditions: string[] = ['org_id = $1', 'occurred_at >= $2', 'occurred_at <= $3'];
@@ -1094,8 +1117,7 @@ ccRouter.get("/overview", async (_req: Request, res: Response) => {
  *         $ref: '#/components/responses/InternalError'
  */
 // 2. Route Status Table (Panel 2 - Authoritative)
-ccRouter.get("/routes", async (_req: Request, res: Response) => {
-  const client = await pool.connect();
+ccRouter.get("/routes", async (req: Request, res: Response) => {
   try {
     const query = `
 WITH route_base AS (
@@ -1181,14 +1203,15 @@ LEFT JOIN deviation_flags df
 
 ORDER BY rb.route_run_id;
         `;
-    const result = await client.query(query);
+    const numericOrgId = await resolveNumericOrgId(req);
+    const result = await withOrgContext(numericOrgId, (client) =>
+      client.query(query),
+    );
     console.log("[ControlCenter:Routes] rows =", result.rows);
     res.json(result.rows);
   } catch (err: any) {
     console.error("Error in /api/admin/control-center/routes:", err);
     res.status(500).json({ error: "Failed to fetch route status" });
-  } finally {
-    client.release();
   }
 });
 
@@ -1228,9 +1251,11 @@ ORDER BY rb.route_run_id;
  *         $ref: '#/components/responses/InternalError'
  */
 // 3. Exceptions (Strict Guardrails - Phase B)
-ccRouter.get("/exceptions", async (_req: Request, res: Response) => {
+ccRouter.get("/exceptions", async (req: Request, res: Response) => {
+  const numericOrgId = await resolveNumericOrgId(req);
   const client = await pool.connect();
   try {
+    await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(numericOrgId)]);
     const queries = {
       // 1. Skips by Reason
       skips: `
@@ -1296,6 +1321,7 @@ ccRouter.get("/exceptions", async (_req: Request, res: Response) => {
     console.error("Error in /api/admin/control-center/exceptions:", err);
     res.status(500).json({ error: "Failed to fetch exceptions" });
   } finally {
+    try { await client.query(`SELECT set_config('app.current_org_id', '', false)`); } catch { /* best-effort reset */ }
     client.release();
   }
 });
@@ -1335,9 +1361,11 @@ ccRouter.get("/exceptions", async (_req: Request, res: Response) => {
  *         $ref: '#/components/responses/InternalError'
  */
 // 4. Difficulty Indicators (Observational Intelligence - Phase B)
-ccRouter.get("/difficulty", async (_req: Request, res: Response) => {
+ccRouter.get("/difficulty", async (req: Request, res: Response) => {
+  const numericOrgId = await resolveNumericOrgId(req);
   const client = await pool.connect();
   try {
+    await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(numericOrgId)]);
     const queries = {
       // A. Heavy Stops (Location Difficulty)
       heavyStops: `
@@ -1453,6 +1481,7 @@ ccRouter.get("/difficulty", async (_req: Request, res: Response) => {
     console.error("Error in /api/admin/control-center/difficulty:", err);
     res.status(500).json({ error: "Failed to fetch difficulty indicators" });
   } finally {
+    try { await client.query(`SELECT set_config('app.current_org_id', '', false)`); } catch { /* best-effort reset */ }
     client.release();
   }
 });

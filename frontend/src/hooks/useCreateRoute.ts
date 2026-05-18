@@ -21,6 +21,7 @@ export function useCreateRoute({ onCreated }: UseCreateRouteOptions = {}) {
     // Form State
     const [selectedPoolId, setSelectedPoolId] = useState<string>("");
     const [selectedUlId, setSelectedUlId] = useState<string>("");
+    const [shiftType, setShiftType] = useState<string>("day");
     const [runDate] = useState(() => new Date().toISOString().split("T")[0]); // Default today
 
     // Data State
@@ -40,6 +41,7 @@ export function useCreateRoute({ onCreated }: UseCreateRouteOptions = {}) {
             // Reset state on open
             setSelectedPoolId("");
             setSelectedUlId("");
+            setShiftType("day");
             setPreview(null);
             setError(null);
             setLoadingOptions(true);
@@ -78,6 +80,7 @@ export function useCreateRoute({ onCreated }: UseCreateRouteOptions = {}) {
                 poolId: selectedPoolId,
                 ulId: selectedUlId,
                 runDate,
+                shiftType,
             });
             setPreview(res);
         } catch (err: any) {
@@ -98,6 +101,7 @@ export function useCreateRoute({ onCreated }: UseCreateRouteOptions = {}) {
                 poolId: selectedPoolId,
                 ulId: selectedUlId,
                 runDate,
+                shiftType,
             });
             if (onCreated) onCreated();
             close();
@@ -119,6 +123,8 @@ export function useCreateRoute({ onCreated }: UseCreateRouteOptions = {}) {
         setPool: setSelectedPoolId,
         selectedUlId,
         setUl: setSelectedUlId,
+        shiftType,
+        setShiftType,
         runDate,
         pools,
         uls,

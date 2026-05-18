@@ -1,4 +1,4 @@
-import { pool } from "../../db";
+import { pool, withOrgContext } from "../../db";
 import { loadRouteRunById } from "./loaders/loadRouteRunById";
 import { planRouteWithOsrm, OsrmStop } from "../../osrmClient";
 import { makeLegCostCache } from "../../routing/routeCost";
@@ -38,8 +38,11 @@ export async function getCandidateStopsForPoolWithRisk(
       COALESCE(r.hotspot_weight, 0) as hotspot_weight,
       COALESCE(r.l3_urgency_weight, 0) as l3_urgency_weight
     FROM public.stops s
+    JOIN public.stop_pool_memberships spm
+      ON spm.stop_id = s.stop_id
+      AND spm.pool_id = $1
+      AND spm.active = true
     LEFT JOIN public.stop_risk_snapshot r ON r.stop_id = s.stop_id
-    WHERE s.pool_id = $1
     order by combined_risk_score desc
     LIMIT $2
   `;
@@ -87,9 +90,13 @@ export async function getCandidateStopsForPoolWithRisk(
     // BUT user requirements say "forceIncludeBonus = max_combined_risk_score... + 1" for sorting later.
     // Here we just need the stop data (coords).
     const missingQuery = `
-      SELECT stop_id, lon, lat, on_street_name, bearing_code
-      FROM stops
-      WHERE stop_id = ANY($1::text[]) AND pool_id = $2
+      SELECT s.stop_id, s.lon, s.lat, s.on_street_name, s.bearing_code
+      FROM stops s
+      JOIN public.stop_pool_memberships spm
+        ON spm.stop_id = s.stop_id
+        AND spm.pool_id = $2
+        AND spm.active = true
+      WHERE s.stop_id = ANY($1::text[])
     `;
     const missingRes = await client.query(missingQuery, [missingIncludeIds, poolId]);
 
@@ -165,9 +172,10 @@ export async function createRouteRun(
     route_pool_id: string;
     base_id: string;
     run_date?: string | Date;
+    shift_type?: string;        // 'day' | 'night' | 'all_day'. Defaults to 'day'.
   }
 ) {
-  const { stops, user_id, assigned_user_oid, created_by_oid, route_pool_id, base_id, run_date } = params;
+  const { stops, user_id, assigned_user_oid, created_by_oid, route_pool_id, base_id, run_date, shift_type } = params;
 
   let stopsToPlan = stops;
 
@@ -332,9 +340,9 @@ export async function createRouteRun(
     const insertRunText = `
       INSERT INTO route_runs (
         user_id, route_pool_id, base_id, run_date, status, total_distance_m, total_duration_s,
-        assigned_user_oid, created_by_oid
+        assigned_user_oid, created_by_oid, shift_type
       )
-      VALUES ($1, $2, $3, $4, 'planned', $5, $6, $7, $8)
+      VALUES ($1, $2, $3, $4, 'planned', $5, $6, $7, $8, $9)
       RETURNING id
     `;
     // Default to today if run_date is missing
@@ -348,7 +356,8 @@ export async function createRouteRun(
       totalDist,
       totalDur,
       assigned_user_oid ?? null,
-      created_by_oid ?? null
+      created_by_oid ?? null,
+      shift_type ?? 'day',
     ]);
     const routeRunId = runRes.rows[0].id;
 
@@ -382,9 +391,9 @@ export async function createRouteRun(
 
     const insertStopText = `
       INSERT INTO route_run_stops (
-        route_run_id, stop_id, asset_id, sequence, planned_distance_m, planned_duration_s
+        route_run_id, stop_id, asset_id, sequence, planned_distance_m, planned_duration_s, org_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6)
+      VALUES ($1, $2, $3, $4, $5, $6, (SELECT org_id FROM route_runs WHERE id = $1))
     `;
 
     // 6) Insert stops with recomputed legs
@@ -442,8 +451,7 @@ function normalize(s?: string) { return (s || "").trim().toUpperCase(); }
 /**
  * Start a route run
  */
-export async function startRouteRun(id: number | string) {
-  // Mark run as in_progress and set started_at if not already set
+export async function startRouteRun(id: number | string, orgId: number) {
   const updateQuery = `
     UPDATE route_runs
     SET
@@ -454,21 +462,21 @@ export async function startRouteRun(id: number | string) {
     RETURNING id;
       `;
 
-  const result = await pool.query(updateQuery, [id]);
+  const result = await withOrgContext(orgId, (client) =>
+    client.query(updateQuery, [id]),
+  );
 
   if (result.rowCount === 0) {
     return null;
   }
 
-  // Reload full run
   return await loadRouteRunById(id);
 }
 
 /**
  * Finish a route run
  */
-export async function finishRouteRun(id: number | string) {
-  // Update status
+export async function finishRouteRun(id: number | string, orgId: number) {
   const updateQuery = `
     UPDATE route_runs
     SET status = 'completed',
@@ -477,13 +485,14 @@ export async function finishRouteRun(id: number | string) {
     WHERE id = $1
     RETURNING id
         `;
-  const result = await pool.query(updateQuery, [id]);
+  const result = await withOrgContext(orgId, (client) =>
+    client.query(updateQuery, [id]),
+  );
 
   if (result.rowCount === 0) {
     return null;
   }
 
-  // Return updated run
   return await loadRouteRunById(id);
 }
 

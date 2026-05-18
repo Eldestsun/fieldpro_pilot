@@ -60,28 +60,28 @@ test("eam_bridge_route_log: populate inserts correct stop_count and exception_co
 
     // 3 stops — all same fixture stop (acceptable for test isolation).
     const s1 = await client.query<{ id: number }>(
-      `INSERT INTO route_run_stops (route_run_id, stop_id, asset_id, sequence, status)
-       VALUES ($1, $2, $3, 0, 'done') RETURNING id`,
-      [routeRunId, FIXTURE_STOP_ID, FIXTURE_ASSET_ID]
+      `INSERT INTO route_run_stops (route_run_id, stop_id, asset_id, sequence, status, org_id)
+       VALUES ($1, $2, $3, 0, 'done', $4) RETURNING id`,
+      [routeRunId, FIXTURE_STOP_ID, FIXTURE_ASSET_ID, FIXTURE_ORG_ID]
     );
     const s2 = await client.query<{ id: number }>(
-      `INSERT INTO route_run_stops (route_run_id, stop_id, asset_id, sequence, status)
-       VALUES ($1, $2, $3, 1, 'done') RETURNING id`,
-      [routeRunId, FIXTURE_STOP_ID, FIXTURE_ASSET_ID]
+      `INSERT INTO route_run_stops (route_run_id, stop_id, asset_id, sequence, status, org_id)
+       VALUES ($1, $2, $3, 1, 'done', $4) RETURNING id`,
+      [routeRunId, FIXTURE_STOP_ID, FIXTURE_ASSET_ID, FIXTURE_ORG_ID]
     );
     const s3 = await client.query<{ id: number }>(
-      `INSERT INTO route_run_stops (route_run_id, stop_id, asset_id, sequence, status)
-       VALUES ($1, $2, $3, 2, 'done') RETURNING id`,
-      [routeRunId, FIXTURE_STOP_ID, FIXTURE_ASSET_ID]
+      `INSERT INTO route_run_stops (route_run_id, stop_id, asset_id, sequence, status, org_id)
+       VALUES ($1, $2, $3, 2, 'done', $4) RETURNING id`,
+      [routeRunId, FIXTURE_STOP_ID, FIXTURE_ASSET_ID, FIXTURE_ORG_ID]
     );
     const stop3Id = Number(s3.rows[0].id);
 
     // Seed a hazard on stop3 — marks it as an exception in the bridge summary.
     const hRes = await client.query<{ id: number }>(
-      `INSERT INTO hazards (stop_id, route_run_stop_id, hazard_type, severity, details)
-       VALUES ($1, $2, 'graffiti', 2, '{"source": "eam-bridge-test"}')
+      `INSERT INTO hazards (stop_id, route_run_stop_id, hazard_type, severity, details, org_id)
+       VALUES ($1, $2, 'graffiti', 2, '{"source": "eam-bridge-test"}', $3)
        RETURNING id`,
-      [FIXTURE_STOP_ID, stop3Id]
+      [FIXTURE_STOP_ID, stop3Id, FIXTURE_ORG_ID]
     );
     hazardId = Number(hRes.rows[0].id);
     await client.query(
@@ -180,9 +180,9 @@ test("eam_bridge_route_log: populate is idempotent (ON CONFLICT DO NOTHING)", as
     routeRunId = Number(runRes.rows[0].id);
 
     await client.query(
-      `INSERT INTO route_run_stops (route_run_id, stop_id, asset_id, sequence, status)
-       VALUES ($1, $2, $3, 0, 'done')`,
-      [routeRunId, FIXTURE_STOP_ID, FIXTURE_ASSET_ID]
+      `INSERT INTO route_run_stops (route_run_id, stop_id, asset_id, sequence, status, org_id)
+       VALUES ($1, $2, $3, 0, 'done', $4)`,
+      [routeRunId, FIXTURE_STOP_ID, FIXTURE_ASSET_ID, FIXTURE_ORG_ID]
     );
 
     // First populate run.

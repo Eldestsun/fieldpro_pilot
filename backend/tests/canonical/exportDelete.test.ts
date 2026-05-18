@@ -13,7 +13,8 @@ import { pool, test, assert, assertEqual } from "../setup";
 
 const TEST_ORG_UUID = "00000000-0000-0000-0000-000000000042"; // test-only UUID
 const TEST_ACTOR_OID = "test-export-delete-oid-s1-4";
-const OTHER_ORG_UUID = "00000000-0000-0000-0000-000000000043"; // different org
+const OTHER_ORG_UUID = "00000000-0000-0000-0000-000000000043"; // different org (used for export_delete_tokens TEXT org_id)
+const AUDIT_OTHER_ORG_ID = 43; // bigint — different org for audit_log cross-org delete test
 
 function makeTokenPair(): { raw: string; hash: string } {
   const raw = crypto.randomBytes(32).toString("hex");
@@ -227,7 +228,7 @@ test("export_delete_tokens: token org_id match succeeds (same org)", async () =>
 // Verify that the audit_log_delete RLS policy allows DELETE only when
 // app.export_delete_active = 'true' and app.export_delete_org_id matches.
 
-const AUDIT_DELETE_TEST_ORG = "00000000-0000-0000-0000-000000000044";
+const AUDIT_DELETE_TEST_ORG = 44; // bigint (Phase 3: audit_log.org_id uuid → bigint)
 const AUDIT_DELETE_TEST_OID = "test-audit-delete-oid-s1-4";
 
 test("audit_log_delete policy: DELETE is blocked without export_delete_active flag", async () => {
@@ -235,7 +236,7 @@ test("audit_log_delete policy: DELETE is blocked without export_delete_active fl
   try {
     // Insert a test audit row.
     await client.query(
-      `INSERT INTO audit_log (actor_oid, org_id, action) VALUES ($1, $2::uuid, $3)`,
+      `INSERT INTO audit_log (actor_oid, org_id, action) VALUES ($1, $2, $3)`,
       [AUDIT_DELETE_TEST_OID, AUDIT_DELETE_TEST_ORG, "export.data_export"],
     );
 
@@ -266,7 +267,7 @@ test("audit_log_delete policy: DELETE succeeds with export_delete_active + corre
   try {
     // Insert a test audit row to delete.
     await client.query(
-      `INSERT INTO audit_log (actor_oid, org_id, action) VALUES ($1, $2::uuid, $3)`,
+      `INSERT INTO audit_log (actor_oid, org_id, action) VALUES ($1, $2, $3)`,
       [AUDIT_DELETE_TEST_OID, AUDIT_DELETE_TEST_ORG, "export.delete_execute"],
     );
 
@@ -277,11 +278,11 @@ test("audit_log_delete policy: DELETE succeeds with export_delete_active + corre
     );
     await client.query(
       "SELECT set_config('app.export_delete_org_id', $1, true)",
-      [AUDIT_DELETE_TEST_ORG],
+      [String(AUDIT_DELETE_TEST_ORG)],
     );
 
     const delRes = await client.query(
-      "DELETE FROM audit_log WHERE actor_oid = $1 AND org_id = $2::uuid",
+      "DELETE FROM audit_log WHERE actor_oid = $1 AND org_id = $2",
       [AUDIT_DELETE_TEST_OID, AUDIT_DELETE_TEST_ORG],
     );
     await client.query("COMMIT");
@@ -314,7 +315,7 @@ test("audit_log_delete policy: SET LOCAL resets after COMMIT — subsequent DELE
   try {
     // Insert a new test row.
     await client.query(
-      `INSERT INTO audit_log (actor_oid, org_id, action) VALUES ($1, $2::uuid, $3)`,
+      `INSERT INTO audit_log (actor_oid, org_id, action) VALUES ($1, $2, $3)`,
       [AUDIT_DELETE_TEST_OID, AUDIT_DELETE_TEST_ORG, "auth.login"],
     );
 
@@ -323,10 +324,10 @@ test("audit_log_delete policy: SET LOCAL resets after COMMIT — subsequent DELE
     await client.query("SELECT set_config('app.export_delete_active', 'true', true)");
     await client.query(
       "SELECT set_config('app.export_delete_org_id', $1, true)",
-      [AUDIT_DELETE_TEST_ORG],
+      [String(AUDIT_DELETE_TEST_ORG)],
     );
     const del1 = await client.query(
-      "DELETE FROM audit_log WHERE actor_oid = $1 AND org_id = $2::uuid",
+      "DELETE FROM audit_log WHERE actor_oid = $1 AND org_id = $2",
       [AUDIT_DELETE_TEST_OID, AUDIT_DELETE_TEST_ORG],
     );
     await client.query("COMMIT");
@@ -334,7 +335,7 @@ test("audit_log_delete policy: SET LOCAL resets after COMMIT — subsequent DELE
 
     // Second attempt without setting flag: must be blocked.
     await client.query(
-      `INSERT INTO audit_log (actor_oid, org_id, action) VALUES ($1, $2::uuid, $3)`,
+      `INSERT INTO audit_log (actor_oid, org_id, action) VALUES ($1, $2, $3)`,
       [AUDIT_DELETE_TEST_OID, AUDIT_DELETE_TEST_ORG, "auth.login"],
     );
 
@@ -352,7 +353,7 @@ test("audit_log_delete policy: SET LOCAL resets after COMMIT — subsequent DELE
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.export_delete_active', 'true', true)");
     await client.query("SELECT set_config('app.export_delete_org_id', $1, true)", [AUDIT_DELETE_TEST_ORG]);
-    await client.query("DELETE FROM audit_log WHERE actor_oid = $1 AND org_id = $2::uuid", [AUDIT_DELETE_TEST_OID, AUDIT_DELETE_TEST_ORG]);
+    await client.query("DELETE FROM audit_log WHERE actor_oid = $1 AND org_id = $2", [AUDIT_DELETE_TEST_OID, AUDIT_DELETE_TEST_ORG]);
     await client.query("COMMIT");
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
@@ -366,7 +367,7 @@ test("audit_log_delete policy: wrong org_id in session — DELETE blocked even w
   const client = await pool.connect();
   try {
     await client.query(
-      `INSERT INTO audit_log (actor_oid, org_id, action) VALUES ($1, $2::uuid, $3)`,
+      `INSERT INTO audit_log (actor_oid, org_id, action) VALUES ($1, $2, $3)`,
       [AUDIT_DELETE_TEST_OID, AUDIT_DELETE_TEST_ORG, "admin.config_change"],
     );
 
@@ -375,7 +376,7 @@ test("audit_log_delete policy: wrong org_id in session — DELETE blocked even w
     await client.query("SELECT set_config('app.export_delete_active', 'true', true)");
     await client.query(
       "SELECT set_config('app.export_delete_org_id', $1, true)",
-      [OTHER_ORG_UUID], // wrong org
+      [String(AUDIT_OTHER_ORG_ID)], // wrong org (different bigint from AUDIT_DELETE_TEST_ORG=44)
     );
 
     const delRes = await client.query(
@@ -401,7 +402,7 @@ test("audit_log_delete policy: wrong org_id in session — DELETE blocked even w
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.export_delete_active', 'true', true)");
     await client.query("SELECT set_config('app.export_delete_org_id', $1, true)", [AUDIT_DELETE_TEST_ORG]);
-    await client.query("DELETE FROM audit_log WHERE actor_oid = $1 AND org_id = $2::uuid", [AUDIT_DELETE_TEST_OID, AUDIT_DELETE_TEST_ORG]);
+    await client.query("DELETE FROM audit_log WHERE actor_oid = $1 AND org_id = $2", [AUDIT_DELETE_TEST_OID, AUDIT_DELETE_TEST_ORG]);
     await client.query("COMMIT");
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});

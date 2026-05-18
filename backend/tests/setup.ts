@@ -44,8 +44,8 @@ export async function createRouteRunFixture(client: PoolClient): Promise<RouteRu
   const routeRunId = Number(runRes.rows[0].id);
 
   const stopRes = await client.query(
-    `INSERT INTO route_run_stops (route_run_id, stop_id, asset_id, sequence)
-     VALUES ($1, $2, $3, 0)
+    `INSERT INTO route_run_stops (route_run_id, stop_id, asset_id, sequence, org_id)
+     VALUES ($1, $2, $3, 0, (SELECT org_id FROM route_runs WHERE id = $1))
      RETURNING id`,
     [routeRunId, FIXTURE_STOP_ID, FIXTURE_ASSET_ID]
   );

@@ -1,6 +1,7 @@
 import { Router, Request } from "express";
 import { requireAuth, requireAnyRole } from "../../authz";
 import { pool, withOrgContext } from "../../db";
+import { resolveNumericOrgId } from "../../middleware/resolveOrgId";
 
 export const resourceRoutes = Router();
 
@@ -54,20 +55,22 @@ resourceRoutes.get(
   "/pools",
   requireAuth,
   requireAnyRole(["Lead", "Admin"]),
-  async (_req, res) => {
+  async (req: Request, res) => {
     try {
+      const numericOrgId = await resolveNumericOrgId(req);
       const query = `
         SELECT id, label, trf_district, active, default_max_minutes
         FROM route_pools
         WHERE active = true
         ORDER BY label ASC;
       `;
-      const result = await pool.query(query);
+      const result = await withOrgContext(numericOrgId, (client) =>
+        client.query(query),
+      );
 
       const pools = result.rows.map((row) => ({
         id: row.id,
-        // what the dropdown shows
-        name: row.label,             // <-- use label as display name
+        name: row.label,
         label: row.label,
         trfDistrict: row.trf_district,
         defaultMaxMinutes: row.default_max_minutes,

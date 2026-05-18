@@ -6,7 +6,7 @@ import * as zlib from "zlib";
 import { promisify } from "util";
 import { requireAuth, requireAnyRole } from "../../authz";
 import { pool } from "../../db";
-import { auditWrite, reqOrgId } from "../../middleware/auditWrite";
+import { auditWrite, reqOrgId, reqTenantUuid } from "../../middleware/auditWrite";
 
 const gzip = promisify(zlib.gzip);
 
@@ -62,12 +62,13 @@ exportDeleteRoutes.post(
   "/admin/export-and-delete/request",
   async (req: Request, res: Response) => {
     const actorOid = (req as any).user?.oid ?? "unknown";
-    const orgId = reqOrgId(req); // Azure tenant UUID
+    const tenantUuid = reqTenantUuid(req);  // for export_delete_tokens (TEXT org_id)
+    const orgIdNum = await reqOrgId(req);   // numeric organizations.id for data + audit queries
+    const orgInt = BigInt(orgIdNum);
 
     const client = await pool.connect();
     try {
       ensureStagingDir();
-      const orgInt = await resolveOrgInt(orgId, client);
 
       // ── Build export bundle ──────────────────────────────────────────────
       const exportData: Record<string, unknown[]> = {};
@@ -133,10 +134,10 @@ exportDeleteRoutes.post(
         exportData.stop_condition_history = [];
       }
 
-      // audit_log — scoped by UUID org_id (audit_log.org_id is UUID type)
+      // audit_log — scoped by bigint org_id (Phase 3: column changed from uuid → bigint)
       const auditRes = await client.query(
-        "SELECT * FROM audit_log WHERE org_id = $1::uuid",
-        [orgId],
+        "SELECT * FROM audit_log WHERE org_id = $1",
+        [orgInt],
       );
       exportData.audit_log = auditRes.rows;
 
@@ -150,13 +151,13 @@ exportDeleteRoutes.post(
       // ── Write gzipped bundle ─────────────────────────────────────────────
       const bundleJson = JSON.stringify({
         exported_at: new Date().toISOString(),
-        org_id: orgId,
-        org_id_int: orgInt.toString(),
+        tenant_uuid: tenantUuid,
+        org_id: orgIdNum,
         tables: exportData,
       });
       const bundleGz = await gzip(Buffer.from(bundleJson, "utf8"));
 
-      const bundleFilename = `export_${orgId}_${Date.now()}.json.gz`;
+      const bundleFilename = `export_${tenantUuid}_${Date.now()}.json.gz`;
       const bundlePath = path.join(EXPORT_STAGING_DIR, bundleFilename);
       fs.writeFileSync(bundlePath, bundleGz);
 
@@ -177,7 +178,7 @@ exportDeleteRoutes.post(
            (token_hash, org_id, actor_oid, export_path, expires_at)
          VALUES ($1, $2, $3, $4, $5)
          RETURNING id`,
-        [tokenHash, orgId, actorOid, bundlePath, expiresAt],
+        [tokenHash, tenantUuid, actorOid, bundlePath, expiresAt],
       );
       const tokenId: bigint = BigInt(tokenRes.rows[0].id);
 
@@ -185,7 +186,7 @@ exportDeleteRoutes.post(
       // Two separate rows: one for the export initiation, one for the token.
       auditWrite({
         actor_oid: actorOid,
-        org_id: orgId,
+        org_id: orgIdNum,
         action: "export.data_export",
         resource_type: "export",
         resource_id: tokenId.toString(),
@@ -201,7 +202,7 @@ exportDeleteRoutes.post(
 
       auditWrite({
         actor_oid: actorOid,
-        org_id: orgId,
+        org_id: orgIdNum,
         action: "export.delete_confirm",
         resource_type: "export",
         resource_id: tokenId.toString(),
@@ -240,7 +241,7 @@ exportDeleteRoutes.post(
 exportDeleteRoutes.get(
   "/admin/export-and-delete/export/:token_id",
   async (req: Request, res: Response) => {
-    const orgId = reqOrgId(req);
+    const tenantUuid = reqTenantUuid(req);  // compare against export_delete_tokens.org_id (TEXT)
     const { token_id } = req.params;
 
     try {
@@ -255,7 +256,7 @@ exportDeleteRoutes.get(
 
       const { export_path, org_id: tokenOrgId } = tokenRes.rows[0];
 
-      if (tokenOrgId !== orgId) {
+      if (tokenOrgId !== tenantUuid) {
         return res.status(403).json({ error: "Access denied." });
       }
 
@@ -294,7 +295,8 @@ exportDeleteRoutes.post(
   "/admin/export-and-delete/execute",
   async (req: Request, res: Response) => {
     const actorOid = (req as any).user?.oid ?? "unknown";
-    const orgId = reqOrgId(req);
+    const tenantUuid = reqTenantUuid(req);  // for cross-org check vs export_delete_tokens.org_id (TEXT)
+    const orgIdNum = await reqOrgId(req);   // numeric, for audit + data ops
 
     const { confirmation_token } = req.body ?? {};
     if (!confirmation_token || typeof confirmation_token !== "string") {
@@ -336,13 +338,14 @@ exportDeleteRoutes.post(
 
       // CRITICAL: org_id cross-org check.
       // A token issued for one org must never delete another org's data.
-      if (tokenRow.org_id !== orgId) {
+      // tokenRow.org_id is TEXT (the Azure tenant UUID stored at token creation time).
+      if (tokenRow.org_id !== tenantUuid) {
         return res.status(403).json({
           error: "Token does not belong to your organization.",
         });
       }
 
-      const orgInt = await resolveOrgInt(orgId, client);
+      const orgInt = BigInt(orgIdNum);
 
       // ── Hard-delete transaction ──────────────────────────────────────────
       // WARNING: This is irreversible. The token consumed_at is set atomically
@@ -439,13 +442,14 @@ exportDeleteRoutes.post(
         // STEP c — Write the export.delete_execute audit entry using the
         // transaction client. This row is written before the audit_log purge
         // so the deletion is fully documented up to the moment it happens.
+        // Phase 3: audit_log.org_id is now bigint — pass orgIdNum (numeric).
         await client.query(
           `INSERT INTO audit_log
              (actor_oid, org_id, action, resource_type, resource_id, detail, ip_address)
-           VALUES ($1, $2::uuid, $3, $4, $5, $6, $7)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
           [
             actorOid,
-            orgId,
+            orgIdNum,
             "export.delete_execute",
             "export",
             String(tokenRow.id),
@@ -460,21 +464,19 @@ exportDeleteRoutes.post(
 
         // STEP d — Delete all audit_log rows for this org, including the
         // export.delete_execute row just written above.
-        // Requires the audit_log_delete RLS policy from the S1-4 migration:
-        //   SET LOCAL app.export_delete_active = 'true'
-        //   SET LOCAL app.export_delete_org_id = '<uuid>'
-        // SET LOCAL resets automatically at COMMIT — cannot leak to other requests.
+        // Phase 3: audit_log_delete policy uses bigint comparison.
+        // app.export_delete_org_id must be the numeric org_id as a string (e.g. '1').
         await client.query(
           "SELECT set_config('app.export_delete_active', 'true', true)",
         );
         await client.query(
           "SELECT set_config('app.export_delete_org_id', $1, true)",
-          [orgId],
+          [String(orgIdNum)],
         );
 
         const auditDel = await client.query(
-          "DELETE FROM audit_log WHERE org_id = $1::uuid",
-          [orgId],
+          "DELETE FROM audit_log WHERE org_id = $1",
+          [orgIdNum],
         );
         deletionSummary.audit_log = auditDel.rowCount ?? 0;
 

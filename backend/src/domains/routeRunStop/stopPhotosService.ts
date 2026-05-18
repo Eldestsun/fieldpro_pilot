@@ -40,8 +40,8 @@ export async function createStopPhotos(
     for (const key of s3Keys) {
         // Existing transit write (additive discipline — do not remove)
         const photoRes = await client.query(
-            `INSERT INTO stop_photos (visit_id, route_run_stop_id, asset_id, s3_key, kind, created_by_oid, captured_at)
-             SELECT id, $2, $3, $4, $5, $6, NOW()
+            `INSERT INTO stop_photos (visit_id, route_run_stop_id, asset_id, s3_key, kind, created_by_oid, captured_at, org_id)
+             SELECT id, $2, $3, $4, $5, $6, NOW(), org_id
              FROM core.visits
              WHERE client_visit_id = $1
              LIMIT 1`,

@@ -327,10 +327,8 @@ export async function decrypt(
 
   // 3. Mandatory audit trail — fires after successful decryption.
   const actorOid = (req.user as any)?.oid ?? "unknown";
-  const orgId    =
-    (req.user as any)?.tid ??
-    process.env.AZURE_TENANT_ID ??
-    "00000000-0000-0000-0000-000000000000";
+  // Resolve numeric org_id; writeAuditLog also converts UUID strings internally as fallback.
+  const orgId = (req.user as any)?.tid ?? process.env.AZURE_TENANT_ID ?? "unknown";
   try {
     await writeAuditLog({
       actor_oid:     actorOid,

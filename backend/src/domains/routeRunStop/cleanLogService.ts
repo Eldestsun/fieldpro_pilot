@@ -98,13 +98,13 @@ export async function completeStop(
         `INSERT INTO clean_logs (
             visit_id, route_run_stop_id, stop_id, asset_id, user_id,
             duration_minutes, picked_up_litter, emptied_trash,
-            washed_shelter, washed_pad, washed_can, photo_keys, cleaned_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            washed_shelter, washed_pad, washed_can, photo_keys, cleaned_at, org_id
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          RETURNING id`,
         [
             visitId, routeRunStopId, stop_id, asset_id, user_id,
             computedDuration, picked_up_litter, emptied_trash,
-            washed_shelter, washed_pad, washed_can, photoKeysVal, now,
+            washed_shelter, washed_pad, washed_can, photoKeysVal, now, ctx.orgId,
         ]
     );
     const cleanLogId = logRes.rows[0].id;
@@ -125,9 +125,9 @@ export async function completeStop(
             [trashVolume, routeRunStopId]
         );
         await client.query(
-            `INSERT INTO trash_volume_logs (visit_id, route_run_stop_id, stop_id, asset_id, volume)
-             VALUES ($1, $2, $3, $4, $5)`,
-            [visitId, routeRunStopId, stop_id, asset_id, trashVolume]
+            `INSERT INTO trash_volume_logs (visit_id, route_run_stop_id, stop_id, asset_id, volume, org_id)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [visitId, routeRunStopId, stop_id, asset_id, trashVolume, ctx.orgId]
         );
     }
 
@@ -171,7 +171,7 @@ export async function completeStop(
         INSERT INTO stop_effort_history (
             stop_id, visit_id, run_date,
             service_minutes, stop_type, complexity_score,
-            had_hazard, had_infra_issue, trash_volume
+            had_hazard, had_infra_issue, trash_volume, org_id
         )
         SELECT
             rrs.stop_id,
@@ -194,7 +194,8 @@ export async function completeStop(
             ),
             (SELECT (o5.payload->>'level')::numeric FROM core.observations o5
              WHERE o5.visit_id = v.id AND o5.observation_type = 'trash_volume'
-             LIMIT 1)
+             LIMIT 1),
+            v.org_id
         FROM core.visits v, route_run_stops rrs, public.stops s
         WHERE v.id = $1
           AND rrs.id = $2

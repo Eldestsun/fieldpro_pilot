@@ -425,7 +425,7 @@ export async function fetchUlUsers(token: string): Promise<UlUser[]> {
 
 export async function previewRouteRun(
     token: string,
-    params: { poolId: string; ulId: string; runDate: string }
+    params: { poolId: string; ulId: string; runDate: string; shiftType?: string }
 ): Promise<RoutePreviewResponse> {
     const res = await fetch("/api/route-runs/preview", {
         method: "POST",
@@ -437,6 +437,7 @@ export async function previewRouteRun(
             pool_id: params.poolId,
             ul_id: params.ulId,
             run_date: params.runDate,
+            shift_type: params.shiftType ?? "day",
         }),
     });
 
@@ -449,7 +450,7 @@ export async function previewRouteRun(
 
 export async function createRouteRun(
     token: string,
-    params: { poolId: string; ulId: string; runDate: string }
+    params: { poolId: string; ulId: string; runDate: string; shiftType?: string }
 ): Promise<void> {
     const res = await fetch("/api/route-runs", {
         method: "POST",
@@ -461,6 +462,7 @@ export async function createRouteRun(
             pool_id: params.poolId,
             ul_id: params.ulId,
             run_date: params.runDate,
+            shift_type: params.shiftType ?? "day",
         }),
     });
 

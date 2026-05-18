@@ -122,7 +122,7 @@ export async function populate(): Promise<{ inserted: number; skipped: number }>
     // immediately after populate() returns.
     await writeAuditLog({
       actor_oid: actorOid,
-      org_id: process.env.AZURE_TENANT_ID ?? 'system',
+      org_id: 1,
       action: 'admin.eam_bridge_populate',
       detail: {
         rows_written: inserted,

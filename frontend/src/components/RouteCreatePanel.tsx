@@ -81,6 +81,20 @@ export function RouteCreatePanel({ isOpen, onClose, hook }: RouteCreatePanelProp
                         />
                     </div>
 
+                    <div>
+                        <label className="block mb-2 font-semibold text-sm text-gray-700">Shift</label>
+                        <select
+                            value={hook.shiftType}
+                            onChange={(e) => hook.setShiftType(e.target.value)}
+                            disabled={hook.loadingOptions || hook.loadingPreview || hook.savingRoute}
+                            className="w-full px-3 py-2.5 rounded-md border border-gray-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px] disabled:bg-gray-50 disabled:text-gray-400"
+                        >
+                            <option value="day">Day</option>
+                            <option value="night">Night</option>
+                            <option value="all_day">All Day</option>
+                        </select>
+                    </div>
+
                     <OpsButton
                         onClick={hook.generatePreview}
                         disabled={!hook.canPreview || hook.loadingPreview}
