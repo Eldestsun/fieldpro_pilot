@@ -780,6 +780,7 @@ adminRoutes.get("/admin/clean-logs", async (req: Request, res: Response) => {
  *             - admin.route_edit
  *             - upload.rejected
  *             - admin.oid_decrypt
+ *             - admin.audit_log_read
  *         description: Filter by audit action
  *       - in: query
  *         name: format
@@ -891,7 +892,14 @@ adminRoutes.get("/admin/audit-log", async (req: Request, res: Response) => {
       actor_oid: (req as any).user?.oid ?? 'unknown',
       org_id: orgId,
       action: 'admin.audit_log_read',
-      detail: { from: fromDate.toISOString(), to: toDate.toISOString(), format, result_count: total },
+      resource_type: 'audit_log',
+      detail: {
+        query_from: fromDate.toISOString(),
+        query_to: toDate.toISOString(),
+        action_filter: actionFilter ?? null,
+        format,
+        result_count: total,
+      },
       ip_address: req.ip,
     });
 

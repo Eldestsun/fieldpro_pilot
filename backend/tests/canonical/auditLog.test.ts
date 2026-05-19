@@ -1,6 +1,7 @@
 import { pool, test, assert, assertEqual } from "../setup";
 import { writeAuditLog } from "../../src/middleware/auditLog";
 import { withOrgContext } from "../../src/db";
+import * as http from "http";
 
 const TEST_ORG_ID = 1; // bigint org_id (Phase 3: audit_log.org_id uuid → bigint)
 const TEST_ACTOR_OID = "test-audit-oid-s1-1";
@@ -149,6 +150,10 @@ test("audit_log query: S1-3 date range and org filtering returns correct entries
   );
 });
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 test("audit_log query: S1-3 action filter narrows results", async () => {
   const fromDate = new Date(Date.now() - 60 * 1000);
   const toDate   = new Date(Date.now() + 60 * 1000);
@@ -169,4 +174,116 @@ test("audit_log query: S1-3 action filter narrows results", async () => {
     entries.every((r: any) => r.action === "admin.stop_edit"),
     "action filter: all rows match the requested action",
   );
+});
+
+// ── admin.audit_log_read meta-trigger shape tests ─────────────────────────────
+
+const META_ORG_ID = 1;
+
+test("audit_log meta-trigger: JSON read writes entry with correct shape", async () => {
+  const actor = `meta-trigger-json-${Date.now()}`;
+  await writeAuditLog({
+    actor_oid: actor,
+    org_id: META_ORG_ID,
+    action: "admin.audit_log_read",
+    resource_type: "audit_log",
+    detail: {
+      query_from: "2026-04-01T00:00:00.000Z",
+      query_to: "2026-05-01T00:00:00.000Z",
+      action_filter: null,
+      format: "json",
+      result_count: 42,
+    },
+  });
+
+  const res = await pool.query(
+    `SELECT action, resource_type, resource_id, detail
+     FROM audit_log WHERE actor_oid = $1 ORDER BY occurred_at DESC LIMIT 1`,
+    [actor],
+  );
+  assertEqual(res.rowCount, 1, "exactly one row written");
+  const row = res.rows[0];
+  assertEqual(row.action, "admin.audit_log_read", "action matches");
+  assertEqual(row.resource_type, "audit_log", "resource_type is audit_log");
+  assertEqual(row.resource_id, null, "resource_id is null");
+  assertEqual(row.detail?.format, "json", "detail.format is json");
+  assertEqual(row.detail?.result_count, 42, "detail.result_count matches");
+  assert("query_from" in row.detail, "detail has query_from key");
+  assert("query_to" in row.detail, "detail has query_to key");
+  assert("action_filter" in row.detail, "detail has action_filter key");
+  assertEqual(row.detail?.action_filter, null, "detail.action_filter is null when no filter");
+});
+
+test("audit_log meta-trigger: CSV read writes entry with correct shape", async () => {
+  const actor = `meta-trigger-csv-${Date.now()}`;
+  await writeAuditLog({
+    actor_oid: actor,
+    org_id: META_ORG_ID,
+    action: "admin.audit_log_read",
+    resource_type: "audit_log",
+    detail: {
+      query_from: "2026-04-01T00:00:00.000Z",
+      query_to: "2026-05-01T00:00:00.000Z",
+      action_filter: "auth.login",
+      format: "csv",
+      result_count: 7,
+    },
+  });
+
+  const res = await pool.query(
+    `SELECT action, resource_type, resource_id, detail
+     FROM audit_log WHERE actor_oid = $1 ORDER BY occurred_at DESC LIMIT 1`,
+    [actor],
+  );
+  assertEqual(res.rowCount, 1, "exactly one row written");
+  const row = res.rows[0];
+  assertEqual(row.action, "admin.audit_log_read", "action matches");
+  assertEqual(row.resource_type, "audit_log", "resource_type is audit_log");
+  assertEqual(row.resource_id, null, "resource_id is null");
+  assertEqual(row.detail?.format, "csv", "detail.format is csv");
+  assertEqual(row.detail?.result_count, 7, "detail.result_count matches");
+  assertEqual(row.detail?.action_filter, "auth.login", "detail.action_filter preserved when set");
+});
+
+test("audit_log meta-trigger: failed request (invalid date) does not write entry", async () => {
+  const { app } = await import("../../src/app");
+  const server = http.createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as any).port;
+
+  const marker = `audit-read-fail-${Date.now()}`;
+
+  // Request with invalid 'from' date — handler returns 400 before auditWrite is called.
+  await new Promise<void>((resolve, reject) => {
+    const req = http.request(
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/admin/audit-log?from=not-a-date",
+        headers: {
+          "x-dev-user-oid": marker,
+          "x-dev-user-roles": "Admin",
+          "x-dev-user-org-id": "1",
+        },
+      },
+      (res) => {
+        res.resume();
+        res.on("end", resolve);
+      },
+    );
+    req.on("error", reject);
+    req.end();
+  });
+
+  // Allow time for any fire-and-forget write to land (proves none was fired).
+  await sleep(300);
+
+  const check = await pool.query(
+    `SELECT COUNT(*)::int AS ct FROM audit_log
+     WHERE actor_oid = $1 AND action = 'admin.audit_log_read'`,
+    [marker],
+  );
+  assertEqual(check.rows[0].ct, 0, "no audit_log_read entry written for a failed request");
+
+  await new Promise<void>((resolve) => server.close(resolve));
 });
