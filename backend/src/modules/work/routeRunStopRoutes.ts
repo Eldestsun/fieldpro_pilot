@@ -281,7 +281,9 @@ routeRunStopRoutes.post(
             const { checkAndCompleteRouteRun } = await import("../../domains/routeRun/routeRunService");
             await checkAndCompleteRouteRun(client, lookupRes.rows[0].route_run_id);
 
-            const routeRun = await loadRouteRunById(lookupRes.rows[0].route_run_id);
+            // ctx.orgId is already loaded inside this handler (line ~260) and
+            // matches the org-context the surrounding transaction ran in.
+            const routeRun = await loadRouteRunById(lookupRes.rows[0].route_run_id, ctx.orgId);
 
             return res.json({
                 ok: true,
@@ -545,7 +547,7 @@ routeRunStopRoutes.post(
                 return res.status(404).json({ error: "ROUTE_NOT_FOUND", message: "Route run stop not found" });
             }
 
-            const routeRun = await loadRouteRunById(result.routeRunId);
+            const routeRun = await loadRouteRunById(result.routeRunId, numericOrgId);
 
             return res.json({
                 ok: true,

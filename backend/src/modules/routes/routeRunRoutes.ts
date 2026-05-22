@@ -192,7 +192,8 @@ routeRunRoutes.get(
     async (req: Request, res: Response) => {
         try {
             const { id } = req.params;
-            const routeRun = await loadRouteRunById(id);
+            const numericOrgId = await resolveNumericOrgId(req);
+            const routeRun = await loadRouteRunById(id, numericOrgId);
 
             if (!routeRun) {
                 return res.status(404).json({ error: "Route run not found" });
@@ -217,7 +218,8 @@ routeRunRoutes.get(
     async (req: Request, res: Response) => {
         try {
             const { id } = req.params;
-            const routeRun = await loadRouteRunById(id);
+            const numericOrgId = await resolveNumericOrgId(req);
+            const routeRun = await loadRouteRunById(id, numericOrgId);
 
             if (!routeRun) {
                 return res.status(404).json({ error: "Route run not found" });
@@ -694,10 +696,15 @@ routeRunRoutes.post(
  *         $ref: '#/components/responses/InternalError'
  */
 // [GOVERNANCE-SENSITIVE] Transitional endpoint. Prefer domain-specific accessors where possible.
+// No requireAuth on this transitional endpoint; resolveNumericOrgId tolerates
+// a missing req.user and falls back to the first organization (single-tenant
+// dev/pilot). When this endpoint is removed or guarded, this fallback should
+// be revisited.
 routeRunRoutes.get("/route-runs/:id", async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const routeRun = await loadRouteRunById(id);
+        const numericOrgId = await resolveNumericOrgId(req);
+        const routeRun = await loadRouteRunById(id, numericOrgId);
 
         if (!routeRun) {
             return res.status(404).json({ error: "Route run not found" });
@@ -871,7 +878,8 @@ routeRunRoutes.post(
                 return res.status(404).json({ error: "Route run stop not found (no route_run_id)" });
             }
 
-            const routeRun = await loadRouteRunById(routeRunId);
+            const numericOrgId = await resolveNumericOrgId(req);
+            const routeRun = await loadRouteRunById(routeRunId, numericOrgId);
             return res.json({ ok: true, route_run: routeRun });
 
         } catch (err: any) {
@@ -1056,7 +1064,7 @@ routeRunRoutes.patch(
                 });
             }
 
-            const routeRun = await loadRouteRunById(id);
+            const routeRun = await loadRouteRunById(id, numericOrgId);
             return res.json({ ok: true, route_run: routeRun });
 
         } catch (err: any) {

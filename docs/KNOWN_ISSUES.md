@@ -190,3 +190,47 @@ The Lead route-creation flow and any Admin surface listing assignable users show
 `GET /api/users` now wraps the `identity_directory` query in `withOrgContext`. Numeric org ID resolves from `req.user.org_id` for dev bypass requests, falls back to a tenant UUID lookup against `organizations` for real Entra auth.
 
 **Changelog:** `docs/changelog/bugfix/2026-05-18-fix-users-rls-org-context.md`
+
+---
+
+## ISSUE-013 — `resolveNumericOrgId` fails open to lowest-id org when caller org is indeterminate
+**Status:** Deferred — safe in single-org, must fail closed before any multi-org deployment
+**Discovered:** 2026-05-21
+**Area:** backend — `backend/src/middleware/resolveOrgId.ts`
+**Severity:** medium (latent; benign in current single-org deployment, becomes a cross-tenant data leak the moment a second org is added)
+
+**Symptom (latent):**
+`resolveNumericOrgId(req)` is the canonical helper for sourcing the numeric `org_id` that downstream `withOrgContext(...)` calls scope reads and writes to. When `req.user.org_id` is unset (no authenticated user) AND no Entra `tid` claim matches an `organizations.tenant_uuid` row, the helper executes:
+
+```sql
+SELECT id FROM organizations WHERE tenant_uuid = $1
+UNION ALL
+SELECT id FROM organizations ORDER BY id LIMIT 1
+```
+
+and returns whichever row arrives first — in practice the lowest-id organization (currently KCM, id 1). The helper never throws and never returns `undefined`. Any caller that reaches the fallback silently scopes its `withOrgContext` to org 1.
+
+**Why this is safe today:**
+- The dev and pilot deployments are both single-org KCM. The "lowest-id org" and "the correct org" are the same row, so the fallback returns the right answer by coincidence of cardinality.
+- Real Entra-authenticated requests populate `req.user.org_id` directly (from the dev-bypass headers) or supply a `tid` that resolves a unique `tenant_uuid` row, so the fallback branch is never hit on the request path.
+- The known caller that does hit the fallback today is `POST /api/dev/generate-route-run` (no `requireAuth`), which is dev-only and gated by `DEV_AUTH_BYPASS === 'true'`.
+
+**Why it must be fixed before multi-org deployment:**
+Once a second organization is added, any code path that reaches the fallback (forgotten `requireAuth`, a token with a `tid` not yet registered in `organizations.tenant_uuid`, a background job, a misconfigured cron, a new dev endpoint) will silently default the caller into org 1's data. RLS will faithfully scope reads and writes to org 1 — fail-open with respect to tenant identity, not a leak across orgs, but a structural defect that puts the wrong org's data on the wire to the wrong caller. The helper is the trust boundary; it should fail closed by raising when it cannot determine an authoritative org.
+
+**Fix hint:**
+- Tighten `resolveNumericOrgId` to throw (or return `null` and force callers to handle it explicitly) when `req.user?.org_id` is unset AND no `tid` resolves a unique `organizations.tenant_uuid` row.
+- Audit all call sites for either explicit `null` handling or a fail-closed 401/403 response.
+- Special-case the dev route(s) that legitimately have no `req.user`: have them pass an explicit `org_id` (from request body or `DEV_BYPASS_ORG_ID`) rather than depending on the lowest-id fallback.
+
+**Related — the RLS-context trap pattern:**
+This issue is one member of a recurring class of bugs in this codebase where the trust boundary between "I know which org this caller belongs to" and "RLS will silently scope to whatever org context is on the connection" is fragile. Other instances:
+
+- **ISSUE-005** — `baseline:after-replay` fires on empty replays. Different mechanism, listed here per the dispatch's cross-reference.
+- **ISSUE-012** — `GET /api/users` returned empty list because the handler queried `identity_directory` on a bare pool connection with `app.current_org_id` unset; the strict R11 RLS policy filtered every row out silently. Same RLS-context-not-set trap, manifested as fail-closed rather than fail-open.
+- **Role-rename Phase 1 backfill (2026-05-21)** — `UPDATE identity_directory SET last_seen_role = ...` reported `UPDATE 0` against a table that had 4 rows. Same RLS-context-not-set trap, manifested as a silent no-op.
+- **`loadRouteRunById` (2026-05-21 — fixed)** — ran two `pool.query` calls with `app.current_org_id` unset. Before the strict identity_directory RLS hid the JOIN. After the planned Phase 2 policy flip on identity_directory, the bare connection would have started returning cross-tenant rows. Fixed by threading `orgId` through and wrapping in `withOrgContext`.
+
+The unifying pattern: every code path that touches an RLS-protected table must arrive there via `withOrgContext(orgId, ...)`, and the `orgId` must come from an authoritative source — not a silent fallback. `resolveNumericOrgId` is the choke point where this discipline either holds or breaks; ISSUE-013 is the open hole in that choke point.
+
+**Target:** Pre-multi-org hardening (must close before the second tenant is provisioned). Will be re-evaluated as part of the multi-tenant readiness audit alongside any other `pool.query` reads of RLS tables on bare connections.

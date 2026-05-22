@@ -2,6 +2,7 @@ import { Router, Response } from "express";
 import { requireAuth, requireAnyRole } from "../../authz";
 import { pool } from "../../db";
 import { loadRouteRunById } from "../../domains/routeRun/loaders/loadRouteRunById";
+import { resolveNumericOrgId } from "../../middleware/resolveOrgId";
 import multer, { MulterError } from "multer";
 import { uploadStopPhotos } from "../../s3Client";
 import { createStopPhotos, listStopPhotosByRouteRunStop } from "../../domains/routeRunStop/stopPhotosService";
@@ -129,7 +130,8 @@ ulRoutes.get(
             }
 
             const routeRunId = findRes.rows[0].id;
-            const routeRun = await loadRouteRunById(routeRunId);
+            const numericOrgId = await resolveNumericOrgId(req);
+            const routeRun = await loadRouteRunById(routeRunId, numericOrgId);
 
             return res.json({ ok: true, route_run: routeRun });
         } catch (err: any) {

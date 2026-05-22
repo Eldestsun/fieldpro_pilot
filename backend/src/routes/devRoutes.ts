@@ -3,6 +3,7 @@ import { pool } from "../db";
 import { OsrmStop } from "../osrmClient";
 import { createRouteRun } from "../domains/routeRun/routeRunService";
 import { loadRouteRunById } from "../domains/routeRun/loaders/loadRouteRunById";
+import { resolveNumericOrgId } from "../middleware/resolveOrgId";
 
 export const devRoutes = Router();
 
@@ -209,7 +210,12 @@ devRoutes.post("/dev/generate-route-run", async (req: Request, res: Response) =>
         });
 
         // 4. Load full run payload
-        const fullRouteRun = await loadRouteRunById(routeRunId);
+        // Dev endpoint: no requireAuth, so req.user is typically unset.
+        // resolveNumericOrgId reads req.user.org_id if the dev-bypass headers
+        // populated it; otherwise it falls back to the first organization id
+        // (single-tenant dev DB), so the call is safe in either mode.
+        const numericOrgId = await resolveNumericOrgId(req);
+        const fullRouteRun = await loadRouteRunById(routeRunId, numericOrgId);
 
         return res.json({ ok: true, route_run: fullRouteRun });
     } catch (err: any) {

@@ -1,9 +1,20 @@
-import { pool } from "../../../db";
+import { withOrgContext } from "../../../db";
 
 /**
- * Load full route run by ID
+ * Load full route run by ID, scoped to the caller's org.
+ *
+ * Both the outer `route_runs` row and the JOIN-resolved `identity_directory`
+ * rows are evaluated under the caller's `app.current_org_id`, so cross-tenant
+ * reads are fail-closed: requesting a route_run that does not belong to
+ * `orgId` returns `null`, not the foreign row.
+ *
+ * The two queries that previously ran on a bare pool connection — and
+ * therefore returned NULL `assigned_user_name` / `created_by_name` for every
+ * route_run because the strict identity_directory RLS policy filtered the
+ * JOIN — now both run inside `withOrgContext`, which also fixes that latent
+ * display-name bug.
  */
-export async function loadRouteRunById(id: number | string) {
+export async function loadRouteRunById(id: number | string, orgId: number | string) {
     const query = `
     SELECT
       rr.id                  AS route_run_id,
@@ -92,11 +103,16 @@ export async function loadRouteRunById(id: number | string) {
         o.observed_at
     `;
 
-    // Execute queries in parallel
-    const [runRes, eventsRes] = await Promise.all([
-        pool.query(query, [id]),
-        pool.query(eventsQuery, [id])
-    ]);
+    // Both queries run inside withOrgContext so RLS filters route_runs and
+    // the identity_directory JOIN by the caller's org. Parallelism is dropped:
+    // the two queries share one pool connection (one org-context session),
+    // which is the simpler and safer way to keep both reads on the same set
+    // of session GUCs.
+    const [runRes, eventsRes] = await withOrgContext(orgId, async (client) => {
+        const a = await client.query(query, [id]);
+        const b = await client.query(eventsQuery, [id]);
+        return [a, b] as const;
+    });
 
     if (runRes.rows.length === 0) {
         return null;
