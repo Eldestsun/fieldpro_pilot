@@ -183,9 +183,9 @@ whole point.
 
 | Term | Meaning |
 |------|---------|
-| Route Specialist / Route Spec | Field worker who cleans bus shelters. The primary UL (Unit Lead) user. |
-| UL | Unit Lead — the field worker role in the app |
-| Lead | Supervisor who creates and assigns routes |
+| Route Specialist / Route Spec | Field worker who cleans bus shelters. The primary Specialist (formerly UL) user. |
+| Specialist | The field worker role in the app. Renamed from `UL` during the role-rename workstream; both names are accepted in code during the Phase 1 dual-accept window. |
+| Dispatch | Operational leadership role — owns route creation, assignment, and the Control Center. Renamed from `Lead` during the role-rename workstream; both names are accepted in code during the Phase 1 dual-accept window. |
 | Chief / Superintendent | Operational management. Has dashboard access. Does NOT have DB access. |
 | EAMS | Hexagon Enterprise Asset Management System — King County Metro's $17M system of record |
 | Transit Facilities Division | The KCM division where BASELINE is being built and piloted |

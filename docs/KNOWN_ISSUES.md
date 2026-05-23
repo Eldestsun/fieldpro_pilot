@@ -62,7 +62,7 @@ Changelogs: `2026-05-12-r6-control-center-live.md`, `2026-05-12-issue-003-stop-n
 ## ISSUE-004 — Skip stop: "No hazard selected" fires on first attempt despite hazard being selected
 **Status:** Fixed 2026-05-11  
 **Discovered:** 2026-05-10  
-**Area:** frontend — UL skip stop workflow / `handleSkipStop`  
+**Area:** frontend — Specialist skip stop workflow / `handleSkipStop`  
 
 **Resolution:**  
 Hazard selection is now passed directly as an argument to `handleSkipStop` from the
@@ -174,6 +174,24 @@ A partially-implemented enhancement to the dev auth bypass middleware added Bear
 
 ---
 
+## PATTERN-001 — RLS silent empty-result when org context missing
+
+**Type:** Recurring gotcha — not a single bug, a systemic trap  
+**Instances:** ISSUE-005 (fetchRoute loop), ISSUE-012 (/api/users empty list), ISSUE-013 (`resolveNumericOrgId` lowest-id fallback — same pattern, different surface), ISSUE-014 (`schema_migrations` manifest drift — discovered chasing this pattern), role-rename backfill migration (2026-05-21)
+
+Any query or write against a `FORCE ROW LEVEL SECURITY` table silently returns zero rows / affects zero rows if `app.current_org_id` is not set on the connection before the query runs. The failure is invisible in logs — no error, no warning, just an empty result set or a no-op write.
+
+**Local vs Render asymmetry:** This bug manifests locally (where the `fieldpro` role has neither `rolsuper` nor `rolbypassrls`) but is hidden on Render (managed Postgres connections may have elevated privileges). Always test RLS-sensitive paths locally.
+
+**Checklist for any new endpoint or migration touching RLS tables:**
+- App code: wrap in `withOrgContext(pool, orgId, ...)`
+- Migrations/scripts: set `SET app.current_org_id = '...'` before DML or run as `fieldpro_admin` (bypassrls)
+- Confirm table has RLS: `\d+ <table>` → `Row Security: enabled (forced)`
+
+See `CLAUDE.md § RLS Context Gotcha` for the authoritative rule.
+
+---
+
 ## ISSUE-012 — GET /api/users returns empty list in local dev; assignment dropdown blank
 **Status:** Fixed 2026-05-18
 **Discovered:** 2026-05-18
@@ -181,7 +199,7 @@ A partially-implemented enhancement to the dev auth bypass middleware added Bear
 **Severity:** medium
 
 **Symptom:**
-The Lead route-creation flow and any Admin surface listing assignable users showed an empty dropdown. No error — just no users to assign to.
+The Dispatch route-creation flow and any Admin surface listing assignable users showed an empty dropdown. No error — just no users to assign to.
 
 **Root cause:**
 `identity_directory` has `FORCE ROW LEVEL SECURITY` with an `org_isolation` policy that requires `app.current_org_id` to be set on the connection before any query runs. The `GET /api/users` handler used a bare `pool.query()` with no org context, so RLS filtered out every row silently. The bug was invisible on Render because Render's managed Postgres connection has elevated privileges that bypass RLS; locally the `fieldpro` role has neither `rolsuper` nor `rolbypassrls`, so RLS was correctly enforced.
@@ -231,6 +249,38 @@ This issue is one member of a recurring class of bugs in this codebase where the
 - **Role-rename Phase 1 backfill (2026-05-21)** — `UPDATE identity_directory SET last_seen_role = ...` reported `UPDATE 0` against a table that had 4 rows. Same RLS-context-not-set trap, manifested as a silent no-op.
 - **`loadRouteRunById` (2026-05-21 — fixed)** — ran two `pool.query` calls with `app.current_org_id` unset. Before the strict identity_directory RLS hid the JOIN. After the planned Phase 2 policy flip on identity_directory, the bare connection would have started returning cross-tenant rows. Fixed by threading `orgId` through and wrapping in `withOrgContext`.
 
-The unifying pattern: every code path that touches an RLS-protected table must arrive there via `withOrgContext(orgId, ...)`, and the `orgId` must come from an authoritative source — not a silent fallback. `resolveNumericOrgId` is the choke point where this discipline either holds or breaks; ISSUE-013 is the open hole in that choke point.
+The unifying pattern: every code path that touches an RLS-protected table must arrive there via `withOrgContext(orgId, ...)`, and the `orgId` must come from an authoritative source — not a silent fallback. `resolveNumericOrgId` is the choke point where this discipline either holds or breaks; ISSUE-013 is the open hole in that choke point. See **PATTERN-001** above for the systemic trap; this issue is one instance of it.
 
 **Target:** Pre-multi-org hardening (must close before the second tenant is provisioned). Will be re-evaluated as part of the multi-tenant readiness audit alongside any other `pool.query` reads of RLS tables on bare connections.
+
+---
+
+## ISSUE-014 — `schema_migrations` drifted from disk state; phase 2/3 reconciled, full set not re-runnable
+**Status:** Reconciled (phase 2/3 stamped 2026-05-21); follow-up deferred
+**Discovered:** 2026-05-21
+**Area:** ops — `backend/scripts/migrate.ts` + `backend/migrations/*.sql`
+**Severity:** medium (latent — runner is now a faithful record of DB state, but the migration set cannot be re-run end-to-end without manual edits)
+
+**What happened:**
+`backend/migrations/20260518_rls_phase2_add_orgid.sql` and `20260518_rls_phase3_structural_fixes.sql` were applied to the dev DB out-of-band via `psql -f` during their original sprint and never stamped into `public.schema_migrations`. Phase 1 was correctly tracked. The drift was invisible until the role-rename Phase 1 DB dispatch ran `npm run migrate`, at which point the runner re-applied phase 1 (idempotent — harmless re-stamp) and then failed on phase 2's `ADD COLUMN org_id bigint` because the columns already existed (phase 2 has no `IF NOT EXISTS` guards). Surfaced while chasing **PATTERN-001** on the role-rename backfill — the silent `UPDATE 0` was the symptom that triggered the runner re-invocation that revealed the drift.
+
+**Reconciliation (this entry, 2026-05-21):**
+Before stamping, verified each migration's full footprint was actually present in the live schema:
+- Phase 2 — all 14 tables (`asset_external_ids`, `clean_logs`, `hazards`, `infrastructure_issues`, `lead_route_overrides`, `level3_logs`, `route_run_stops`, `stop_condition_history`, `stop_effort_history`, `stop_photos`, `stop_risk_snapshot`, `stops_legacy`, `transit_stop_assets`, `trash_volume_logs`) confirmed: `org_id bigint NOT NULL` column, RLS enabled+forced, `org_isolation` policy with COALESCE/NULLIF shape in both USING and WITH CHECK.
+- Phase 3 — Part A (`audit_log.org_id` bigint NOT NULL, three corrected policies, `audit_log_org_occurred` index, `organizations.tenant_uuid` populated for KCM), Part B (`core.asset_locations` + `core.location_external_ids` WITH CHECK added), Part C (`route_runs.shift_type` column + CHECK constraint), Part D (`stop_pool_memberships` table + RLS + policy + index + PK + 14,916 rows backfilled from `transit_stops.pool_id`) — all present.
+
+Stamped both migrations into `schema_migrations` with `applied_at = '2026-05-18'` to reflect the original out-of-band apply date. The runner now skips phases 1/2/3 on subsequent invocations and applies pending migrations from `20260519_role_rename_backfill.sql` onward.
+
+**Latent fragility (deferred):**
+The migration set is not re-runnable end-to-end. Phase 2 + phase 3's structural DDL — `ADD COLUMN` without `IF NOT EXISTS`, `CREATE INDEX` without `IF NOT EXISTS`, `CREATE TABLE` without `IF NOT EXISTS` — will fail on second application. The runner protects against this by tracking applied migrations, but the protection is only as good as `schema_migrations`. Any future drift (a developer running `psql -f` on a new migration, a partial restore from backup, etc.) reproduces this exact failure mode.
+
+**Fix hint (deferred to pre-pilot ops hardening):**
+- Audit all migrations in `backend/migrations/` for non-idempotent DDL.
+- Add `IF NOT EXISTS` guards to `ADD COLUMN`, `CREATE INDEX`, `CREATE TABLE`, `CREATE POLICY` (the latter requires `DROP POLICY IF EXISTS` first, already used in phase 1 — apply the same pattern everywhere).
+- Add a CI check that runs `npm run migrate` against a freshly initialized DB on every PR — drift would surface immediately.
+- Document the rule in `CLAUDE.md` and `docs/ops/`: every new migration must be re-runnable; out-of-band `psql -f` is not an acceptable apply path.
+
+**Why deferred:**
+The reconciliation closes the immediate problem. Making the full set re-runnable is a separate ops hardening exercise — touches every migration file, needs a CI gate to prevent regression, and has no functional impact on the running application. Right priority is pre-pilot deploy, alongside the rest of the multi-tenant + ops readiness work.
+
+**Target:** Pre-pilot deploy hardening (alongside ISSUE-013 multi-org audit and the CI migration-replay gate).

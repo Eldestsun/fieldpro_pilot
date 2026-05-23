@@ -124,6 +124,44 @@ test('devAuthBypass: with valid headers, multi-role header parsed correctly', as
   assert(req.roles?.includes('Lead'), 'roles must include Lead');
 });
 
+// Role rename Phase 1 — dual-accept verification.
+// A token claim carrying the *new* role string ('Specialist' / 'Dispatch')
+// must be accepted by a guard whose required-list still contains both old
+// and new strings.  This locks in the dual-accept window and will be
+// tightened in Phase 3 (single new-string only).
+test('devAuthBypass: requireAnyRole accepts new role strings (Specialist, Dispatch)', async () => {
+  const handler = createDevAuthBypass({ NODE_ENV: 'test', DEV_AUTH_BYPASS: 'true' });
+  assert(handler !== null, 'handler must not be null');
+
+  // 1. Specialist must satisfy a guard configured for ["UL", "Specialist"]
+  const reqA = mockReq({
+    'x-dev-user-oid':    'rename-specialist',
+    'x-dev-user-roles':  'Specialist',
+    'x-dev-user-org-id': '1',
+  });
+  handler(reqA as any, mockRes() as any, () => {});
+  const specialistGuard = requireAnyRole(['UL', 'Specialist']);
+  const nextA = nextFn();
+  const resA  = mockRes();
+  specialistGuard(reqA as any, resA as any, nextA.fn);
+  assert(nextA.wasCalled(),               'Specialist must satisfy ["UL","Specialist"] guard');
+  assertEqual(resA.statusCode(), undefined, 'no 403 must be emitted for Specialist');
+
+  // 2. Dispatch must satisfy a guard configured for ["Lead", "Dispatch", "Admin"]
+  const reqB = mockReq({
+    'x-dev-user-oid':    'rename-dispatch',
+    'x-dev-user-roles':  'Dispatch',
+    'x-dev-user-org-id': '1',
+  });
+  handler(reqB as any, mockRes() as any, () => {});
+  const dispatchGuard = requireAnyRole(['Lead', 'Dispatch', 'Admin']);
+  const nextB = nextFn();
+  const resB  = mockRes();
+  dispatchGuard(reqB as any, resB as any, nextB.fn);
+  assert(nextB.wasCalled(),               'Dispatch must satisfy ["Lead","Dispatch","Admin"] guard');
+  assertEqual(resB.statusCode(), undefined, 'no 403 must be emitted for Dispatch');
+});
+
 test('devAuthBypass: missing X-Dev-User-Oid passes through without setting req.user', async () => {
   const handler = createDevAuthBypass({ NODE_ENV: 'test', DEV_AUTH_BYPASS: 'true' });
   assert(handler !== null, 'handler must not be null');

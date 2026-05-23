@@ -151,8 +151,8 @@ The $350K/year figure is a working hypothesis pending internal budget data.
 ### What the Contract Covers
 
 - Full canonical state layer for all serviceable stops
-- Field UI for all route specialists (unlimited UL accounts)
-- Lead route creation and management
+- Field UI for all route specialists (unlimited Specialist accounts)
+- Dispatch route creation and management
 - Admin Control Center for dispatchers and management
 - Intelligence layer: risk map, stop effort history, condition history
 - Azure-hosted infrastructure with managed backups

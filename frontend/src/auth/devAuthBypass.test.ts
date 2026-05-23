@@ -73,6 +73,32 @@ describe('getDevAuthBypass', () => {
     warnSpy.mockRestore()
   })
 
+  // Role rename Phase 1 — dual-accept verification.
+  // A Dispatch claim must round-trip through the bypass and satisfy the same
+  // nav-gate predicate that Lead does in App.tsx (`isLead`,
+  // DefaultRedirect, RequireRole on /routes).  This test exists so a future
+  // refactor of App.tsx that drops Dispatch from those predicates fails loudly.
+  it('passes Dispatch role through; Dispatch satisfies the same nav predicate as Lead', async () => {
+    vi.stubEnv('MODE', 'development')
+    vi.stubEnv('VITE_DEV_AUTH_BYPASS', 'true')
+    setDevUser({ oid: 'dispatch-user', roles: ['Dispatch'], org_id: 1 })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { getDevAuthBypass } = await loadModule()
+    const result = getDevAuthBypass()
+
+    expect(result).not.toBeNull()
+    expect(result!.me.roles).toEqual(['Dispatch'])
+
+    // Mirror the dual-accept predicate from App.tsx (isLead derivation and
+    // DefaultRedirect's /routes branch).  A Dispatch claim must satisfy it
+    // identically to a Lead claim.
+    const navPredicate = (roles: string[]) =>
+      roles.includes('Lead') || roles.includes('Dispatch')
+    expect(navPredicate(result!.me.roles)).toBe(true)
+    expect(navPredicate(['Lead'])).toBe(true)
+    vi.restoreAllMocks()
+  })
+
   it('returns valid DevBypassData with correct account and me when all gates pass', async () => {
     vi.stubEnv('MODE', 'development')
     vi.stubEnv('VITE_DEV_AUTH_BYPASS', 'true')

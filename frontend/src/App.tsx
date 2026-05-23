@@ -37,7 +37,7 @@ function DefaultRedirect() {
   const { me } = useAuth();
   const roles = me?.roles || [];
   if (roles.includes("Admin")) return <Navigate to="/admin/dashboard" replace />;
-  if (roles.includes("Lead")) return <Navigate to="/routes" replace />;
+  if (roles.includes("Lead") || roles.includes("Dispatch")) return <Navigate to="/routes" replace />;
   return <Navigate to="/work" replace />;
 }
 
@@ -75,8 +75,10 @@ export default function App() {
 
   const roles = me?.roles || [];
   const isAdmin = roles.includes("Admin");
-  const isLead = roles.includes("Lead");
-  const isUL = roles.includes("UL");
+  // Phase 1 role rename — dual-accept Lead/Dispatch and UL/Specialist.
+  // Variable names stay as isLead/isUL until Phase 3 cleanup.
+  const isLead = roles.includes("Lead") || roles.includes("Dispatch");
+  const isUL = roles.includes("UL") || roles.includes("Specialist");
 
   const userName = me?.user?.name || me?.user?.preferred_username || "";
 
@@ -242,13 +244,13 @@ export default function App() {
           <Routes>
             <Route path="/" element={<DefaultRedirect />} />
             <Route path="/work" element={
-              <RequireRole roles={["UL", "Lead"]}><TodayRouteView /></RequireRole>
+              <RequireRole roles={["UL", "Specialist", "Lead", "Dispatch"]}><TodayRouteView /></RequireRole>
             } />
             <Route path="/routes" element={
-              <RequireRole roles={["Lead", "Admin"]}><LeadRoutesPanel /></RequireRole>
+              <RequireRole roles={["Lead", "Dispatch", "Admin"]}><LeadRoutesPanel /></RequireRole>
             } />
             <Route path="/routes/:routeRunId" element={
-              <RequireRole roles={["Lead", "Admin"]}><LeadRouteDetailRoute /></RequireRole>
+              <RequireRole roles={["Lead", "Dispatch", "Admin"]}><LeadRouteDetailRoute /></RequireRole>
             } />
             <Route path="/admin/dashboard" element={
               <RequireRole roles={["Admin"]}><AdminDashboard scope="admin" /></RequireRole>
@@ -263,13 +265,13 @@ export default function App() {
               <RequireRole roles={["Admin"]}><AdminControlCenter /></RequireRole>
             } />
             <Route path="/ops/dashboard" element={
-              <RequireRole roles={["Lead", "Admin"]}><AdminDashboard scope="ops" /></RequireRole>
+              <RequireRole roles={["Lead", "Dispatch", "Admin"]}><AdminDashboard scope="ops" /></RequireRole>
             } />
             <Route path="/ops/pools" element={
-              <RequireRole roles={["Lead", "Admin"]}><AdminPoolsPanel scope="ops" /></RequireRole>
+              <RequireRole roles={["Lead", "Dispatch", "Admin"]}><AdminPoolsPanel scope="ops" /></RequireRole>
             } />
             <Route path="/ops/stops" element={
-              <RequireRole roles={["Lead", "Admin"]}><AdminStopsPanel scope="ops" /></RequireRole>
+              <RequireRole roles={["Lead", "Dispatch", "Admin"]}><AdminStopsPanel scope="ops" /></RequireRole>
             } />
           </Routes>
         </main>

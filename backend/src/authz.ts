@@ -17,6 +17,11 @@ if (!tenantId || !apiAudienceClientId) {
 const APP_ROLE_ADMIN = process.env.APP_ROLE_ADMIN ?? "Admin";
 const APP_ROLE_LEAD = process.env.APP_ROLE_LEAD ?? "Lead";
 const APP_ROLE_UL = process.env.APP_ROLE_UL ?? "UL";
+// Phase 1 role rename — dual-accept: new role-claim strings issued by Entra
+// (Specialist replaces UL, Dispatch replaces Lead). Both old and new strings are
+// honored during the migration window. Phase 3 removes the old names.
+const APP_ROLE_DISPATCH = "Dispatch";
+const APP_ROLE_SPECIALIST = "Specialist";
 
 const ADMIN_GROUP_ID = process.env.ADMIN_GROUP_ID;
 const LEAD_GROUP_ID = process.env.LEAD_GROUP_ID;
@@ -45,8 +50,15 @@ function extractRolesFromClaims(payload: JwtPayload): string[] {
 
   const roles = (payload as any).roles as string[] | undefined;
   if (roles?.length) {
+    const accepted = [
+      APP_ROLE_ADMIN,
+      APP_ROLE_LEAD,
+      APP_ROLE_UL,
+      APP_ROLE_DISPATCH,
+      APP_ROLE_SPECIALIST,
+    ];
     for (const r of roles) {
-      if ([APP_ROLE_ADMIN, APP_ROLE_LEAD, APP_ROLE_UL].includes(r)) out.add(r);
+      if (accepted.includes(r)) out.add(r);
     }
   }
 

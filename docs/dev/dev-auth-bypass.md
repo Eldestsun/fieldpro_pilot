@@ -186,7 +186,7 @@ Before navigating to any protected route, seed `localStorage.__dev_user__`:
 ```javascript
 localStorage.setItem('__dev_user__', JSON.stringify({
   oid:    'your-test-oid',
-  roles:  ['UL'],          // or 'Lead', 'Admin', etc.
+  roles:  ['Specialist'],  // or 'Dispatch', 'Admin', etc.
   org_id: 1,
 }))
 ```
@@ -202,11 +202,11 @@ The `me` state is pre-populated from the same payload, bypassing the
 // In setupAuth() — before page.goto()
 await page.addInitScript(({ devUser }) => {
   localStorage.setItem('__dev_user__', JSON.stringify(devUser))
-}, { devUser: { oid: 'axe-ul-oid', roles: ['UL'], org_id: 1 } })
+}, { devUser: { oid: 'axe-ul-oid', roles: ['Specialist'], org_id: 1 } })
 
 await page.setExtraHTTPHeaders({
   'x-dev-user-oid':    'axe-ul-oid',
-  'x-dev-user-roles':  'UL',
+  'x-dev-user-roles':  'Specialist',
   'x-dev-user-org-id': '1',
 })
 
