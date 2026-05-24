@@ -62,7 +62,7 @@ Changelogs: `2026-05-12-r6-control-center-live.md`, `2026-05-12-issue-003-stop-n
 ## ISSUE-004 — Skip stop: "No hazard selected" fires on first attempt despite hazard being selected
 **Status:** Fixed 2026-05-11  
 **Discovered:** 2026-05-10  
-**Area:** frontend — UL skip stop workflow / `handleSkipStop`  
+**Area:** frontend — Specialist skip stop workflow / `handleSkipStop`  
 
 **Resolution:**  
 Hazard selection is now passed directly as an argument to `handleSkipStop` from the
@@ -174,6 +174,24 @@ A partially-implemented enhancement to the dev auth bypass middleware added Bear
 
 ---
 
+## PATTERN-001 — RLS silent empty-result when org context missing
+
+**Type:** Recurring gotcha — not a single bug, a systemic trap  
+**Instances:** ISSUE-005 (fetchRoute loop), ISSUE-012 (/api/users empty list), ISSUE-013 (`resolveNumericOrgId` lowest-id fallback — same pattern, different surface), ISSUE-014 (`schema_migrations` manifest drift — discovered chasing this pattern), role-rename backfill migration (2026-05-21)
+
+Any query or write against a `FORCE ROW LEVEL SECURITY` table silently returns zero rows / affects zero rows if `app.current_org_id` is not set on the connection before the query runs. The failure is invisible in logs — no error, no warning, just an empty result set or a no-op write.
+
+**Local vs Render asymmetry:** This bug manifests locally (where the `fieldpro` role has neither `rolsuper` nor `rolbypassrls`) but is hidden on Render (managed Postgres connections may have elevated privileges). Always test RLS-sensitive paths locally.
+
+**Checklist for any new endpoint or migration touching RLS tables:**
+- App code: wrap in `withOrgContext(pool, orgId, ...)`
+- Migrations/scripts: set `SET app.current_org_id = '...'` before DML or run as `fieldpro_admin` (bypassrls)
+- Confirm table has RLS: `\d+ <table>` → `Row Security: enabled (forced)`
+
+See `CLAUDE.md § RLS Context Gotcha` for the authoritative rule.
+
+---
+
 ## ISSUE-012 — GET /api/users returns empty list in local dev; assignment dropdown blank
 **Status:** Fixed 2026-05-18
 **Discovered:** 2026-05-18
@@ -181,7 +199,7 @@ A partially-implemented enhancement to the dev auth bypass middleware added Bear
 **Severity:** medium
 
 **Symptom:**
-The Lead route-creation flow and any Admin surface listing assignable users showed an empty dropdown. No error — just no users to assign to.
+The Dispatch route-creation flow and any Admin surface listing assignable users showed an empty dropdown. No error — just no users to assign to.
 
 **Root cause:**
 `identity_directory` has `FORCE ROW LEVEL SECURITY` with an `org_isolation` policy that requires `app.current_org_id` to be set on the connection before any query runs. The `GET /api/users` handler used a bare `pool.query()` with no org context, so RLS filtered out every row silently. The bug was invisible on Render because Render's managed Postgres connection has elevated privileges that bypass RLS; locally the `fieldpro` role has neither `rolsuper` nor `rolbypassrls`, so RLS was correctly enforced.
@@ -190,3 +208,110 @@ The Lead route-creation flow and any Admin surface listing assignable users show
 `GET /api/users` now wraps the `identity_directory` query in `withOrgContext`. Numeric org ID resolves from `req.user.org_id` for dev bypass requests, falls back to a tenant UUID lookup against `organizations` for real Entra auth.
 
 **Changelog:** `docs/changelog/bugfix/2026-05-18-fix-users-rls-org-context.md`
+
+---
+
+## ISSUE-013 — `resolveNumericOrgId` fails open to lowest-id org when caller org is indeterminate
+**Status:** Deferred — safe in single-org, must fail closed before any multi-org deployment
+**Discovered:** 2026-05-21
+**Area:** backend — `backend/src/middleware/resolveOrgId.ts`
+**Severity:** medium (latent; benign in current single-org deployment, becomes a cross-tenant data leak the moment a second org is added)
+
+**Symptom (latent):**
+`resolveNumericOrgId(req)` is the canonical helper for sourcing the numeric `org_id` that downstream `withOrgContext(...)` calls scope reads and writes to. When `req.user.org_id` is unset (no authenticated user) AND no Entra `tid` claim matches an `organizations.tenant_uuid` row, the helper executes:
+
+```sql
+SELECT id FROM organizations WHERE tenant_uuid = $1
+UNION ALL
+SELECT id FROM organizations ORDER BY id LIMIT 1
+```
+
+and returns whichever row arrives first — in practice the lowest-id organization (currently KCM, id 1). The helper never throws and never returns `undefined`. Any caller that reaches the fallback silently scopes its `withOrgContext` to org 1.
+
+**Why this is safe today:**
+- The dev and pilot deployments are both single-org KCM. The "lowest-id org" and "the correct org" are the same row, so the fallback returns the right answer by coincidence of cardinality.
+- Real Entra-authenticated requests populate `req.user.org_id` directly (from the dev-bypass headers) or supply a `tid` that resolves a unique `tenant_uuid` row, so the fallback branch is never hit on the request path.
+- The known caller that does hit the fallback today is `POST /api/dev/generate-route-run` (no `requireAuth`), which is dev-only and gated by `DEV_AUTH_BYPASS === 'true'`.
+
+**Why it must be fixed before multi-org deployment:**
+Once a second organization is added, any code path that reaches the fallback (forgotten `requireAuth`, a token with a `tid` not yet registered in `organizations.tenant_uuid`, a background job, a misconfigured cron, a new dev endpoint) will silently default the caller into org 1's data. RLS will faithfully scope reads and writes to org 1 — fail-open with respect to tenant identity, not a leak across orgs, but a structural defect that puts the wrong org's data on the wire to the wrong caller. The helper is the trust boundary; it should fail closed by raising when it cannot determine an authoritative org.
+
+**Fix hint:**
+- Tighten `resolveNumericOrgId` to throw (or return `null` and force callers to handle it explicitly) when `req.user?.org_id` is unset AND no `tid` resolves a unique `organizations.tenant_uuid` row.
+- Audit all call sites for either explicit `null` handling or a fail-closed 401/403 response.
+- Special-case the dev route(s) that legitimately have no `req.user`: have them pass an explicit `org_id` (from request body or `DEV_BYPASS_ORG_ID`) rather than depending on the lowest-id fallback.
+
+**Related — the RLS-context trap pattern:**
+This issue is one member of a recurring class of bugs in this codebase where the trust boundary between "I know which org this caller belongs to" and "RLS will silently scope to whatever org context is on the connection" is fragile. Other instances:
+
+- **ISSUE-005** — `baseline:after-replay` fires on empty replays. Different mechanism, listed here per the dispatch's cross-reference.
+- **ISSUE-012** — `GET /api/users` returned empty list because the handler queried `identity_directory` on a bare pool connection with `app.current_org_id` unset; the strict R11 RLS policy filtered every row out silently. Same RLS-context-not-set trap, manifested as fail-closed rather than fail-open.
+- **Role-rename Phase 1 backfill (2026-05-21)** — `UPDATE identity_directory SET last_seen_role = ...` reported `UPDATE 0` against a table that had 4 rows. Same RLS-context-not-set trap, manifested as a silent no-op.
+- **`loadRouteRunById` (2026-05-21 — fixed)** — ran two `pool.query` calls with `app.current_org_id` unset. Before the strict identity_directory RLS hid the JOIN. After the planned Phase 2 policy flip on identity_directory, the bare connection would have started returning cross-tenant rows. Fixed by threading `orgId` through and wrapping in `withOrgContext`.
+
+The unifying pattern: every code path that touches an RLS-protected table must arrive there via `withOrgContext(orgId, ...)`, and the `orgId` must come from an authoritative source — not a silent fallback. `resolveNumericOrgId` is the choke point where this discipline either holds or breaks; ISSUE-013 is the open hole in that choke point. See **PATTERN-001** above for the systemic trap; this issue is one instance of it.
+
+**Target:** Pre-multi-org hardening (must close before the second tenant is provisioned). Will be re-evaluated as part of the multi-tenant readiness audit alongside any other `pool.query` reads of RLS tables on bare connections.
+
+---
+
+## ISSUE-014 — `schema_migrations` drifted from disk state; phase 2/3 reconciled, full set not re-runnable
+**Status:** Reconciled (phase 2/3 stamped 2026-05-21); follow-up deferred
+**Discovered:** 2026-05-21
+**Area:** ops — `backend/scripts/migrate.ts` + `backend/migrations/*.sql`
+**Severity:** medium (latent — runner is now a faithful record of DB state, but the migration set cannot be re-run end-to-end without manual edits)
+
+**What happened:**
+`backend/migrations/20260518_rls_phase2_add_orgid.sql` and `20260518_rls_phase3_structural_fixes.sql` were applied to the dev DB out-of-band via `psql -f` during their original sprint and never stamped into `public.schema_migrations`. Phase 1 was correctly tracked. The drift was invisible until the role-rename Phase 1 DB dispatch ran `npm run migrate`, at which point the runner re-applied phase 1 (idempotent — harmless re-stamp) and then failed on phase 2's `ADD COLUMN org_id bigint` because the columns already existed (phase 2 has no `IF NOT EXISTS` guards). Surfaced while chasing **PATTERN-001** on the role-rename backfill — the silent `UPDATE 0` was the symptom that triggered the runner re-invocation that revealed the drift.
+
+**Reconciliation (this entry, 2026-05-21):**
+Before stamping, verified each migration's full footprint was actually present in the live schema:
+- Phase 2 — all 14 tables (`asset_external_ids`, `clean_logs`, `hazards`, `infrastructure_issues`, `lead_route_overrides`, `level3_logs`, `route_run_stops`, `stop_condition_history`, `stop_effort_history`, `stop_photos`, `stop_risk_snapshot`, `stops_legacy`, `transit_stop_assets`, `trash_volume_logs`) confirmed: `org_id bigint NOT NULL` column, RLS enabled+forced, `org_isolation` policy with COALESCE/NULLIF shape in both USING and WITH CHECK.
+- Phase 3 — Part A (`audit_log.org_id` bigint NOT NULL, three corrected policies, `audit_log_org_occurred` index, `organizations.tenant_uuid` populated for KCM), Part B (`core.asset_locations` + `core.location_external_ids` WITH CHECK added), Part C (`route_runs.shift_type` column + CHECK constraint), Part D (`stop_pool_memberships` table + RLS + policy + index + PK + 14,916 rows backfilled from `transit_stops.pool_id`) — all present.
+
+Stamped both migrations into `schema_migrations` with `applied_at = '2026-05-18'` to reflect the original out-of-band apply date. The runner now skips phases 1/2/3 on subsequent invocations and applies pending migrations from `20260519_role_rename_backfill.sql` onward.
+
+**Latent fragility (deferred):**
+The migration set is not re-runnable end-to-end. Phase 2 + phase 3's structural DDL — `ADD COLUMN` without `IF NOT EXISTS`, `CREATE INDEX` without `IF NOT EXISTS`, `CREATE TABLE` without `IF NOT EXISTS` — will fail on second application. The runner protects against this by tracking applied migrations, but the protection is only as good as `schema_migrations`. Any future drift (a developer running `psql -f` on a new migration, a partial restore from backup, etc.) reproduces this exact failure mode.
+
+**Fix hint (deferred to pre-pilot ops hardening):**
+- Audit all migrations in `backend/migrations/` for non-idempotent DDL.
+- Add `IF NOT EXISTS` guards to `ADD COLUMN`, `CREATE INDEX`, `CREATE TABLE`, `CREATE POLICY` (the latter requires `DROP POLICY IF EXISTS` first, already used in phase 1 — apply the same pattern everywhere).
+- Add a CI check that runs `npm run migrate` against a freshly initialized DB on every PR — drift would surface immediately.
+- Document the rule in `CLAUDE.md` and `docs/ops/`: every new migration must be re-runnable; out-of-band `psql -f` is not an acceptable apply path.
+
+**Why deferred:**
+The reconciliation closes the immediate problem. Making the full set re-runnable is a separate ops hardening exercise — touches every migration file, needs a CI gate to prevent regression, and has no functional impact on the running application. Right priority is pre-pilot deploy, alongside the rest of the multi-tenant + ops readiness work.
+
+**Target:** Pre-pilot deploy hardening (alongside ISSUE-013 multi-org audit and the CI migration-replay gate).
+
+---
+
+## ISSUE-015 — Stopless `route_run` returns 404 on `/lead/route-runs/:id` — legitimate state or orphan data?
+**Status:** Open question (not a fix request)
+**Discovered:** 2026-05-23 (during role-rename Phase 1 audit live verification)
+**Area:** backend loader (`backend/src/domains/routeRun/loaders/loadRouteRunById.ts`) + Dispatch UI surface
+**Severity:** unknown — depends on whether stopless route_runs are a legitimate intermediate state
+
+**Symptom:**
+`GET /api/lead/route-runs/1167` (org 1, Dispatch caller) returns `404 {"error":"Route run not found"}` even though `route_runs.id=1167` exists in org 1 with `status='planned'`, `run_date='2026-05-18'`. The route_run row is real; what's missing is any row in `route_run_stops` for that run. The loader's query `JOIN route_run_stops rrs ON rrs.route_run_id = rr.id` is an `INNER JOIN`, so a route_run with zero stops returns zero rows and the handler maps that to 404. Quick check at the time of writing: route_runs `1166`–`1170` in org 1 are all stopless and would all 404 the same way.
+
+**Surfaced during, but unrelated to, the role-rename:**
+This came up while verifying that the Phase 1 audit fix (commit `e71c3c1`) cleared the Dispatch 403 on `/lead/route-runs/:id` live. The guard fix works — the request now reaches the handler. The 404 is a separate, pre-existing handler/data-shape behavior that has nothing to do with role names; it would have produced the same 404 for a Lead caller before the rename too.
+
+**The question (not a fix):**
+Is a `route_run` with zero `route_run_stops` a legitimate intermediate state — e.g., Dispatch created the run and hasn't added stops yet, or stops were all removed during planning revision — that the Dispatch UI should render gracefully ("empty run, add stops")? Or is it orphan data that shouldn't exist in the first place and should be cleaned up / prevented at write time?
+
+The answer determines the fix shape, and the fix shape may be in two different places:
+- If **legitimate**: the loader's `INNER JOIN route_run_stops` should be a `LEFT JOIN`, the handler should return a `route_run` with an empty `stops: []` array, and the Dispatch detail UI should render an empty-state instead of bouncing to a 404 page. This is a UX issue.
+- If **orphan**: route_run creation should require ≥1 stop (DB constraint, API validation, or both), and the existing stopless rows (`1166`–`1170` in org 1, possibly more) should be deleted or archived. This is a data-integrity issue.
+- Possibly **both**: enforce ≥1 stop going forward, but the loader still does LEFT JOIN as defense-in-depth and the UI handles empty-state.
+
+**Why deferred:**
+This is a product/surface decision for the Lead to make during Dispatch-surface UX testing, not an engineering call. Both fix shapes are small once the question is answered. Logging the question now so it doesn't get lost between the role-rename verification and the Dispatch UX pass.
+
+**Fix hint (after question is answered):**
+- Decision in hand → either widen the loader to LEFT JOIN + handler returns `{ ...route_run, stops: [] }` and update the `RouteRun` frontend type to allow empty stops, OR add the write-time constraint and run a one-off cleanup of stopless rows in dev.
+- Either way: add a regression test (loader-level or HTTP-level) that locks in the chosen behavior — stopless route_run returns 200-with-empty-stops, or stopless route_run cannot exist.
+
+**Target:** Dispatch-surface UX/data-shape pass with the Lead. No urgency; no field user is currently blocked by it (the original Dispatch 403 was the rename gap, not this 404).

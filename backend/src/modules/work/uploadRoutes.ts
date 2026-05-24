@@ -85,7 +85,7 @@ export const uploadRoutes = Router();
  *       500:
  *         $ref: '#/components/responses/InternalError'
  */
-uploadRoutes.post("/uploads/signed-url", requireAuth, requireAnyRole(["UL", "Lead", "Admin"]), async (req: Request, res: Response) => {
+uploadRoutes.post("/uploads/signed-url", requireAuth, requireAnyRole(["UL", "Specialist", "Lead", "Dispatch", "Admin"]), async (req: Request, res: Response) => {
     try {
         const { route_run_stop_id, contentType, filename, kind = "completion" } = req.body;
 

@@ -53,7 +53,7 @@ const LEGACY_TRANSIT_USER_ID = 0;
  *         $ref: '#/components/responses/Forbidden'
  */
 // Lead-only hub
-routeRunRoutes.get("/lead/hub", requireAuth, requireAnyRole(["Lead"]), (_req, res) => {
+routeRunRoutes.get("/lead/hub", requireAuth, requireAnyRole(["Lead", "Dispatch"]), (_req, res) => {
     res.json({ ok: true, scope: "Lead" });
 });
 
@@ -106,7 +106,7 @@ routeRunRoutes.get("/lead/hub", requireAuth, requireAnyRole(["Lead"]), (_req, re
 routeRunRoutes.get(
     "/lead/todays-runs",
     requireAuth,
-    requireAnyRole(["Lead", "Admin"]),
+    requireAnyRole(["Lead", "Dispatch", "Admin"]),
     async (req: Request, res) => {
         try {
             const query = `
@@ -188,11 +188,12 @@ routeRunRoutes.get(
 routeRunRoutes.get(
     "/lead/route-runs/:id",
     requireAuth,
-    requireAnyRole(["Lead", "Admin"]),
+    requireAnyRole(["Lead", "Dispatch", "Admin"]),
     async (req: Request, res: Response) => {
         try {
             const { id } = req.params;
-            const routeRun = await loadRouteRunById(id);
+            const numericOrgId = await resolveNumericOrgId(req);
+            const routeRun = await loadRouteRunById(id, numericOrgId);
 
             if (!routeRun) {
                 return res.status(404).json({ error: "Route run not found" });
@@ -213,11 +214,12 @@ routeRunRoutes.get(
 routeRunRoutes.get(
     "/lead/route-runs/:id",
     requireAuth,
-    requireAnyRole(["Lead", "Admin"]),
+    requireAnyRole(["Lead", "Dispatch", "Admin"]),
     async (req: Request, res: Response) => {
         try {
             const { id } = req.params;
-            const routeRun = await loadRouteRunById(id);
+            const numericOrgId = await resolveNumericOrgId(req);
+            const routeRun = await loadRouteRunById(id, numericOrgId);
 
             if (!routeRun) {
                 return res.status(404).json({ error: "Route run not found" });
@@ -551,7 +553,7 @@ routeRunRoutes.post("/route-runs/preview", async (req: Request, res: Response) =
 routeRunRoutes.post(
     "/route-runs",
     requireAuth,
-    requireAnyRole(["Lead", "Admin"]),
+    requireAnyRole(["Lead", "Dispatch", "Admin"]),
     async (req: any, res: Response) => {
         const { stop_ids, base_id, route_pool_id, pool_id, run_date, ul_id, shift_type } = req.body;
 
@@ -694,10 +696,15 @@ routeRunRoutes.post(
  *         $ref: '#/components/responses/InternalError'
  */
 // [GOVERNANCE-SENSITIVE] Transitional endpoint. Prefer domain-specific accessors where possible.
+// No requireAuth on this transitional endpoint; resolveNumericOrgId tolerates
+// a missing req.user and falls back to the first organization (single-tenant
+// dev/pilot). When this endpoint is removed or guarded, this fallback should
+// be revisited.
 routeRunRoutes.get("/route-runs/:id", async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const routeRun = await loadRouteRunById(id);
+        const numericOrgId = await resolveNumericOrgId(req);
+        const routeRun = await loadRouteRunById(id, numericOrgId);
 
         if (!routeRun) {
             return res.status(404).json({ error: "Route run not found" });
@@ -754,7 +761,7 @@ routeRunRoutes.get("/route-runs/:id", async (req: Request, res: Response) => {
 routeRunRoutes.post(
     "/route-runs/:id/start",
     requireAuth,
-    requireAnyRole(["UL", "Lead", "Admin"]),
+    requireAnyRole(["UL", "Specialist", "Lead", "Dispatch", "Admin"]),
     async (req: Request, res: Response) => {
         try {
             const { id } = req.params;
@@ -822,7 +829,7 @@ routeRunRoutes.post(
 routeRunRoutes.post(
     "/route-run-stops/:id/start",
     requireAuth,
-    requireAnyRole(["UL", "Lead", "Admin"]),
+    requireAnyRole(["UL", "Specialist", "Lead", "Dispatch", "Admin"]),
     async (req: Request, res: Response) => {
         try {
             const { id } = req.params;
@@ -871,7 +878,8 @@ routeRunRoutes.post(
                 return res.status(404).json({ error: "Route run stop not found (no route_run_id)" });
             }
 
-            const routeRun = await loadRouteRunById(routeRunId);
+            const numericOrgId = await resolveNumericOrgId(req);
+            const routeRun = await loadRouteRunById(routeRunId, numericOrgId);
             return res.json({ ok: true, route_run: routeRun });
 
         } catch (err: any) {
@@ -925,7 +933,7 @@ routeRunRoutes.post(
 routeRunRoutes.post(
     "/route-runs/:id/finish",
     requireAuth,
-    requireAnyRole(["UL", "Lead", "Admin"]),
+    requireAnyRole(["UL", "Specialist", "Lead", "Dispatch", "Admin"]),
     async (req: Request, res: Response) => {
         try {
             const { id } = req.params;
@@ -1009,7 +1017,7 @@ routeRunRoutes.post(
 routeRunRoutes.patch(
     "/route-runs/:id/assign",
     requireAuth,
-    requireAnyRole(["Lead", "Admin"]),
+    requireAnyRole(["Lead", "Dispatch", "Admin"]),
     async (req: Request, res: Response) => {
         const { id } = req.params;
         const { assigned_user_oid } = req.body;
@@ -1056,7 +1064,7 @@ routeRunRoutes.patch(
                 });
             }
 
-            const routeRun = await loadRouteRunById(id);
+            const routeRun = await loadRouteRunById(id, numericOrgId);
             return res.json({ ok: true, route_run: routeRun });
 
         } catch (err: any) {

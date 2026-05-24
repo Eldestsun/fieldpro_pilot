@@ -13,6 +13,8 @@ import "./canonical/oidCipher.test";
 import "./canonical/exportDelete.test";
 import "./canonical/sftpExport.test";
 import "./canonical/devAuthBypass.test";
+import "./canonical/loadRouteRunById.test";
+import "./canonical/roleRenamePhase1Audit.test";
 
 (async () => {
   console.log("canonical integration tests — real local DB, no mocking\n");

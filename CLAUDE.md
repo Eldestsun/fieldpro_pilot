@@ -41,7 +41,18 @@ It captures truth as a byproduct of work, not as the work itself.
 
 ### Step 3 — Log It
 
-Every task that changes code, schema, architecture docs, or configuration must produce a changelog entry at `docs/changelog/YYYY-MM-DD-{slug}.md` before the task is considered done.
+Every task that changes code, schema, architecture docs, or configuration must produce a changelog entry before the task is considered done.
+
+Place the file in the appropriate subdirectory:
+
+| Category | Path |
+|----------|------|
+| Refactor (Tier N) | `docs/changelog/refactor/YYYY-MM-DD-{slug}.md` |
+| Refinement (R-N) | `docs/changelog/refinement/YYYY-MM-DD-{slug}.md` |
+| Security sprint (S-N) | `docs/changelog/security/YYYY-MM-DD-{slug}.md` |
+| Bug fix | `docs/changelog/bugfix/YYYY-MM-DD-{slug}.md` |
+| Ops / infra / deployment | `docs/changelog/ops/YYYY-MM-DD-{slug}.md` |
+| Capability build (Tn-XX) | `docs/changelog/capability-build/YYYY-MM-DD-{slug}.md` |
 
 Format:
 ```
@@ -76,6 +87,17 @@ Analysis-only tasks (no code or schema changes) do not require a changelog entry
 - The DB is the source of truth — UI and API are adapters
 - Assignments are intent only — they are not truth
 - Do not reintroduce transit-first design patterns
+
+### RLS Context Gotcha (recurring bug pattern)
+
+Any query or write against a `FORCE ROW LEVEL SECURITY` table silently affects zero rows if `app.current_org_id` is not set on the connection. This has caused multiple bugs (ISSUE-005, ISSUE-012, ISSUE-013, ISSUE-014, role-rename backfill migration). See `docs/KNOWN_ISSUES.md § PATTERN-001` for the systemic trap.
+
+**Hard rules:**
+- App code that queries RLS tables must use `withOrgContext(pool, orgId, ...)` — never bare `pool.query()`
+- Migrations and scripts that touch RLS tables must either set `app.current_org_id` explicitly or run as a superuser/bypassrls role
+- Bugs that silently return empty results on RLS tables are almost always a missing org context, not a data problem
+
+Affected tables include: `identity_directory`, and all 28+ tables with RLS policies. Check `pg_state.sql` or `\d+ <table>` for `Row Security: enabled (forced)` to confirm.
 
 ## Labor Safety Guardrails (hard constraints)
 

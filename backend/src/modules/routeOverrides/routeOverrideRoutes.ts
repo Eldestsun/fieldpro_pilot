@@ -12,7 +12,7 @@ export const routeOverrideRoutes = Router();
 
 // Middleware: All override routes require Lead/Admin
 routeOverrideRoutes.use(requireAuth);
-routeOverrideRoutes.use(requireAnyRole(["Lead", "Admin"]));
+routeOverrideRoutes.use(requireAnyRole(["Lead", "Dispatch", "Admin"]));
 
 /**
  * @openapi

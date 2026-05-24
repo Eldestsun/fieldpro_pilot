@@ -470,7 +470,7 @@ export async function startRouteRun(id: number | string, orgId: number) {
     return null;
   }
 
-  return await loadRouteRunById(id);
+  return await loadRouteRunById(id, orgId);
 }
 
 /**
@@ -493,7 +493,7 @@ export async function finishRouteRun(id: number | string, orgId: number) {
     return null;
   }
 
-  return await loadRouteRunById(id);
+  return await loadRouteRunById(id, orgId);
 }
 
 /**

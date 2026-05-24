@@ -9,7 +9,7 @@ export const opsRoutes = Router();
 
 // Ops Guard: Lead OR Admin
 const requireOps = (req: Request, res: Response, next: NextFunction) => {
-    requireAnyRole(["Lead", "Admin"])(req as any, res, next);
+    requireAnyRole(["Lead", "Dispatch", "Admin"])(req as any, res, next);
 };
 
 // Apply to all /ops routes
