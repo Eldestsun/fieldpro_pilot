@@ -160,7 +160,7 @@ resourceRoutes.get(
           email,
           last_seen_role AS role
         FROM identity_directory
-        WHERE last_seen_role IN ('UL', 'Lead')
+        WHERE last_seen_role IN ('UL', 'Specialist', 'Lead', 'Dispatch')
         ORDER BY display_name ASC;
       `;
 

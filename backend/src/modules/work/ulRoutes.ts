@@ -49,7 +49,7 @@ export const ulRoutes = Router();
  *         $ref: '#/components/responses/Forbidden'
  */
 // UL-only inbox
-ulRoutes.get("/ul/inbox", requireAuth, requireAnyRole(["UL"]), (_req, res) => {
+ulRoutes.get("/ul/inbox", requireAuth, requireAnyRole(["UL", "Specialist"]), (_req, res) => {
     res.json({ ok: true, scope: "UL" });
 });
 
@@ -101,7 +101,7 @@ ulRoutes.get("/ul/inbox", requireAuth, requireAnyRole(["UL"]), (_req, res) => {
 ulRoutes.get(
     "/ul/todays-run",
     requireAuth,
-    requireAnyRole(["UL", "Lead", "Admin"]),
+    requireAnyRole(["UL", "Specialist", "Lead", "Dispatch", "Admin"]),
     async (req: any, res: Response) => {
         try {
             // Enterprise Identity: Use OID from token
@@ -217,7 +217,7 @@ ulRoutes.get(
 ulRoutes.post(
     "/route-runs/:runId/stops/:stopId/photos",
     requireAuth,
-    requireAnyRole(["UL", "Lead", "Admin"]),
+    requireAnyRole(["UL", "Specialist", "Lead", "Dispatch", "Admin"]),
     async (req: any, res: Response) => {
         // Run multer in a promise so MulterError (LIMIT_FILE_SIZE) returns 413
         const multerErr = await new Promise<MulterError | null>((resolve) => {
@@ -355,7 +355,7 @@ ulRoutes.post(
 ulRoutes.get(
     "/route-runs/:runId/stops/:stopId/photos",
     requireAuth,
-    requireAnyRole(["UL", "Lead", "Admin"]),
+    requireAnyRole(["UL", "Specialist", "Lead", "Dispatch", "Admin"]),
     async (req: any, res: Response) => {
         try {
             const { stopId } = req.params;

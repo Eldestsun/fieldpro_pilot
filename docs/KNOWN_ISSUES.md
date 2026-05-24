@@ -284,3 +284,34 @@ The migration set is not re-runnable end-to-end. Phase 2 + phase 3's structural 
 The reconciliation closes the immediate problem. Making the full set re-runnable is a separate ops hardening exercise — touches every migration file, needs a CI gate to prevent regression, and has no functional impact on the running application. Right priority is pre-pilot deploy, alongside the rest of the multi-tenant + ops readiness work.
 
 **Target:** Pre-pilot deploy hardening (alongside ISSUE-013 multi-org audit and the CI migration-replay gate).
+
+---
+
+## ISSUE-015 — Stopless `route_run` returns 404 on `/lead/route-runs/:id` — legitimate state or orphan data?
+**Status:** Open question (not a fix request)
+**Discovered:** 2026-05-23 (during role-rename Phase 1 audit live verification)
+**Area:** backend loader (`backend/src/domains/routeRun/loaders/loadRouteRunById.ts`) + Dispatch UI surface
+**Severity:** unknown — depends on whether stopless route_runs are a legitimate intermediate state
+
+**Symptom:**
+`GET /api/lead/route-runs/1167` (org 1, Dispatch caller) returns `404 {"error":"Route run not found"}` even though `route_runs.id=1167` exists in org 1 with `status='planned'`, `run_date='2026-05-18'`. The route_run row is real; what's missing is any row in `route_run_stops` for that run. The loader's query `JOIN route_run_stops rrs ON rrs.route_run_id = rr.id` is an `INNER JOIN`, so a route_run with zero stops returns zero rows and the handler maps that to 404. Quick check at the time of writing: route_runs `1166`–`1170` in org 1 are all stopless and would all 404 the same way.
+
+**Surfaced during, but unrelated to, the role-rename:**
+This came up while verifying that the Phase 1 audit fix (commit `e71c3c1`) cleared the Dispatch 403 on `/lead/route-runs/:id` live. The guard fix works — the request now reaches the handler. The 404 is a separate, pre-existing handler/data-shape behavior that has nothing to do with role names; it would have produced the same 404 for a Lead caller before the rename too.
+
+**The question (not a fix):**
+Is a `route_run` with zero `route_run_stops` a legitimate intermediate state — e.g., Dispatch created the run and hasn't added stops yet, or stops were all removed during planning revision — that the Dispatch UI should render gracefully ("empty run, add stops")? Or is it orphan data that shouldn't exist in the first place and should be cleaned up / prevented at write time?
+
+The answer determines the fix shape, and the fix shape may be in two different places:
+- If **legitimate**: the loader's `INNER JOIN route_run_stops` should be a `LEFT JOIN`, the handler should return a `route_run` with an empty `stops: []` array, and the Dispatch detail UI should render an empty-state instead of bouncing to a 404 page. This is a UX issue.
+- If **orphan**: route_run creation should require ≥1 stop (DB constraint, API validation, or both), and the existing stopless rows (`1166`–`1170` in org 1, possibly more) should be deleted or archived. This is a data-integrity issue.
+- Possibly **both**: enforce ≥1 stop going forward, but the loader still does LEFT JOIN as defense-in-depth and the UI handles empty-state.
+
+**Why deferred:**
+This is a product/surface decision for the Lead to make during Dispatch-surface UX testing, not an engineering call. Both fix shapes are small once the question is answered. Logging the question now so it doesn't get lost between the role-rename verification and the Dispatch UX pass.
+
+**Fix hint (after question is answered):**
+- Decision in hand → either widen the loader to LEFT JOIN + handler returns `{ ...route_run, stops: [] }` and update the `RouteRun` frontend type to allow empty stops, OR add the write-time constraint and run a one-off cleanup of stopless rows in dev.
+- Either way: add a regression test (loader-level or HTTP-level) that locks in the chosen behavior — stopless route_run returns 200-with-empty-stops, or stopless route_run cannot exist.
+
+**Target:** Dispatch-surface UX/data-shape pass with the Lead. No urgency; no field user is currently blocked by it (the original Dispatch 403 was the rename gap, not this 404).
