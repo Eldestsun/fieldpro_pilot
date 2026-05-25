@@ -24,7 +24,7 @@ export const routeRunStopRoutes = Router();
 routeRunStopRoutes.post(
     "/route-run-stops/:id/start",
     requireAuth,
-    requireAnyRole(["UL", "Specialist", "Lead", "Dispatch", "Admin"]),
+    requireAnyRole(["Specialist", "Dispatch", "Admin"]),
     async (req: Request, res: Response) => {
         try {
             const { id } = req.params;
@@ -152,7 +152,7 @@ routeRunStopRoutes.post(
 routeRunStopRoutes.post(
     "/route-run-stops/:id/skip-with-hazard",
     requireAuth,
-    requireAnyRole(["UL", "Specialist", "Lead", "Dispatch", "Admin"]),
+    requireAnyRole(["Specialist", "Dispatch", "Admin"]),
     async (req: Request, res: Response) => {
         const numericOrgId = await resolveNumericOrgId(req);
         const client = await pool.connect();
@@ -417,7 +417,7 @@ routeRunStopRoutes.post(
 routeRunStopRoutes.post(
     "/route-run-stops/:route_run_stop_id/complete",
     requireAuth,
-    requireAnyRole(["UL", "Specialist", "Lead", "Dispatch", "Admin"]),
+    requireAnyRole(["Specialist", "Dispatch", "Admin"]),
     async (req: Request, res: Response) => {
         try {
             const { route_run_stop_id } = req.params;

@@ -26,7 +26,7 @@ describe('getDevAuthBypass', () => {
   it('returns null when MODE is production, regardless of other gates', async () => {
     vi.stubEnv('MODE', 'production')
     vi.stubEnv('VITE_DEV_AUTH_BYPASS', 'true')
-    setDevUser({ oid: 'test-oid', roles: ['UL'], org_id: 1 })
+    setDevUser({ oid: 'test-oid', roles: ['Specialist'], org_id: 1 })
     const { getDevAuthBypass } = await loadModule()
     expect(getDevAuthBypass()).toBeNull()
   })
@@ -34,7 +34,7 @@ describe('getDevAuthBypass', () => {
   it('returns null when VITE_DEV_AUTH_BYPASS is not "true"', async () => {
     vi.stubEnv('MODE', 'development')
     vi.stubEnv('VITE_DEV_AUTH_BYPASS', 'false')
-    setDevUser({ oid: 'test-oid', roles: ['UL'], org_id: 1 })
+    setDevUser({ oid: 'test-oid', roles: ['Specialist'], org_id: 1 })
     const { getDevAuthBypass } = await loadModule()
     expect(getDevAuthBypass()).toBeNull()
   })
@@ -73,12 +73,12 @@ describe('getDevAuthBypass', () => {
     warnSpy.mockRestore()
   })
 
-  // Role rename Phase 1 — dual-accept verification.
-  // A Dispatch claim must round-trip through the bypass and satisfy the same
-  // nav-gate predicate that Lead does in App.tsx (`isLead`,
-  // DefaultRedirect, RequireRole on /routes).  This test exists so a future
-  // refactor of App.tsx that drops Dispatch from those predicates fails loudly.
-  it('passes Dispatch role through; Dispatch satisfies the same nav predicate as Lead', async () => {
+  // Role rename Phase 3 — narrowed predicate verification.
+  // After Phase 3, App.tsx's isDispatch derivation accepts only 'Dispatch'
+  // (DefaultRedirect, RequireRole on /routes).  Legacy 'Lead' tokens no
+  // longer satisfy the predicate.  This test locks in the narrowed shape so
+  // an accidental revert to dual-accept fails loudly.
+  it('passes Dispatch through; Dispatch satisfies isDispatch predicate; Lead does not', async () => {
     vi.stubEnv('MODE', 'development')
     vi.stubEnv('VITE_DEV_AUTH_BYPASS', 'true')
     setDevUser({ oid: 'dispatch-user', roles: ['Dispatch'], org_id: 1 })
@@ -89,20 +89,19 @@ describe('getDevAuthBypass', () => {
     expect(result).not.toBeNull()
     expect(result!.me.roles).toEqual(['Dispatch'])
 
-    // Mirror the dual-accept predicate from App.tsx (isLead derivation and
-    // DefaultRedirect's /routes branch).  A Dispatch claim must satisfy it
-    // identically to a Lead claim.
-    const navPredicate = (roles: string[]) =>
-      roles.includes('Lead') || roles.includes('Dispatch')
+    // Mirror the narrowed predicate from App.tsx (isDispatch derivation and
+    // DefaultRedirect's /routes branch).  Phase 3 dropped 'Lead' from the
+    // accepted set.
+    const navPredicate = (roles: string[]) => roles.includes('Dispatch')
     expect(navPredicate(result!.me.roles)).toBe(true)
-    expect(navPredicate(['Lead'])).toBe(true)
+    expect(navPredicate(['Lead'])).toBe(false)
     vi.restoreAllMocks()
   })
 
   it('returns valid DevBypassData with correct account and me when all gates pass', async () => {
     vi.stubEnv('MODE', 'development')
     vi.stubEnv('VITE_DEV_AUTH_BYPASS', 'true')
-    setDevUser({ oid: 'user-123', roles: ['Admin', 'Lead'], org_id: 7 })
+    setDevUser({ oid: 'user-123', roles: ['Admin', 'Dispatch'], org_id: 7 })
     vi.spyOn(console, 'warn').mockImplementation(() => {}) // suppress banner
     const { getDevAuthBypass } = await loadModule()
     const result = getDevAuthBypass()
@@ -112,7 +111,7 @@ describe('getDevAuthBypass', () => {
     expect(result!.account.homeAccountId).toBe('user-123.dev-bypass')
     expect(result!.account.environment).toBe('dev-bypass')
     expect(result!.me.ok).toBe(true)
-    expect(result!.me.roles).toEqual(['Admin', 'Lead'])
+    expect(result!.me.roles).toEqual(['Admin', 'Dispatch'])
     expect(result!.me.user.oid).toBe('user-123')
     expect(result!.me.user.org_id).toBe(7)
     vi.restoreAllMocks()

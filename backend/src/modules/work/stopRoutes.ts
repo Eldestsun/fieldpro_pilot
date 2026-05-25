@@ -64,7 +64,7 @@ export const stopRoutes = Router();
 stopRoutes.patch(
     "/stops/:stop_id/hotspot",
     requireAuth,
-    requireAnyRole(["UL", "Specialist", "Lead", "Dispatch", "Admin"]),
+    requireAnyRole(["Specialist", "Dispatch", "Admin"]),
     async (req: Request, res: Response) => {
         try {
             const { stop_id } = req.params;
@@ -159,7 +159,7 @@ stopRoutes.patch(
 stopRoutes.patch(
     "/stops/:stop_id/compactor",
     requireAuth,
-    requireAnyRole(["Lead", "Dispatch", "Admin"]),
+    requireAnyRole(["Dispatch", "Admin"]),
     async (req: Request, res: Response) => {
         try {
             const { stop_id } = req.params;
@@ -254,7 +254,7 @@ stopRoutes.patch(
 stopRoutes.patch(
     "/stops/:stop_id/has-trash",
     requireAuth,
-    requireAnyRole(["Lead", "Dispatch", "Admin"]),
+    requireAnyRole(["Dispatch", "Admin"]),
     async (req: Request, res: Response) => {
         try {
             const { stop_id } = req.params;
