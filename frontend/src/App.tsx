@@ -37,7 +37,7 @@ function DefaultRedirect() {
   const { me } = useAuth();
   const roles = me?.roles || [];
   if (roles.includes("Admin")) return <Navigate to="/admin/dashboard" replace />;
-  if (roles.includes("Lead") || roles.includes("Dispatch")) return <Navigate to="/routes" replace />;
+  if (roles.includes("Dispatch")) return <Navigate to="/routes" replace />;
   return <Navigate to="/work" replace />;
 }
 
@@ -75,10 +75,8 @@ export default function App() {
 
   const roles = me?.roles || [];
   const isAdmin = roles.includes("Admin");
-  // Phase 1 role rename — dual-accept Lead/Dispatch and UL/Specialist.
-  // Variable names stay as isLead/isUL until Phase 3 cleanup.
-  const isLead = roles.includes("Lead") || roles.includes("Dispatch");
-  const isUL = roles.includes("UL") || roles.includes("Specialist");
+  const isDispatch = roles.includes("Dispatch");
+  const isSpecialist = roles.includes("Specialist");
 
   const userName = me?.user?.name || me?.user?.preferred_username || "";
 
@@ -113,13 +111,13 @@ export default function App() {
 
             {/* Desktop navigation links */}
             <div className="hidden md:flex items-center gap-1">
-              {(isUL || isLead) && (
+              {(isSpecialist || isDispatch) && (
                 <NavLink to="/work" end className={navLinkClass}>My Work</NavLink>
               )}
-              {isLead && (
+              {isDispatch && (
                 <NavLink to="/routes" className={navLinkClass}>Routes</NavLink>
               )}
-              {isLead && !isAdmin && (
+              {isDispatch && !isAdmin && (
                 <>
                   <div className="w-px h-5 bg-gray-300 mx-1 shrink-0" aria-hidden />
                   <NavLink to="/ops/dashboard" end className={navLinkClass}>Dashboard</NavLink>
@@ -147,7 +145,7 @@ export default function App() {
                   Operations
                 </span>
               )}
-              {isLead && !isAdmin && (
+              {isDispatch && !isAdmin && (
                 <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">
                   Lead
                 </span>
@@ -191,7 +189,7 @@ export default function App() {
                     Operations
                   </span>
                 )}
-                {isLead && !isAdmin && (
+                {isDispatch && !isAdmin && (
                   <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">
                     Lead
                   </span>
@@ -199,17 +197,17 @@ export default function App() {
               </div>
             </div>
             <div className="px-3 py-3 flex flex-col gap-1">
-              {(isUL || isLead) && (
+              {(isSpecialist || isDispatch) && (
                 <NavLink to="/work" end className={mobileNavLinkClass} onClick={closeMenu}>
                   My Work
                 </NavLink>
               )}
-              {isLead && (
+              {isDispatch && (
                 <NavLink to="/routes" className={mobileNavLinkClass} onClick={closeMenu}>
                   Routes
                 </NavLink>
               )}
-              {isLead && !isAdmin && (
+              {isDispatch && !isAdmin && (
                 <>
                   <div className="my-1 border-t border-gray-100" />
                   <NavLink to="/ops/dashboard" end className={mobileNavLinkClass} onClick={closeMenu}>Dashboard</NavLink>
@@ -244,13 +242,13 @@ export default function App() {
           <Routes>
             <Route path="/" element={<DefaultRedirect />} />
             <Route path="/work" element={
-              <RequireRole roles={["UL", "Specialist", "Lead", "Dispatch"]}><TodayRouteView /></RequireRole>
+              <RequireRole roles={["Specialist", "Dispatch"]}><TodayRouteView /></RequireRole>
             } />
             <Route path="/routes" element={
-              <RequireRole roles={["Lead", "Dispatch", "Admin"]}><LeadRoutesPanel /></RequireRole>
+              <RequireRole roles={["Dispatch", "Admin"]}><LeadRoutesPanel /></RequireRole>
             } />
             <Route path="/routes/:routeRunId" element={
-              <RequireRole roles={["Lead", "Dispatch", "Admin"]}><LeadRouteDetailRoute /></RequireRole>
+              <RequireRole roles={["Dispatch", "Admin"]}><LeadRouteDetailRoute /></RequireRole>
             } />
             <Route path="/admin/dashboard" element={
               <RequireRole roles={["Admin"]}><AdminDashboard scope="admin" /></RequireRole>
@@ -265,13 +263,13 @@ export default function App() {
               <RequireRole roles={["Admin"]}><AdminControlCenter /></RequireRole>
             } />
             <Route path="/ops/dashboard" element={
-              <RequireRole roles={["Lead", "Dispatch", "Admin"]}><AdminDashboard scope="ops" /></RequireRole>
+              <RequireRole roles={["Dispatch", "Admin"]}><AdminDashboard scope="ops" /></RequireRole>
             } />
             <Route path="/ops/pools" element={
-              <RequireRole roles={["Lead", "Dispatch", "Admin"]}><AdminPoolsPanel scope="ops" /></RequireRole>
+              <RequireRole roles={["Dispatch", "Admin"]}><AdminPoolsPanel scope="ops" /></RequireRole>
             } />
             <Route path="/ops/stops" element={
-              <RequireRole roles={["Lead", "Dispatch", "Admin"]}><AdminStopsPanel scope="ops" /></RequireRole>
+              <RequireRole roles={["Dispatch", "Admin"]}><AdminStopsPanel scope="ops" /></RequireRole>
             } />
           </Routes>
         </main>

@@ -54,7 +54,7 @@ export const resourceRoutes = Router();
 resourceRoutes.get(
   "/pools",
   requireAuth,
-  requireAnyRole(["Lead", "Dispatch", "Admin"]),
+  requireAnyRole(["Dispatch", "Admin"]),
   async (req: Request, res) => {
     try {
       const numericOrgId = await resolveNumericOrgId(req);
@@ -136,7 +136,7 @@ resourceRoutes.get(
 resourceRoutes.get(
   "/users",
   requireAuth,
-  requireAnyRole(["Lead", "Dispatch", "Admin"]),
+  requireAnyRole(["Dispatch", "Admin"]),
   async (req: Request, res) => {
     try {
       const user = (req as any).user;
