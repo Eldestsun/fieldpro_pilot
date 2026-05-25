@@ -77,6 +77,7 @@ Analysis-only tasks (no code or schema changes) do not require a changelog entry
 - `planning/architecture/current_state.md` — always (marks broken state + must-not-regress list)
 - `pg_state.sql` — DB-related tasks only. **Note: this file becomes stale after any schema-changing tier or migration. If the task involves tables added or dropped after 2026-05-08 (Tiers 4, 5, R10), regenerate it first:** `PGPASSWORD=fieldpro_pass pg_dump -h localhost -U fieldpro -d fieldpro_db --schema-only > pg_state.sql`
 - `planning/architecture/ADAPTER_BOUNDARY.md` — required for any task touching `core.observations`, `core.visits`, `observationService.ts`, `visitService.ts`, or `riskMapService.ts`
+- `planning/architecture/CANONICAL_STATE_LAYER_DESIGN.md` — required for any task touching `core.observations`, `core.visits`, `core.assets`, `core.evidence`, `core.observation_type_registry`, the observation normalizer, or any intelligence/MV that reads observation condition. **STATUS: target design, pending §9 verification.** Conform new design to this doc; reconcile against the live schema before treating any DDL as ratified. Do not migrate against it yet.
 
 ---
 
@@ -87,6 +88,7 @@ Analysis-only tasks (no code or schema changes) do not require a changelog entry
 - The DB is the source of truth — UI and API are adapters
 - Assignments are intent only — they are not truth
 - Do not reintroduce transit-first design patterns
+- **(Target rule, enforced once the canonical state layer is ratified)** Intelligence and dashboards read the normalized observation columns (`obs_kind` / `norm_status` / `norm_severity`), never observation `payload`. See `planning/architecture/CANONICAL_STATE_LAYER_DESIGN.md` §3.3, §4.3.
 
 ### RLS Context Gotcha (recurring bug pattern)
 
@@ -107,7 +109,7 @@ Affected tables include: `identity_directory`, and all 28+ tables with RLS polic
 - No hidden scoring of individual workers
 - No worker comparison surfaces of any kind
 
-See `planning/architecture/target_architecture.md` §8 for the intelligence constraints that enforce these at the architecture level.
+See `planning/architecture/target_architecture.md` §8 for the intelligence constraints that enforce these at the architecture level, and `planning/architecture/CANONICAL_STATE_LAYER_DESIGN.md` §3.2 for the structural mechanism (identity sidecar + no-grant intelligence role) that makes worker non-attribution a permission-layer guarantee rather than a code-review rule.
 
 ---
 

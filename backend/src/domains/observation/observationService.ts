@@ -222,24 +222,23 @@ function arrivalDefault(type: string): Record<string, any> {
 function submitObservations(ui: StopUiPayload): ObservationInsert[] {
     const obs: ObservationInsert[] = [];
 
-    // Safety
+    // Safety — danger is captured as the SPECIFIC presence observation(s) the
+    // worker selected. The umbrella generic `safety_concern_present` was
+    // retired (canonical state layer §1 dual-retirement, 2026-05-25) because
+    // it is entailed by the specific presences and invites double-counting.
+    // `stop_not_serviced_due_to_safety` was retired for the same reason: it
+    // is entailed by `core.visits.outcome = 'skipped'` + `reason_code = 'safety'`
+    // which is written elsewhere on the skip path.
+    // Specific presences are written REGARDLESS of whether the stop was
+    // skipped — serviced-anyway hazards still count.
     const hazardSeverity = ui.hazard_severity != null ? String(ui.hazard_severity) : null;
     if (ui.safetyConcern) {
-        obs.push({ observation_type: "safety_concern_present", payload: {}, severity: hazardSeverity });
-
         ui.safetyHazards?.forEach(h => {
             obs.push({
                 observation_type: mapSafetyHazard(h),
                 payload: {},
                 severity: hazardSeverity,
             });
-        });
-    }
-
-    if (ui.skipForSafety) {
-        obs.push({
-            observation_type: "stop_not_serviced_due_to_safety",
-            payload: {}
         });
     }
 

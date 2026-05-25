@@ -35,6 +35,11 @@ interface ObsTypeRow {
   validValues: unknown;
   isRequired: boolean;
   sortOrder: number;
+  // Defaults to true. Set false to retire a type while preserving historical
+  // observations that already reference it (canonical state layer §2: do not
+  // hard-delete; absence of an active registry row means the type is retired,
+  // not deleted).
+  isActive?: boolean;
 }
 
 const TRANSIT_STOP_OBSERVATION_TYPES: ObsTypeRow[] = [
@@ -71,6 +76,42 @@ const TRANSIT_STOP_OBSERVATION_TYPES: ObsTypeRow[] = [
     isRequired: false,
     sortOrder: 40,
   },
+  // ---- Cleaning actions (kind=action — intervention recorded; never OK-judged)
+  // Refined canonical state layer §3.3, §4.2: actions are an independent axis
+  // from conditions. Existence of the row = the worker performed the act.
+  // ---------------------------------------------------------------------------
+  {
+    key: "picked_up_litter",
+    displayName: "Picked Up Litter",
+    valueType: "boolean",
+    validValues: null,
+    isRequired: false,
+    sortOrder: 45,
+  },
+  {
+    key: "emptied_trash",
+    displayName: "Emptied Trash",
+    valueType: "boolean",
+    validValues: null,
+    isRequired: false,
+    sortOrder: 46,
+  },
+  {
+    key: "washed_shelter",
+    displayName: "Washed Shelter",
+    valueType: "boolean",
+    validValues: null,
+    isRequired: false,
+    sortOrder: 47,
+  },
+  {
+    key: "washed_pad",
+    displayName: "Washed Pad",
+    valueType: "boolean",
+    validValues: null,
+    isRequired: false,
+    sortOrder: 48,
+  },
   // ---- Utility observations -----------------------------------------------
   {
     key: "washed_can",
@@ -88,22 +129,46 @@ const TRANSIT_STOP_OBSERVATION_TYPES: ObsTypeRow[] = [
     isRequired: false,
     sortOrder: 60,
   },
-  // ---- Safety — umbrella + sub-types --------------------------------------
+  // ---- Stop-level positive anchor (kind=condition, scope=stop) ------------
+  // Refined canonical state layer §3.5: worker asserts the asset, as a whole,
+  // required no servicing. Anchors visit so component-level silence is safe to
+  // read as benign (§4.4 absence-as-counted-signal). Distinct from cleaning
+  // actions and from per-component conditions. Distinct from non-service: a
+  // spot check IS a completed servicing visit.
+  // ---------------------------------------------------------------------------
+  {
+    key: "spot_check",
+    displayName: "Spot Check (no work needed)",
+    valueType: "state",
+    validValues: ["no_work_needed"],
+    isRequired: false,
+    sortOrder: 70,
+  },
+  // ---- Safety — RETIRED generic umbrellas (active=false) ------------------
+  // Refined canonical state layer: a generic safety_concern_present row is
+  // entailed by the specific hazard presence(s) the worker selected; a
+  // stop_not_serviced_due_to_safety row is entailed by core.visits.outcome =
+  // 'skipped' + reason_code = 'safety'. Both are duplicates that invite
+  // double-counting. Historical rows are preserved; new writes are repointed
+  // to the specific presences + visit outcome.
+  // ---------------------------------------------------------------------------
   {
     key: "safety_concern_present",
-    displayName: "Safety Concern Present",
+    displayName: "Safety Concern Present (RETIRED — see specific *_present)",
     valueType: "boolean",
     validValues: null,
     isRequired: false,
     sortOrder: 100,
+    isActive: false,
   },
   {
     key: "stop_not_serviced_due_to_safety",
-    displayName: "Stop Not Serviced (Safety)",
+    displayName: "Stop Not Serviced (RETIRED — see core.visits.outcome)",
     valueType: "boolean",
     validValues: null,
     isRequired: false,
     sortOrder: 110,
+    isActive: false,
   },
   {
     key: "encampment_present",
@@ -286,18 +351,19 @@ async function upsertObservationTypes(
 ): Promise<number> {
   let upserted = 0;
   for (const t of TRANSIT_STOP_OBSERVATION_TYPES) {
+    const isActive = t.isActive !== false;
     await client.query(
       `INSERT INTO core.observation_type_registry
          (org_id, asset_type_id, observation_key, display_name,
-          value_type, valid_values, is_required, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          value_type, valid_values, is_required, sort_order, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT (org_id, asset_type_id, observation_key) DO UPDATE SET
          display_name  = EXCLUDED.display_name,
          value_type    = EXCLUDED.value_type,
          valid_values  = EXCLUDED.valid_values,
          is_required   = EXCLUDED.is_required,
          sort_order    = EXCLUDED.sort_order,
-         is_active     = true`,
+         is_active     = EXCLUDED.is_active`,
       [
         orgId,
         assetTypeId,
@@ -307,6 +373,7 @@ async function upsertObservationTypes(
         t.validValues !== null ? JSON.stringify(t.validValues) : null,
         t.isRequired,
         t.sortOrder,
+        isActive,
       ]
     );
     upserted++;
