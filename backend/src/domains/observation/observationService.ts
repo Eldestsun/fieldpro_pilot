@@ -242,30 +242,35 @@ function submitObservations(ui: StopUiPayload): ObservationInsert[] {
         });
     }
 
-    // Cleaning (Paired: Dirty -> Clean)
-    // Cleaning (Paired: Dirty -> Clean)
+    // Cleaning actions (kind=action). One standalone row per performed cleaning,
+    // identified by the registry type key (which IS the component+act pairing —
+    // washed_pad ↔ pad, washed_shelter ↔ shelter, picked_up_litter ↔ ground,
+    // emptied_trash ↔ trash_can, washed_can ↔ trash receptacle).
+    //
+    // No manufactured arrival condition is written: the prior pattern wrote a
+    // synthetic state='dirty' row before each clean, asserting an arrival state
+    // nobody observed. That's the welded-transition / dirty-default defect the
+    // refined canonical state layer forbids (§2 invariants #5, #6 and §2.1).
+    // Absence of a not_ok condition row, anchored by a visit/spot-check, IS the
+    // record that the component met standard at time of service (§4.4).
     if (ui.picked_up_litter) {
-        obs.push({ observation_type: "ground_condition", payload: { state: "dirty" } });
-        obs.push({ observation_type: "ground_condition", payload: { state: "clean" } });
+        obs.push({ observation_type: "picked_up_litter", payload: {} });
     }
 
     if (ui.emptied_trash) {
-        obs.push({ observation_type: "trash_can_condition", payload: { state: "has_trash" } });
-        obs.push({ observation_type: "trash_can_condition", payload: { state: "empty" } });
+        obs.push({ observation_type: "emptied_trash", payload: {} });
     }
 
     if (ui.washed_shelter) {
-        obs.push({ observation_type: "shelter_condition", payload: { state: "dirty" } });
-        obs.push({ observation_type: "shelter_condition", payload: { state: "clean" } });
+        obs.push({ observation_type: "washed_shelter", payload: {} });
     }
 
     if (ui.washed_pad) {
-        obs.push({ observation_type: "pad_condition", payload: { state: "dirty" } });
-        obs.push({ observation_type: "pad_condition", payload: { state: "clean" } });
+        obs.push({ observation_type: "washed_pad", payload: {} });
     }
 
-    if (typeof ui.washed_can === 'boolean') {
-        obs.push({ observation_type: "washed_can", payload: { value: ui.washed_can } });
+    if (ui.washed_can) {
+        obs.push({ observation_type: "washed_can", payload: {} });
     }
 
     // Trash volume
@@ -276,13 +281,12 @@ function submitObservations(ui: StopUiPayload): ObservationInsert[] {
         });
     }
 
-    // Infrastructure
+    // Infrastructure — the generic 'infrastructure_issue_present' umbrella was
+    // retired (canonical state layer §2.1, 2026-05-25) for the same reason as
+    // 'safety_concern_present': it is entailed by the OR over the 8 specific
+    // infra *_present types and invites double-counting. Only the specific
+    // presences are written.
     if (ui.infrastructurePresent) {
-        obs.push({
-            observation_type: "infrastructure_issue_present",
-            payload: {}
-        });
-
         ui.infrastructureIssues?.forEach(i => {
             obs.push({
                 observation_type: mapInfraIssue(i),
@@ -347,6 +351,14 @@ function mapInfraIssue(i: string) {
         lighting_failure: "lighting_failure_present",
         landscape_obstruction: "access_obstructed_by_landscape",
         structural_damage: "structural_damage_present",
+        // The infra-modal "Contaminated waste (biohazard)" checkbox is the same
+        // fact as the safety hazard biohazard_present — feces, urine, needles,
+        // other infectious material. It's a SAFETY presence regardless of which
+        // capture surface emitted it. Hazard presence is decoupled from skip:
+        // a worker who finds a biohazard, cleans it, and continues still
+        // records biohazard_present with NO skip. (Canonical state layer
+        // 2026-05-25 cleanup; design doc §2.1.)
+        contaminated_waste: "biohazard_present",
         other: "other_infrastructure_issue_present"
     };
 

@@ -85,15 +85,17 @@ Several invariants above (#3, #5, #6) are special cases of one general defect:
 schema.** Such rows add no signal, duplicate effort, and invite double-counting
 in any consumer that does not know which row is canonical.
 
-Two instances retired by this design (one already removed; the other retired in
-the 2026-05-25 dual-retirement):
+Five instances retired by this design (the 2026-05-25 ratification sprint and
+the 2026-05-25 write-path cleanup that followed):
 
 | Manufactured fact | Already entailed by | Why it's a defect |
 |---|---|---|
 | ~~Default arrival condition (auto-`dirty` on visit start)~~ | The worker's actual condition assertion if any (none otherwise = silence-as-signal, §4.4) | A worker-independent guess masquerading as an asserted state. The exact work-order-inference weakness the product rejects. |
-| ~~Paired before/after row ("dirty arrival → clean departure")~~ | A condition assertion (if graded) + an action observation (if performed), composed by intelligence as a derived transition (invariant #6) | Stores a derivation as a fact. The transition is computable; storing it doubles the schema and risks divergence. |
+| ~~Paired before/after row ("dirty arrival → clean departure")~~ | A condition assertion (if graded) + an action observation (if performed), composed by intelligence as a derived transition (invariant #6) | Stores a derivation as a fact. The transition is computable; storing it doubles the schema and risks divergence. The cleaning write path (`picked_up_litter`, `emptied_trash`, `washed_shelter`, `washed_pad`) was repointed 2026-05-25 to a single standalone `kind=action` row per performed cleaning; no synthetic arrival condition is written. |
 | ~~`safety_concern_present` (generic umbrella)~~ | The specific hazard presence(s) the worker selected in the Report Safety modal (one or more of: encampment, fire, dangerous_activity, drug_use, violence, biohazard, access_blocked, other_safety_concern) | The umbrella is lower-resolution than the specific. Writing both invites double-counting; writing only the umbrella loses the specific danger; writing only the specific carries the same information at higher resolution. |
 | ~~`stop_not_serviced_due_to_safety` (generic non-service flag)~~ | `core.visits.outcome = 'skipped'` with `reason_code = 'safety'` | A duplicate fact in a second table. Two sources of truth for "did this stop get serviced," with no rule that says which wins. |
+| ~~`infrastructure_issue_present` (generic umbrella)~~ | The specific infrastructure presence(s) the worker selected in the infra modal (one or more of: glass_damage, graffiti, receptacle_damage, shelter_panel_damage, lighting_failure, access_obstructed_by_landscape, structural_damage, other_infrastructure_issue) | Same umbrella anti-pattern as `safety_concern_present`. Retired 2026-05-25 alongside the cleaning write-path cleanup. Both prior SQL readers (`riskMapService.infra` CTE; `cleanLogService` `stop_effort_history.had_infra_issue`) were repointed to the OR over the 8 specifics in the same commit. |
+| ~~`contaminated_waste` (infra-modal alias for biohazard)~~ | `biohazard_present` — the same fact (feces, urine, needles, other infectious material) emitted by the safety hazard modal | A second name for an existing safety presence type, surfaced as an "infrastructure" checkbox. The infra-modal "Contaminated waste (biohazard)" control was repointed 2026-05-25 to emit `biohazard_present` directly; no new `contaminated_waste` rows are written. (Historical orphan rows, if any, are preserved.) |
 
 The principle generalizes: when adding a registry type or write path, ask
 whether the row would be entailed by other rows that are already written. If
@@ -106,11 +108,18 @@ serviced-anyway hazards still count. A generic umbrella that exists only to
 mean "at least one of the specifics is present" carries no information the
 specifics don't already carry.
 
-> **Open candidate under the same principle:** `infrastructure_issue_present`
-> is the surviving generic umbrella; it is entailed by the OR over the 8
-> specific infrastructure `*_present` types. Not retired in the 2026-05-25
-> sprint to keep that change scoped; flagged here so the next ratification
-> pass can apply the same rule.
+**Corollary — hazard presence is decoupled from service outcome.** A safety
+presence observation (`biohazard_present`, `encampment_present`, etc.) asserts
+that the hazard was PRESENT at the asset during this visit. It does NOT assert
+that the visit was skipped. A worker who finds a biohazard, cleans it, and
+continues servicing the stop still records `biohazard_present` with NO skip —
+the cleanup is the specialist's job and is not in itself a reason to abandon
+service. Intelligence therefore reads hazard frequency from ALL safety
+presence observations, never only those tied to `core.visits.outcome='skipped'`.
+The skip is a separate axis (visit outcome), captured on `core.visits`. (This
+is also why the in-app tap-to-report flow matters: it replaces a paper
+process that caused biohazards to be cleaned-and-forgotten, losing the
+data entirely.)
 
 ---
 
@@ -636,10 +645,23 @@ alert.
    four kinds; the one ambiguous row (`stop_not_serviced_due_to_safety`,
    which was a duplicate of `core.visits.outcome='skipped'`) was retired
    under §2.1 (the umbrella anti-pattern), alongside `safety_concern_present`
-   for the same reason. The registry now contains 30 rows (28 active, 2
-   retired), all of which fit the four-kind taxonomy. See
-   `docs/changelog/2026-05-25-state-layer-ratification-seeding.md` for the
-   full mapping table.
+   for the same reason. The registry now contains 30 rows (27 active, 3
+   retired — the third tombstone, `infrastructure_issue_present`, was added
+   2026-05-25 in the write-path cleanup that followed the ratification sprint),
+   all of which fit the four-kind taxonomy. See
+   `docs/changelog/2026-05-25-state-layer-ratification-seeding.md` and
+   `docs/changelog/2026-05-25-writepath-manufactured-state-cleanup.md` for
+   the full mapping tables.
+
+   **Manufactured-state status (write path):** As of the 2026-05-25 cleanup,
+   the cleaning submit path no longer writes the synthetic dirty→clean
+   condition pair; it writes a single `kind=action` row per performed
+   cleaning. Invariant #5 (no default or inferred arrival state) is therefore
+   honored on the cleaning submit path. The arrival-phase write
+   (`emitObservationsForStop({phase: "arrival"})`, called from
+   `startRouteRunStop`) is a separate manufactured-state surface and is
+   retained for now; its retirement is out of scope for this cleanup and
+   tracked in a follow-up.
 3. **Where does write validation run given offline-first capture?** Verify how
    the current offline queue reconciles before committing to on-device + server
    re-validation (§6).

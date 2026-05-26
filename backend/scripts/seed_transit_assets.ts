@@ -234,14 +234,21 @@ const TRANSIT_STOP_OBSERVATION_TYPES: ObsTypeRow[] = [
     isRequired: false,
     sortOrder: 190,
   },
-  // ---- Infrastructure — umbrella + sub-types ------------------------------
+  // ---- Infrastructure — RETIRED generic umbrella + active sub-types -------
+  // Refined canonical state layer §2.1: the generic 'infrastructure_issue_present'
+  // row is entailed by the OR over the 8 specific infra *_present types.
+  // Retired alongside safety_concern_present (2026-05-25) for the same
+  // double-counting reason. Historical rows are preserved; new writes are
+  // repointed to the specifics only.
+  // ---------------------------------------------------------------------------
   {
     key: "infrastructure_issue_present",
-    displayName: "Infrastructure Issue Present",
+    displayName: "Infrastructure Issue Present (RETIRED — see specific *_present)",
     valueType: "boolean",
     validValues: null,
     isRequired: false,
     sortOrder: 200,
+    isActive: false,
   },
   {
     key: "glass_damage_present",
