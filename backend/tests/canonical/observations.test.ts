@@ -1,7 +1,6 @@
 import {
   pool,
   test,
-  assert,
   assertEqual,
   createRouteRunFixture,
   cleanupFixture,
@@ -111,34 +110,6 @@ test("observations: submit phase does NOT write washed_can when field is absent"
       [visitId]
     );
     assertEqual(rows.rowCount, 0, "no washed_can observation when flag absent");
-  } finally {
-    await cleanupFixture(client, f);
-    client.release();
-  }
-});
-
-test("observations: arrival phase writes ground_condition (defaults path)", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
-  try {
-    const visitId = await setupVisit(client, f.routeRunStopId);
-    // No stopId → uses arrivalObservationDefaults, which emits ground_condition=dirty.
-    await emitObservationsForStop({
-      phase: "arrival",
-      visitId,
-      orgId: FIXTURE_ORG_ID,
-      assetId: FIXTURE_ASSET_ID,
-      locationId: FIXTURE_LOCATION_ID,
-      actorOid: FIXTURE_ACTOR_OID,
-      client,
-    });
-
-    const rows = await client.query(
-      `SELECT observation_type FROM core.observations
-       WHERE visit_id = $1 AND observation_type = 'ground_condition'`,
-      [visitId]
-    );
-    assert(rows.rowCount! >= 1, "ground_condition observation emitted");
   } finally {
     await cleanupFixture(client, f);
     client.release();

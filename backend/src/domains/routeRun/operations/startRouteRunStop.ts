@@ -1,6 +1,5 @@
 import { Pool } from "pg";
 import { ensureVisitForRouteRunStop, getVisitContext } from "../../visit/visitService";
-import { emitObservationsForStop } from "../../observation/observationService";
 
 export type StartRouteRunStopResult = {
     updated: boolean;
@@ -52,10 +51,14 @@ export async function startRouteRunStopInternal(
 
             await client.query("COMMIT");
 
-            // 3. Emit Observations (post-commit)
-            // [REMOVED] Per user requirement, we do NOT emit "assumed dirty" observations on start.
-            // Observations are only emitted on completion (paired dirty->clean) or skip.
-
+            // No observations are emitted at stop-start. Observations are
+            // written only when the specialist asserts something — at completion
+            // (one kind=action row per performed cleaning + any presence /
+            // measurement / spot_check rows) or at skip (specific safety
+            // presences + visit outcome). Canonical state layer §2 invariants
+            // #5 and #6: no manufactured arrival state, no stored transitions.
+            // The arrival-emit code path that used to live here was fully
+            // removed 2026-05-25 (see ARRIVAL_PHASE_DATA_PATH.md memo).
 
             return {
                 updated: true,
