@@ -314,4 +314,53 @@ This is a product/surface decision for the Lead to make during Dispatch-surface 
 - Decision in hand → either widen the loader to LEFT JOIN + handler returns `{ ...route_run, stops: [] }` and update the `RouteRun` frontend type to allow empty stops, OR add the write-time constraint and run a one-off cleanup of stopless rows in dev.
 - Either way: add a regression test (loader-level or HTTP-level) that locks in the chosen behavior — stopless route_run returns 200-with-empty-stops, or stopless route_run cannot exist.
 
+---
+
+## ISSUE-016 — Risk-map infra numerator semantics changed by umbrella retirement — defines "problem stop," needs intelligence-layer decision
+**Status:** Open question (not a fix request) — owned by the intelligence workstream
+**Discovered:** 2026-05-25 (during state-layer write-path cleanup, commit `1e4ac06`)
+**Area:** backend — `backend/src/intelligence/riskMapService.ts` `infra` CTE; downstream `stop_risk_snapshot.infra_issue_score` / `infrastructure_score`
+**Severity:** unknown — depends on which numerator the v1 transit Dispatch triage workflow needs
+
+**What changed (mechanical, already in code):**
+Commit `1e4ac06` retired `infrastructure_issue_present` (the generic umbrella) under the §2.1 anti-pattern, repointing the `infra` CTE's `WHERE` clause from a single umbrella string to `IN (...8 specific *_present types...)`. The repoint was necessary — the umbrella row stopped being written in the same commit — so the reader had to move to keep functioning.
+
+The repoint silently shifted the numerator's meaning:
+- **Old shape (umbrella):** exactly 1 umbrella row per issue-bearing visit. `COUNT(*)` over the 30-day window ≈ **count of issue-bearing VISITS**.
+- **New shape (specifics):** 1 row per specific issue. A visit reporting 3 issues contributes 3 rows. `COUNT(*)` ≈ **count of PROBLEMS** (issue-instances).
+
+The `LEAST(count, 5)::numeric(4,2) AS infra_issue_score` cap and the downstream `2.0 * COALESCE(i.infra_issue_score, 0) AS infrastructure_score` weight were calibrated for the old semantics. Neither has been reconsidered.
+
+**Why this matters (the strategic frame):**
+KCM's current notion of "problem stop" is downstream of WORK ORDERS — a record of spend, not condition — and they have no real reporting off it. BASELINE is AUTHORING the definition of stop condition for transit field assets on a blank page. Whatever v1 ships becomes the de facto definition. So the numerator choice is not a formula tweak; it is a **product decision about what a "problem stop" IS**, made by whichever line of code aggregates the canonical observations.
+
+That decision must not be made inside a state-layer cleanup commit, and it was not made deliberately — it fell out of a state-layer-required repoint. Logging it so the intelligence workstream inherits it as an open design decision rather than an accidental inherited behavior.
+
+**The design question (for the intelligence workstream, NOT to answer now):**
+- **Count-of-problem-VISITS** = a **frequency / chronicity** signal. Answers "which stops keep needing attention." Closer to the old numerator. Treats one rough visit (3 issues) as equal to one mildly rough visit (1 issue).
+- **Count-of-PROBLEMS** = a **severity / load** signal. Answers "which stops need the most work per touch." The new numerator as currently written. Treats a 3-issue visit as 3× a 1-issue visit.
+
+Both are legitimate; they answer different operational questions. v1 must choose which serves the transit **Dispatch** triage workflow first. The analyst raw-access tier (`core.observations` / `core.v_observation_normalized`, per the canonical state layer §8a) is the escape hatch — KCM can re-scope against raw if our default doesn't fit, so this is a **good default**, not a lock-in.
+
+**Cap interaction to check during recalibration:**
+Under the new numerator, a SINGLE multi-issue visit can approach or hit the `LEAST(…, 5)` cap. That may compress the distinction between "one rough visit" and "chronically failing stop" — the exact distinction the degradation signal exists to surface. Recalibrate cap and/or numerator deliberately when intelligence work begins; do not assume the existing `5` and `2.0` constants are still well-calibrated against the new shape.
+
+**Backward-comparability flag:**
+Any `stop_risk_snapshot` rows computed before 2026-05-25 used the old numerator. Infra-score trend lines that cross 2026-05-25 will show a discontinuity that is a **formula artifact**, not a real condition change. Snapshot lineage / trend-rendering surfaces must note the change date so the discontinuity is not misread as degradation.
+
+**Workstream routing note (boundary clarification):**
+`riskMapService` is **intelligence**, not state. It was only touched in `1e4ac06` because it read a retired state-layer type and would have silently returned zero rows otherwise. The functioning repoint belonged in state-layer (it had to ship together with the umbrella retirement); this recalibration belongs in the intelligence workstream and must not be folded into further state-layer work.
+
+> **Boundary test for future work:** if a change forces picking a NUMBER (a cap, a weight, a threshold) or a DEFINITION (what "problem" / "stale" / "at risk" means), it's **intelligence**, not state. State only owns the row shape, the registry vocabulary, and the read seam.
+
+**Why deferred:**
+This is an intelligence-layer design decision, not a state-layer bug. The state-layer side is consistent — the repointed reader works against the current write shape — and the system functions on the unrecalibrated numerator. The deliberate choice (and any recalibration) should land alongside the v1 intelligence workstream, with the Dispatch triage workflow in mind.
+
+**Fix hint (after intelligence work picks this up):**
+- Decide between the two numerator semantics (above) with the Dispatch triage workflow as the deciding use case.
+- If the choice is count-of-VISITS, change the `infra` CTE to `SELECT tsa.stop_id, COUNT(DISTINCT o.visit_id)` (or wrap the existing rows in a per-visit collapsing CTE).
+- Recalibrate the `LEAST(…, 5)` cap and the `2.0 * …` weight against the chosen semantics — and lock the new constants in a comment with the rationale.
+- Record the 2026-05-25 numerator discontinuity in whatever snapshot-lineage surface analysts use.
+- Same review applies to the `had_infra_issue` boolean in `stop_effort_history` (`cleanLogService.ts:200-217`) — that one is a boolean so the semantic shift is exact (no recalibration needed), but call it out in the audit.
+
 **Target:** Dispatch-surface UX/data-shape pass with the Lead. No urgency; no field user is currently blocked by it (the original Dispatch 403 was the rename gap, not this 404).
