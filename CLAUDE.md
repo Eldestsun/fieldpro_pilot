@@ -146,21 +146,31 @@ Two auth paths, two separate contexts:
 
 ## Git Commit Convention
 
-Every task that produces code, schema, or configuration changes must follow this branch pattern — no exceptions:
+`refactor/baseline` is retired — it was a long-lived integration branch that closed when the original refactor and refinement workstreams completed. All work now runs on typed, named branches that correspond to active workstreams.
 
-1. Make all changes on `refactor/baseline`
-2. Commit on `refactor/baseline`
-3. Merge `refactor/baseline` into `main`
+### Active branch map
+
+| Branch | Purpose | Status |
+|--------|---------|--------|
+| `feat/state-layer` | State layer build — ok-rules, normalizer, §9 verification, backfill | Active |
+| `design/capability` | Capability design artifacts — specs and architecture before the capability build begins | Next |
+| `feat/intelligence-layer` | Intelligence layer build — T1/T2/T3 tiers, MVs, pattern rules | Opens after state layer merges |
+| `chore/*` | Housekeeping — docs, planning artifacts, naming, config | Short-lived, merge and close |
+
+### Convention
+
+1. Work on the appropriate named branch for the workstream
+2. Commit on that branch
+3. Merge into `main` via `--no-ff`
 4. Push `main` to `origin/main`
-5. Push `refactor/baseline` to `origin/refactor/baseline` to keep remote in sync
-6. Verify push success. Run:
+5. Verify push success:
    ```
    git fetch origin
-   git log origin/refactor/baseline --oneline | head -3
+   git log origin/main --oneline | head -3
    ```
    The new commit must appear in the output. If it does not, the push silently failed — STOP, do not mark the task complete, and report the discrepancy to the operator. Do not retry without diagnosis.
 
-Do not commit directly to `main`. Do not cherry-pick. Do not leave `refactor/baseline` ahead of its remote after a merge.
+Do not commit directly to `main`. Do not cherry-pick. When a workstream branch is complete, it is closed — do not reopen it.
 
 ---
 
