@@ -47,6 +47,7 @@ tmp/
 .claude/settings.json
 .codex/
 .gemini/
+repo-tree.md
 *.jpg
 *.jpeg
 *.png
