@@ -2,9 +2,26 @@
 
 > **Goal**: Produce the nine security and compliance policy artifacts required for KCM IT security review and TPRA submission, plus the S2-10 synthesis package.
 >
-> **Status**: 🔴 Not started
+> **Status**: 🟠 In progress — 8 of 10 done; S2-9 in review; S2-10 not started
 > **Depends on**: S1 complete (all 13 tasks done 2026-05-14) + Hosting platform decision (S3-1, Founder task)
 > **Blocks**: S2-10 (all S2 docs), S3-5 (founder sign-off), S3-7 (TPRA submission)
+
+---
+
+## Status Table
+
+| ID | Document | Status | Date | Output File |
+|----|----------|--------|------|-------------|
+| S2-1 | NIST SP 800-53 Control Mapping | 🟢 Done | 2026-05-14 | `docs/security/nist-800-53-control-mapping.md` |
+| S2-2 | WA OCIO 141.10 Alignment Statement | 🟢 Done | 2026-05-14 | `docs/security/wa-ocio-141-10-alignment.md` |
+| S2-3 | Incident Response Plan | 🟢 Done | 2026-05-14 | `docs/security/incident-response-plan.md` |
+| S2-4 | Business Continuity Summary | 🟢 Done | 2026-05-14 | `docs/security/business-continuity.md` |
+| S2-5 | Data Classification Document | 🟢 Done | 2026-05-14 | `docs/security/data-classification.md` |
+| S2-6 | Log Retention Policy | 🟢 Done | 2026-05-14 | `docs/security/log-retention-policy.md` |
+| S2-7 | Data Use Limitation Policy | 🟢 Done | 2026-05-14 | `docs/security/data-use-limitation-policy.md` |
+| S2-8 | ArcGIS Integration Roadmap | 🟢 Done | 2026-05-14 | `docs/security/arcgis-integration-roadmap.md` |
+| S2-9 | WCAG 2.1 AA Conformance Statement | 🟠 In review | 2026-05-14 | `docs/security/wcag-conformance-statement.md` |
+| S2-10 | TPRA Questionnaire + Integration Matrix | 🔴 Not started | — | `docs/security/tpra-package.md` |
 
 ---
 
@@ -31,7 +48,7 @@
 **Type**: Document
 **Depends on**: Hosting decision (S3-1)
 **Output file**: `docs/security/nist-800-53-control-mapping.md`
-**Status**: 🔴 Not started
+**Status**: 🟢 Done 2026-05-14
 
 ### Purpose
 
@@ -80,7 +97,7 @@ At **Azure Government**: Full FedRAMP-Moderate inheritance applies. Controls mar
 **Type**: Document
 **Depends on**: Hosting decision (S3-1)
 **Output file**: `docs/security/wa-ocio-141-10-alignment.md`
-**Status**: 🔴 Not started
+**Status**: 🟢 Done 2026-05-14
 
 ### Purpose
 
@@ -132,7 +149,7 @@ At **Azure Government**: Full 141.10 alignment for cloud-hosted systems with Fed
 **Type**: Document
 **Depends on**: Hosting decision (S3-1)
 **Output file**: `docs/security/incident-response-plan.md`
-**Status**: 🔴 Not started
+**Status**: 🟢 Done 2026-05-14
 
 ### Purpose
 
@@ -182,7 +199,7 @@ At **Azure Government**: Azure Sentinel SIEM available. FedRAMP-Moderate IR cont
 **Type**: Document
 **Depends on**: Hosting decision (S3-1), S3-2 (managed DB backup config)
 **Output file**: `docs/security/business-continuity.md`
-**Status**: 🔴 Not started
+**Status**: 🟢 Done 2026-05-14
 
 ### Purpose
 
@@ -233,7 +250,7 @@ At **Azure Government**: Same infrastructure capabilities as Azure commercial; F
 **Type**: Document
 **Depends on**: None (hosting-independent)
 **Output file**: `docs/security/data-classification.md`
-**Status**: 🔴 Not started
+**Status**: 🟢 Done 2026-05-14
 
 ### Purpose
 
@@ -286,7 +303,7 @@ This document classifies every category of data that BASELINE collects, stores, 
 **Type**: Document
 **Depends on**: None (hosting-independent)
 **Output file**: `docs/security/log-retention-policy.md`
-**Status**: 🔴 Not started
+**Status**: 🟢 Done 2026-05-14
 
 ### Purpose
 
@@ -327,7 +344,7 @@ This document defines BASELINE's retention periods for all log and audit data, t
 **Type**: Document
 **Depends on**: None (hosting-independent)
 **Output file**: `docs/security/data-use-limitation-policy.md`
-**Status**: 🔴 Not started
+**Status**: 🟢 Done 2026-05-14
 
 ### Purpose
 
@@ -379,7 +396,7 @@ This document states the purposes for which BASELINE data may and may not be use
 **Type**: Document
 **Depends on**: None (hosting-independent)
 **Output file**: `docs/security/arcgis-integration-roadmap.md`
-**Status**: 🔴 Not started
+**Status**: 🟢 Done 2026-05-14
 
 ### Purpose
 
@@ -425,7 +442,7 @@ King County Metro uses Esri ArcGIS extensively for asset mapping, geospatial ana
 **Type**: Document
 **Depends on**: S1-8 (done 2026-05-14), S1-9 (done 2026-05-14), S2-9 prerequisites (see `planning/SECURITY_SPRINT_INDEX.md` § S2-9 Prerequisites)
 **Output file**: `docs/security/wcag-conformance-statement.md`
-**Status**: 🔴 Not started
+**Status**: 🟠 In review 2026-05-14 — prereqs 1+2 open; S3-4 pending
 
 ### Purpose
 
@@ -484,7 +501,7 @@ Before writing this document, verify the three S2-9 prerequisites are resolved:
 **Type**: Document
 **Depends on**: All S2 docs (S2-1 through S2-9)
 **Output file**: `docs/security/tpra-package.md`
-**Status**: 🔴 Not started
+**Status**: 🔴 Not started — blocked on S2-9 in-review + S3-5 founder sign-off
 
 ### Purpose
 
