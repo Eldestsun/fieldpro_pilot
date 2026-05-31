@@ -364,3 +364,28 @@ This is an intelligence-layer design decision, not a state-layer bug. The state-
 - Same review applies to the `had_infra_issue` boolean in `stop_effort_history` (`cleanLogService.ts:200-217`) — that one is a boolean so the semantic shift is exact (no recalibration needed), but call it out in the audit.
 
 **Target:** Dispatch-surface UX/data-shape pass with the Lead. No urgency; no field user is currently blocked by it (the original Dispatch 403 was the rename gap, not this 404).
+
+---
+
+## ISSUE-017 — Silent enum-key coercion in safety / infra hazard mapping — re-introduces the umbrella anti-pattern through a different door
+**Status:** Open finding (not a fix request) — surfaced during the §9 verification pass
+**Discovered:** 2026-05-30 (canonical state layer §9 verification pass, item 3)
+**Area:** backend — `backend/src/domains/observation/observationService.ts` — `mapSafetyHazard` (line ~206) / `mapInfraIssue` (line ~227)
+**Severity:** low live impact / latent — degrades silently if the capture UI expands ahead of the registry
+
+**What it is:**
+`mapSafetyHazard` and `mapInfraIssue` accept an enum key from the capture UI and translate it to a registry `observation_key` (e.g. `biohazard` → `biohazard_present`, `graffiti` → `graffiti_present`). When the input key is **unrecognized**, both functions fall through to a generic coercion — `other_safety_concern_present` / `other_infrastructure_issue_present` — rather than rejecting the write or surfacing the unknown durably. They do emit a `console.warn` at the fallthrough (`:221`, `:249`), but that is a transient log line, not a durable signal: the row still lands as a generic "other" presence, and nothing downstream can tell it apart from a genuine, deliberately-selected "other".
+
+**Why it's not just a small bug — it re-opens a retired anti-pattern:**
+This is structurally the **same** defect the 2026-05-25 dual retirement removed. `safety_concern_present` and `stop_not_serviced_due_to_safety` (and later `infrastructure_issue_present`) were retired from the registry under §2.1 of `CANONICAL_STATE_LAYER_DESIGN.md` — the *generic-umbrella-as-duplication* rule: a one-bit generic row carries no information the specific presences don't already carry, and writing it loses resolution / invites double-counting. The umbrella **types** were retired from the registry, but the umbrella **behavior** persists one layer down, at the mapping function: anything unrecognized is funneled into a generic `other_*_present` row. The door was closed in the registry and left open in the mapper.
+
+**Concrete failure mode:**
+If a new specific hazard is added to the capture UI **without** a matching registry seed + mapping-table update, every instance of that new hazard silently lands as `other_*_present`. The intelligence layer then reads "many generic concerns" instead of "many instances of [the new specific type]." Signal resolution degrades silently and nobody sees an error — exactly the failure the two-axis / specific-over-umbrella design exists to prevent. The `console.warn` is the only trace, and it is invisible in aggregate.
+
+**Recommended fix shape (do NOT implement here):**
+An unrecognized enum key should produce an **explicit** signal rather than a silent coercion — refuse the write, quarantine it, or at minimum persist the unknown key for repair (not just a console line). The proper home for this ties directly to the **§9 item 3 validation gap**: §6 steps 3–4 (registry-driven payload validation) are unimplemented and there is no quarantine queue. The clean fix is a **registry-aware validation layer that rejects unknown `observation_key`s at write time**, with rejected rows routed to the quarantine/repair queue §6 prescribes. So this is partly a **candidate to fold into the eventual offline-validation buildout**, not necessarily a standalone one-off fix.
+
+**Relation to other items:**
+Independent of the two deferred §9 migrations (normalized-columns backfill; actor-audit sidecar extraction). Can be fixed before, after, or alongside them. Live today with low-volume impact while the specific hazard/infra key sets are stable; the risk is **latent** and grows the moment the capture UI gains a hazard/infra option ahead of a registry seed. See the §9 verification changelog (`docs/changelog/2026-05-30-s9-verification-pass.md`) and `CANONICAL_STATE_LAYER_DESIGN.md` §2.1 (umbrella anti-pattern) and §9 item 3 (validation gap).
+
+**Target:** Fold into the offline-validation / registry-aware write-validation buildout (§9 item 3 follow-up), or fix standalone if a new specific hazard/infra type is seeded before that buildout lands — whichever comes first.
