@@ -4,7 +4,14 @@
 >
 > **Audience**: Any agent or developer writing a query or service that touches `core.*` tables.
 >
-> **Schema state**: As of 2026-05-10 (post Tier 1–4, R1–R2, R4).
+> **Schema state**: Core column/path structure as of 2026-05-10 (post Tier 1–4,
+> R1–R2, R4). **Partially reconciled 2026-05-30** for the bridge layer: §2b
+> (`v_locations_transit`), the `core.location_external_ids` canonical table, the
+> FORCE-RLS posture on the bridge tables, and the `core.assignments` /
+> `assignment_id` write-path status. Population counts elsewhere are pre-reseed
+> point-in-time snapshots — treat them as illustrative, not current. A full
+> reconciliation against the 2026-05-25 state-layer ratification (registry,
+> normalized columns) is still outstanding.
 
 ---
 
@@ -20,7 +27,7 @@ The canonical layer is the schema under `core.*`. It is the system of record for
 | `org_id` | bigint | NOT NULL | ✅ Always |
 | `location_id` | bigint | NULL | ✅ Always (14,916 locations seeded from transit stops) |
 | `primary_asset_id` | bigint | NULL | ✅ Always (17/17 visits have asset) |
-| `assignment_id` | bigint | NULL | ❌ Never — 0/17 populated (§5.1 gap, Tier 5) |
+| `assignment_id` | bigint | NULL | ✅ Now written (2026-05-30 verified) — `ensureVisitForRouteRunStop` resolves it via `route_run_stops → route_runs → core.assignments`. `core.assignments` is no longer empty. The §5.1 "Tier 5 not yet" note below is stale. |
 | `actor_oid` | text | NOT NULL | ✅ Always — real Entra OID since R1 |
 | `started_at` | timestamptz | NOT NULL | ✅ Always — set at stop-start since Tier 1 |
 | `ended_at` | timestamptz | NULL | ✅ Always for closed visits |
@@ -69,7 +76,7 @@ The canonical layer is the schema under `core.*`. It is the system of record for
 
 | Column | Type | Nullable | Population today |
 |--------|------|----------|-----------------|
-| `id` | bigint | NOT NULL | ❌ **0 rows** — schema only, no write path yet |
+| `id` | bigint | NOT NULL | ✅ **No longer empty** (2026-05-30 verified) — assignment rows now exist and `core.visits.assignment_id` is populated from them |
 | `org_id` | bigint | NOT NULL | — |
 | `assignment_type` | text | NOT NULL | — |
 | `status` | text | NOT NULL | — |
@@ -78,7 +85,10 @@ The canonical layer is the schema under `core.*`. It is the system of record for
 | `planned_for_date` | date | NULL | — |
 | `created_by_oid` | text | NOT NULL | — |
 
-Tier 5 wires the write path. Until then, `core.assignments` is an empty schema placeholder.
+**Update 2026-05-30:** this is no longer an empty placeholder. `core.assignments`
+holds rows and the visit-ensure path writes `core.visits.assignment_id` from them
+(verified live). The original "Tier 5 wires the write path / empty until then"
+statement is retained here only as history.
 
 ---
 
@@ -124,22 +134,64 @@ Views in the `core` schema that translate transit-vertical identifiers into cano
 
 ### `core.v_locations_transit`
 
-A read-only view that maps transit `stop_id` (text) to the corresponding `core.locations.id`. Used wherever a canonical write needs a `location_id` but only has a transit `stop_id` available.
+A read-only view that maps a transit `stop_id` (text) to the corresponding
+`core.locations.id`. Used wherever a canonical write needs a `location_id` but
+only has a transit `stop_id` available (e.g. `ensureVisitForRouteRunStop`).
+
+**Actual definition (verified live 2026-05-30):** the view does *not* map
+`stop_id` directly — it joins `core.locations` to the canonical external-id
+sidecar `core.location_external_ids`, and the "stop_id" it exposes is that
+sidecar's `external_id`:
+
+```sql
+SELECT l.id AS location_id, l.org_id, l.location_type, l.label, l.lon, l.lat,
+       lei.source_system, lei.external_id AS stop_id
+FROM core.locations l
+JOIN core.location_external_ids lei ON lei.location_id = l.id
+WHERE l.location_type = 'transit_stop'
+  AND lei.source_system = 'metro_stop';
+```
 
 | Column | Type | Notes |
 |--------|------|-------|
 | `location_id` | bigint | `core.locations.id` — the canonical location FK |
 | `org_id` | bigint | Organization the location belongs to |
-| `location_type` | text | e.g. `'transit_stop'` |
+| `location_type` | text | always `'transit_stop'` (view filter) |
 | `label` | text | Human-readable stop label |
 | `lon` | double precision | Longitude |
 | `lat` | double precision | Latitude |
-| `source_system` | text | e.g. `'transit'` |
-| `stop_id` | text | Transit stop identifier (the join key from the adapter side) |
+| `source_system` | text | always `'metro_stop'` (view filter) — **not** `'transit'` as an earlier draft of this doc stated |
+| `stop_id` | text | `core.location_external_ids.external_id` — the transit stop identifier (join key from the adapter side) |
 
-**Usage in Tier 5**: The `core.assignments` INSERT joins `route_run_stops → core.v_locations_transit ON loc.stop_id = rrs.stop_id` to populate `location_id`. Verified 2026-05-10 — all 4 test stops resolved correctly (`has_location = t`).
+**`core.location_external_ids` (canonical):** the external-id sidecar that backs
+this view — `(org_id, location_id, source_system, external_id)`. ~14,916 rows
+(`source_system='metro_stop'`), one per seeded transit location. It is a
+*canonical* table, not an adapter table, even though its `external_id` values are
+transit `stop_id`s.
 
-**Classification**: Tolerated bridge — one adapter lookup, not an embedded join hop inside a canonical query. The same one-hop translation rule applies as for `transit_stop_assets`.
+> **⚠️ RLS / org-context trap (PATTERN-001).** Both base tables —
+> `core.locations` and `core.location_external_ids` — are `FORCE ROW LEVEL
+> SECURITY`. `v_locations_transit` is a **security-definer view** (owned by a
+> non-`BYPASSRLS` role), so the base-table policies are enforced even for a
+> superuser querying *through* the view, and they evaluate against
+> `app.current_org_id` on the connection. Any caller that reads this view must
+> set org context (use `withOrgContext(orgId, …)`); a bare `pool.connect()` will
+> silently return zero rows (→ "missing location_id") or, on a pooled connection
+> whose context was reset to `''`, raise `invalid input syntax for type bigint:
+> ""` (HTTP 500). This was the live start-stop failure fixed 2026-05-30:
+> `startRouteRunStopInternal` now runs inside `withOrgContext`, and the
+> `core.location_external_ids` / `core.asset_locations` policies were hardened to
+> the guarded `COALESCE/NULLIF` form so a missing context fails closed instead of
+> raising. See `docs/changelog/bugfix/2026-05-30-start-stop-rls-org-context.md`.
+
+**Usage**: `ensureVisitForRouteRunStop` and the `core.assignments` INSERT join
+`route_run_stops → core.v_locations_transit ON loc.stop_id = rrs.stop_id` to
+resolve `location_id`. Verified live 2026-05-30 — the four Developer Test Pool
+stops (79213/79234/50712/80580) resolve to locations 98/6951/14916/9349.
+
+**Classification**: Tolerated bridge — one adapter lookup, not an embedded join
+hop inside a canonical query. The same one-hop translation rule applies as for
+`transit_stop_assets`.
 
 ---
 
