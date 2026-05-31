@@ -77,7 +77,7 @@ Analysis-only tasks (no code or schema changes) do not require a changelog entry
 - `planning/architecture/current_state.md` — always (marks broken state + must-not-regress list)
 - `pg_state.sql` — DB-related tasks only. **Note: this file becomes stale after any schema-changing tier or migration. If the task involves tables added or dropped after 2026-05-08 (Tiers 4, 5, R10), regenerate it first:** `PGPASSWORD=fieldpro_pass pg_dump -h localhost -U fieldpro -d fieldpro_db --schema-only > pg_state.sql`
 - `planning/architecture/ADAPTER_BOUNDARY.md` — required for any task touching `core.observations`, `core.visits`, `observationService.ts`, `visitService.ts`, or `riskMapService.ts`
-- `planning/architecture/CANONICAL_STATE_LAYER_DESIGN.md` — required for any task touching `core.observations`, `core.visits`, `core.assets`, `core.evidence`, `core.observation_type_registry`, the observation normalizer, or any intelligence/MV that reads observation condition. **STATUS: target design, pending §9 verification.** Conform new design to this doc; reconcile against the live schema before treating any DDL as ratified. Do not migrate against it yet.
+- `planning/architecture/CANONICAL_STATE_LAYER_DESIGN.md` — required for any task touching `core.observations`, `core.visits`, `core.assets`, `core.evidence`, `core.observation_type_registry`, the observation normalizer, or any intelligence/MV that reads observation condition. **STATUS: partially verified (§9 items 1, 2, 3 closed 2026-05-30; items 4, 5, 6 are documented findings with named follow-on dispatches).** The four-kind taxonomy and no-manufactured-state rules are enforced in code. The structural guarantees of §3.2 (identity sidecar) and §4 (normalized columns) are target state pending dedicated migrations. Conform new work to this doc; consult §9 for current-vs-target on a given guarantee before migrating against it.
 
 ---
 
@@ -88,7 +88,7 @@ Analysis-only tasks (no code or schema changes) do not require a changelog entry
 - The DB is the source of truth — UI and API are adapters
 - Assignments are intent only — they are not truth
 - Do not reintroduce transit-first design patterns
-- **(Target rule, enforced once the canonical state layer is ratified)** Intelligence and dashboards read the normalized observation columns (`obs_kind` / `norm_status` / `norm_severity`), never observation `payload`. See `planning/architecture/CANONICAL_STATE_LAYER_DESIGN.md` §3.3, §4.3.
+- **(Enforced in code for the four observation kinds and the no-manufactured-state rules; the structural guarantees for identity isolation and normalized columns are target state until their respective migrations land.)** Intelligence and dashboards read the normalized observation columns (`obs_kind` / `norm_status` / `norm_severity`), never observation `payload`. See `planning/architecture/CANONICAL_STATE_LAYER_DESIGN.md` §3.3, §4.3.
 
 ### RLS Context Gotcha (recurring bug pattern)
 
