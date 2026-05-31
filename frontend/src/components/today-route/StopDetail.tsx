@@ -368,16 +368,31 @@ export function StopDetail({
     // Helper to handle upload confirmation
     const handleConfirmUpload = async () => {
         if (selectedFiles.length === 0) return;
+        const filesToUpload = [...selectedFiles];
         try {
-            const { photos, queued } = await uploadPhotos(stop.route_run_stop_id, selectedFiles);
+            const { photos, queued } = await uploadPhotos(stop.route_run_stop_id, filesToUpload);
 
             if (queued) {
-                // If queued, we clear selection so user knows it "went through" to the queue
                 setSelectedFiles([]);
-                // But we DO NOT clear existingPhotos or overwrite them with empty
-            } else if (photos && photos.length > 0) {
-                setExistingPhotos(photos);
+            } else {
+                // Upload reached the server — always clear pending regardless of response shape
                 setSelectedFiles([]);
+                if (photos && photos.length > 0) {
+                    setExistingPhotos(photos);
+                } else {
+                    // Server accepted the upload but returned no DB-backed photos yet
+                    // (visit not yet created). Show optimistic thumbnails so the gate clears
+                    // and the user sees feedback. These are replaced by real data on next fetch.
+                    const optimistic = filesToUpload.map((f, i) => ({
+                        id: -(Date.now() + i),
+                        s3_key: "",
+                        kind: "completion",
+                        captured_at: new Date().toISOString(),
+                        created_by_oid: "",
+                        url: URL.createObjectURL(f),
+                    }));
+                    setExistingPhotos(prev => [...prev, ...optimistic]);
+                }
             }
         } catch (err) {
             // Error handled in hook (alert), but we keep selectedFiles so user can retry
@@ -1224,13 +1239,20 @@ export function StopDetail({
                     <h4 className="m-0 mb-2 text-sm text-gray-500 font-medium">Attached Photos</h4>
                     <div className="flex gap-2 overflow-x-auto pb-2">
                         {existingPhotos.map(p => (
-                            <img
-                                key={p.id}
-                                src={p.url}
-                                className="h-20 rounded-md shrink-0 cursor-pointer"
-                                onClick={() => setPreviewUrl(p.url)}
-                                alt="existing"
-                            />
+                            <div key={p.id} className="relative shrink-0">
+                                <img
+                                    src={p.url}
+                                    className="h-20 rounded-md cursor-pointer"
+                                    onClick={() => setPreviewUrl(p.url)}
+                                    alt="uploaded"
+                                />
+                                <button
+                                    onClick={() => setExistingPhotos(prev => prev.filter(ep => ep.id !== p.id))}
+                                    className="absolute top-0 right-0 bg-black/50 text-white border-0 rounded-full w-5 h-5 flex items-center justify-center text-xs cursor-pointer"
+                                >
+                                    ×
+                                </button>
+                            </div>
                         ))}
                         {selectedFiles.map((f, i) => (
                             <div key={i} className="relative shrink-0">

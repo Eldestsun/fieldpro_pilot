@@ -166,6 +166,33 @@ Do not commit directly to `main`. Do not cherry-pick. Do not leave `refactor/bas
 
 ---
 
+## MCP Tools
+
+Three MCP servers are configured in `.mcp.json` and auto-approved in `.claude/settings.json`. Use them in preference to bash equivalents where applicable.
+
+### `postgres`
+Direct structured access to `fieldpro_db` as the `postgres` superuser (bypasses RLS — appropriate for diagnostics and migrations, not for testing app-level access).
+
+**Use for:** schema inspection, multi-step queries, DB debugging, verifying writes after API calls.
+**Prefer over:** `psql` bash commands for anything beyond a one-liner.
+**Connection:** `postgresql://postgres:postgres@localhost:5432/fieldpro_db`
+
+### `chrome-devtools-mcp`
+Attaches to a running Chrome tab via Chrome DevTools Protocol. Can inspect network requests, read console output, take screenshots, and interact with the page.
+
+**Use for:** inspecting API request/response payloads and status codes from live browser sessions, reading console errors, verifying frontend state.
+**Requires:** Chrome running with remote debugging enabled, or a tab already open at the target URL.
+**Not a replacement for:** the user's own browser session — attach to the user's tab, don't open a new one unless asked.
+
+### `github`
+Full GitHub API access via `@modelcontextprotocol/server-github`.
+
+**Use for:** creating PRs, reading/writing issues, checking CI status, reviewing PR comments, managing branches.
+**Requires:** `GITHUB_PERSONAL_ACCESS_TOKEN` set in the shell environment before starting Claude Code.
+**Prefer over:** `gh` CLI calls for multi-step GitHub workflows.
+
+---
+
 ## Do Not Load
 
 These files are not routing artifacts. Do not load them unless explicitly instructed:
