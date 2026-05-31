@@ -1,9 +1,29 @@
 # BASELINE — Canonical State Layer Design
 
-> **STATUS: TARGET DESIGN — PENDING §9 VERIFICATION.** This document is direction,
-> not ratified law. Its DDL must be reconciled against the live schema before any
-> migration is written. Conform new design to this doc; do not treat its DDL as
-> deployable until §9 closes.
+> **STATUS: PARTIALLY VERIFIED — §9 verification pass 2026-05-30.** The four-noun
+> grammar and registry model are verified against the live schema at the logic
+> level; the DESIGN is sound. It is **not** fully ratified: two of its structural
+> guarantees are still target-state.
+>
+> - §9 items **1, 2 RESOLVED** (prior sprints).
+> - §9 item **3 ANSWERED with a documented gap** — server-side validation exists
+>   at reconcile but is hardcoded, not registry-driven; the §6 target (registry-
+>   schema validation + quarantine queue) is unimplemented. Safe today only
+>   because observation payloads are server-synthesized, not client-authored.
+> - §9 items **4, 5 DEFERRED** — the live `core.observations` carries **no**
+>   normalized columns (`obs_kind`/`norm_status`/`norm_severity`/`intervention`).
+>   §3.3's normalized shape is target-only. Backfill + complexity_score recompute
+>   have nowhere to write until a migration lands. Migration shape (in-place vs.
+>   shadow column) is its own dispatch.
+> - §9 item **6 OPEN FINDING** — the actor-audit sidecar (§3.2) does **not**
+>   exist. Worker identity lives in plaintext (`core.visits.actor_oid`,
+>   `core.observations.created_by_oid`, both NOT NULL). Anonymity (invariant #1)
+>   is currently enforced by **query discipline only**, not by grants. The
+>   structural guarantee is target-state pending sidecar extraction.
+>
+> Do not treat the normalized-column or sidecar DDL as deployed. Reconcile all DDL
+> against the live schema before any migration. See §9 for the per-item detail and
+> the live-schema reconciliation notes from the 2026-05-30 pass.
 
 > A portable state layer for any field-condition work that shares these invariants:
 > someone **visits** a **thing**, records **what they found or did**, optionally with **proof** —
@@ -187,6 +207,33 @@ CREATE TABLE core.visit_actor_audit (
 The intelligence layer is given a DB role with **no grant** on `visit_actor_audit`.
 A signal that tried to attribute a metric to a worker would fail at the permission
 layer, not at code review. That is the guarantee made structural.
+
+> **CURRENT STATE vs. TARGET STATE (verified 2026-05-30, §9 item 6).** The
+> structural guarantee above is **target state, not live state.** As of the
+> 2026-05-30 verification pass, `core.visit_actor_audit` **does not exist**, and
+> worker identity is stored **in plaintext, directly on the canonical tables the
+> intelligence layer must read**:
+> - `core.visits.actor_oid` — `text NOT NULL`
+> - `core.observations.created_by_oid` — `text NOT NULL`
+>
+> (A partial at-rest-encryption effort exists on visits — `captured_by_oid_ciphertext`
+> + `captured_by_oid_key_id`, both nullable — but `actor_oid` plaintext NOT NULL
+> sits alongside it, so it does not change the exposure.)
+>
+> Consequently, **invariant #1 (worker anonymity) is presently enforced by QUERY
+> DISCIPLINE only — not by the permission layer.** There is no separate table to
+> withhold a grant on; denying intelligence access to identity today would mean
+> denying it `SELECT` on `core.visits`/`core.observations` themselves, which it
+> must read. The no-grant role test (§9 item 6) therefore **cannot be run against
+> the live schema** — there is no boundary to test.
+>
+> Closing this gap requires a dedicated migration that **extracts** `actor_oid`
+> and `created_by_oid` into no-grant sidecars (`core.visit_actor_audit` and an
+> observation-side equivalent), then stands up the `intelligence_reader` role
+> against the real boundary. That is net-new schema work, scoped as its own
+> dispatch and recommended as **the next build target after this §9 pass.** The
+> wording of the guarantee above is deliberately left un-softened: it describes
+> the target the extraction migration must reach.
 
 ### 3.3 Observation — the center of the system
 
@@ -662,22 +709,107 @@ alert.
    `startRouteRunStop`) is a separate manufactured-state surface and is
    retained for now; its retirement is out of scope for this cleanup and
    tracked in a follow-up.
-3. **Where does write validation run given offline-first capture?** Verify how
-   the current offline queue reconciles before committing to on-device + server
-   re-validation (§6).
-4. **Migration of existing rows.** Existing `core.observations` have
-   heterogeneous payloads and no normalized columns. Backfill plan: run the
-   normalizer over history once the registry rules exist. Decide whether
-   backfill is in-place or a shadow column promoted after verification.
-   Specifically: existing rows must be classified into condition / action /
-   measurement / presence; rows that today look like "arrival state" — if any —
-   must be reconciled against invariant #5 (no stored arrival state) and either
-   reclassified or marked legacy.
-5. **The `complexity_score` / ISSUE-008 recompute** rides on this: once
-   `norm_status` exists on condition + measurement rows, "count of not_ok
-   condition observations per asset over a window" is trivial and the dead
-   column can be re-derived. Keep it a *consequence* of this work, specced
-   separately.
-6. **Identity sidecar grants.** Confirm the intelligence layer can run under a
-   DB role with no grant on the actor-audit table without breaking existing
-   reads.
+3. **(ANSWERED 2026-05-30 — validation located + characterized; §6 target gap
+   logged as a finding.)** *Where does write validation run given offline-first
+   capture?*
+
+   **Trace:** the offline queue replays `COMPLETE_STOP` →
+   `POST /api/route-run-stops/:id/complete` (`backend/src/modules/work/routeRunStopRoutes.ts:424`).
+   Authoritative server-side validation at reconcile lives **only** in that
+   handler (`routeRunStopRoutes.ts:451-488`): hardcoded guards for after-photo
+   presence, cleaning-action-or-spot-check presence, and `trashVolume` integer
+   ∈ [0,4]. From there `completeStop` (`cleanLogService.ts`) calls
+   `emitObservationsForStop` (`observationService.ts`), which synthesizes
+   observation rows and inserts them raw.
+
+   **Finding (the §6 target is NOT implemented):**
+   - The canonical write path **never reads `core.observation_type_registry`** —
+     no `value_type`/`valid_values` (live registry shape) or `payload_schema`
+     (design shape) check, and no normalization. §6 steps 3–4 are unimplemented.
+   - `core.observations` has **no FK and no CHECK** tying `observation_type` to
+     the registry; any string would insert. The DB is not a backstop.
+   - Observation payloads are **server-synthesized** (`{}` for action/presence,
+     `{level:N}` for the one measurement), never client-authored. This is what
+     currently **masks** the missing registry validation: the malformed-payload
+     surface from offline sync is narrow because the client supplies typed
+     cleaning/safety/infra fields, not raw observation payloads.
+   - Within that narrow surface the behavior **splits**: range-checked fields
+     (`trashVolume`) are **REJECTED** (HTTP 400); but unrecognized enum-like keys
+     (`safety.hazard_types`, `infraIssues`) are **SILENTLY COERCED** to
+     `other_safety_concern_present` / `other_infrastructure_issue_present` by
+     `mapSafetyHazard` / `mapInfraIssue` (a `console.warn`, no rejection). An
+     unknown hazard becomes a generic "other" presence rather than being
+     surfaced — the §6 "silently stored with bad data" concern in miniature.
+   - There is **no quarantine/repair queue** (§6's prescribed landing zone for
+     rejected-on-reconcile rows). A failed reconcile returns 4xx and the offline
+     queue retries; there is no quarantine.
+
+   **Status:** the verification QUESTION is closed (we now know precisely how
+   validation behaves). The §6 TARGET — registry-driven payload validation +
+   quarantine queue — is a documented gap, deferred to its own dispatch. It is
+   not urgent today only because payloads are server-synthesized; it must be
+   built before any client-authored or third-party adapter write path exists.
+4. **(DEFERRED 2026-05-30 — migration shape decision pending; its own dispatch.)**
+   *Migration of existing rows.* Existing `core.observations` have heterogeneous
+   payloads and no normalized columns. Backfill plan: run the normalizer over
+   history once the registry rules exist. Decide whether backfill is in-place or
+   a shadow column promoted after verification. Specifically: existing rows must
+   be classified into condition / action / measurement / presence; rows that
+   today look like "arrival state" — if any — must be reconciled against
+   invariant #5 (no stored arrival state) and either reclassified or marked legacy.
+
+   **Verified live state (2026-05-30):** `core.observations` carries **no
+   normalized columns** — live columns are `id, org_id, visit_id, location_id,
+   asset_id, observation_type (text), severity (text), status (text), payload
+   (jsonb), created_by_oid (text NOT NULL), observed_at`. There is no
+   `obs_kind`, `norm_status`, `norm_severity`, `intervention`, or `type_id` FK.
+   §3.3's normalized shape is **target-only.** The table currently holds **3
+   real-pipeline rows** (one completed service visit — `picked_up_litter`,
+   `emptied_trash`, `trash_volume {level:2}`); the table was wiped during
+   development and these are authentic post-state-layer-fix rows, not synthetic
+   fixtures. The backfill therefore has **nowhere to write** until a migration
+   adds the columns — and that migration (the **in-place vs. shadow-column**
+   decision named above) is deliberately **not authored in this pass.** It is its
+   own dispatch with its own deliberation. Backfill logic can only be verified
+   once the target columns exist.
+5. **(DEFERRED 2026-05-30 — downstream of item 4.)** *The `complexity_score` /
+   ISSUE-008 recompute* rides on this: once `norm_status` exists on condition +
+   measurement rows, "count of not_ok condition observations per asset over a
+   window" is trivial and the dead column can be re-derived. Keep it a
+   *consequence* of this work, specced separately. **Blocked until item 4's
+   normalized-column migration lands** — there is no `norm_status` to count
+   against today. (`stop_effort_history.complexity_score` is still written `NULL`
+   at `cleanLogService.ts:186`.) Verification staged behind item 4.
+6. **(OPEN FINDING 2026-05-30 — sidecar absent; boundary cannot be tested as
+   designed.)** *Identity sidecar grants.* Confirm the intelligence layer can run
+   under a DB role with no grant on the actor-audit table without breaking
+   existing reads.
+
+   **Verified live state:** the actor-audit sidecar **does not exist** (no
+   `core.visit_actor_audit`, no `%actor%`/`%audit%`/`%identity%` table in
+   `core`). Worker identity is plaintext NOT NULL on the canonical tables
+   intelligence must read (`core.visits.actor_oid`,
+   `core.observations.created_by_oid`). The no-grant role test **cannot run** —
+   there is no separate surface to withhold a grant on. Invariant #1 is presently
+   enforced by **query discipline only**, not by the permission layer. See the
+   "CURRENT STATE vs. TARGET STATE" note in §3.2. Closing this requires a
+   dedicated sidecar-extraction migration (recommended next build target after
+   this pass), after which the `intelligence_reader` no-grant role can be stood
+   up and the refused-read / legitimate-reads matrix demonstrated for real.
+
+---
+
+### §9 live-schema reconciliation notes (2026-05-30 verification pass)
+
+The design DDL above predates several live-schema facts. These are recorded so
+future migration dispatches reconcile against reality, not the doc's illustrative
+DDL:
+
+| Design DDL (above) | Live schema (2026-05-30) | Impact |
+|---|---|---|
+| `core.assets` table (§3.1) | exposed as **view** `core.v_assets` (14,916 rows); no base table by that name | reconcile any `core.assets` reference before migrating |
+| `core.observations.type_id bigint` FK to registry (§3.3) | observations link by **`observation_type` text**, no FK | normalizer/backfill must resolve registry by `(org, asset_type, observation_key)` string, not a FK join |
+| registry cols `obs_kind`/`payload_schema`/`ok_rule`/`severity_map` (§4.1) | live registry is the seeder shape: **`observation_key`, `value_type` (boolean\|numeric\|state), `valid_values` (jsonb), `is_required`, `is_active`** | the four-kind classification and ok-rule must be **derived** from `value_type`/`valid_values` (or the registry must be migrated to the §4.1 shape) before the normalizer can run |
+| registry "30 rows, 27 active" (§9 item 2) | 30 rows, **28 active** / 2 inactive | minor count drift; reconcile the tombstone accounting when the registry is next touched |
+| normalized observation columns (§3.3) | **absent** (see item 4) | backfill blocked until migration |
+| actor-audit sidecar (§3.2) | **absent** (see item 6) | no-grant boundary is target-state |
