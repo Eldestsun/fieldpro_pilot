@@ -30,12 +30,18 @@ routeRunStopRoutes.post(
             const { id } = req.params;
             const actorOid = req.user?.oid || "unknown";
 
+            // Resolve tenant up front: startRouteRunStopInternal runs inside
+            // withOrgContext(orgId, ...) so RLS on the core location tables the
+            // visit-ensure path reads is satisfied (PATTERN-001).
+            const numericOrgId = await resolveNumericOrgId(req);
+
             // Use shared internal helper (Strict Neutrality)
             // Endpoint Logic: Only 'pending' is allowed.
             const result = await startRouteRunStopInternal(pool, {
                 routeRunStopId: id,
                 actorOid,
                 allowedStatuses: ["pending"],
+                orgId: numericOrgId,
             });
 
             if (result.updated) {

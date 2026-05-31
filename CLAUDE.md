@@ -77,6 +77,7 @@ Analysis-only tasks (no code or schema changes) do not require a changelog entry
 - `planning/architecture/current_state.md` — always (marks broken state + must-not-regress list)
 - `pg_state.sql` — DB-related tasks only. **Note: this file becomes stale after any schema-changing tier or migration. If the task involves tables added or dropped after 2026-05-08 (Tiers 4, 5, R10), regenerate it first:** `PGPASSWORD=fieldpro_pass pg_dump -h localhost -U fieldpro -d fieldpro_db --schema-only > pg_state.sql`
 - `planning/architecture/ADAPTER_BOUNDARY.md` — required for any task touching `core.observations`, `core.visits`, `observationService.ts`, `visitService.ts`, or `riskMapService.ts`
+- `planning/architecture/CANONICAL_STATE_LAYER_DESIGN.md` — required for any task touching `core.observations`, `core.visits`, `core.assets`, `core.evidence`, `core.observation_type_registry`, the observation normalizer, or any intelligence/MV that reads observation condition. **STATUS: target design, pending §9 verification.** Conform new design to this doc; reconcile against the live schema before treating any DDL as ratified. Do not migrate against it yet.
 
 ---
 
@@ -87,6 +88,7 @@ Analysis-only tasks (no code or schema changes) do not require a changelog entry
 - The DB is the source of truth — UI and API are adapters
 - Assignments are intent only — they are not truth
 - Do not reintroduce transit-first design patterns
+- **(Target rule, enforced once the canonical state layer is ratified)** Intelligence and dashboards read the normalized observation columns (`obs_kind` / `norm_status` / `norm_severity`), never observation `payload`. See `planning/architecture/CANONICAL_STATE_LAYER_DESIGN.md` §3.3, §4.3.
 
 ### RLS Context Gotcha (recurring bug pattern)
 
@@ -107,7 +109,7 @@ Affected tables include: `identity_directory`, and all 28+ tables with RLS polic
 - No hidden scoring of individual workers
 - No worker comparison surfaces of any kind
 
-See `planning/architecture/target_architecture.md` §8 for the intelligence constraints that enforce these at the architecture level.
+See `planning/architecture/target_architecture.md` §8 for the intelligence constraints that enforce these at the architecture level, and `planning/architecture/CANONICAL_STATE_LAYER_DESIGN.md` §3.2 for the structural mechanism (identity sidecar + no-grant intelligence role) that makes worker non-attribution a permission-layer guarantee rather than a code-review rule.
 
 ---
 
@@ -171,6 +173,33 @@ Two auth paths, two separate contexts:
    The new commit must appear in the output. If it does not, the push silently failed — STOP, do not mark the task complete, and report the discrepancy to the operator. Do not retry without diagnosis.
 
 Do not commit directly to `main`. Do not cherry-pick. When a workstream branch is complete, it is closed — do not reopen it.
+
+---
+
+## MCP Tools
+
+Three MCP servers are configured in `.mcp.json` and auto-approved in `.claude/settings.json`. Use them in preference to bash equivalents where applicable.
+
+### `postgres`
+Direct structured access to `fieldpro_db` as the `postgres` superuser (bypasses RLS — appropriate for diagnostics and migrations, not for testing app-level access).
+
+**Use for:** schema inspection, multi-step queries, DB debugging, verifying writes after API calls.
+**Prefer over:** `psql` bash commands for anything beyond a one-liner.
+**Connection:** `postgresql://postgres:postgres@localhost:5432/fieldpro_db`
+
+### `chrome-devtools-mcp`
+Attaches to a running Chrome tab via Chrome DevTools Protocol. Can inspect network requests, read console output, take screenshots, and interact with the page.
+
+**Use for:** inspecting API request/response payloads and status codes from live browser sessions, reading console errors, verifying frontend state.
+**Requires:** Chrome running with remote debugging enabled, or a tab already open at the target URL.
+**Not a replacement for:** the user's own browser session — attach to the user's tab, don't open a new one unless asked.
+
+### `github`
+Full GitHub API access via `@modelcontextprotocol/server-github`.
+
+**Use for:** creating PRs, reading/writing issues, checking CI status, reviewing PR comments, managing branches.
+**Requires:** `GITHUB_PERSONAL_ACCESS_TOKEN` set in the shell environment before starting Claude Code.
+**Prefer over:** `gh` CLI calls for multi-step GitHub workflows.
 
 ---
 

@@ -53,8 +53,11 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
         // Schema notes that deviate from the plan SQL in planning/TIER_2_INTELLIGENCE_MIGRATION.md:
         //   - core.observations has no observed_value column; numeric values live in payload jsonb.
         //     trash_volume payload is { level: 0|1|2|3|4 } per submitObservations().
-        //   - No observation_type 'hazard_present' or 'infra_condition' exists. The canonical
-        //     umbrella signals are 'safety_concern_present' and 'infrastructure_issue_present'.
+        //   - The generic 'safety_concern_present' and 'infrastructure_issue_present'
+        //     umbrellas have BOTH been retired (canonical state layer §1, dual
+        //     retirements 2026-05-25). Hazard signal is the OR over the 8
+        //     specific safety *_present types; infra signal is the OR over the
+        //     8 specific infra *_present types.
         //   - severity is not written to core.observations.severity. Presence is used as the
         //     proxy: hazard severity = 1.0; infra severity = COUNT(*) capped at 5.
         const query = `
@@ -111,12 +114,24 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
                   ON tsa.asset_id = o.asset_id
                  AND tsa.active = TRUE
                  AND tsa.role = 'primary'
-                WHERE o.observation_type = 'safety_concern_present'
+                WHERE o.observation_type IN (
+                    'encampment_present',
+                    'fire_present',
+                    'dangerous_activity_present',
+                    'drug_use_present',
+                    'violence_present',
+                    'biohazard_present',
+                    'access_blocked',
+                    'other_safety_concern_present'
+                  )
                   AND o.observed_at >= NOW() - INTERVAL '${HAZARD_WINDOW_DAYS} days'
                 GROUP BY tsa.stop_id
             ),
             -- Infrastructure scores from canonical observations (replaces infrastructure_issues).
             -- Severity not stored canonically; COUNT(*) capped at 5 stands in for AVG(severity).
+            -- The generic 'infrastructure_issue_present' umbrella was retired
+            -- (canonical state layer §2.1, 2026-05-25); presence is now the OR over
+            -- the 8 specific infra *_present types.
             infra AS (
                 SELECT
                     tsa.stop_id,
@@ -126,7 +141,16 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
                   ON tsa.asset_id = o.asset_id
                  AND tsa.active = TRUE
                  AND tsa.role = 'primary'
-                WHERE o.observation_type = 'infrastructure_issue_present'
+                WHERE o.observation_type IN (
+                    'glass_damage_present',
+                    'graffiti_present',
+                    'receptacle_damage_present',
+                    'shelter_panel_damage_present',
+                    'lighting_failure_present',
+                    'access_obstructed_by_landscape',
+                    'structural_damage_present',
+                    'other_infrastructure_issue_present'
+                  )
                   AND o.observed_at >= NOW() - INTERVAL '30 days'
                 GROUP BY tsa.stop_id
             ),

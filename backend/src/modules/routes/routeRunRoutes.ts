@@ -837,12 +837,18 @@ routeRunRoutes.post(
                 return res.status(401).json({ error: "Missing authenticated user identity" });
             }
 
+            // Resolve tenant up front: startRouteRunStopInternal runs inside
+            // withOrgContext(orgId, ...) so RLS on the core location tables the
+            // visit-ensure path reads is satisfied (PATTERN-001).
+            const numericOrgId = await resolveNumericOrgId(req);
+
             // Use shared internal helper (Strict Neutrality)
             // Endpoint Logic: Allowed statuses: ['pending', 'planned', 'assigned']
             const result = await startRouteRunStopInternal(pool, {
                 routeRunStopId: id,
                 actorOid: req.user.oid,
                 allowedStatuses: ["pending", "planned", "assigned"],
+                orgId: numericOrgId,
             });
 
             let routeRunId;
@@ -878,7 +884,6 @@ routeRunRoutes.post(
                 return res.status(404).json({ error: "Route run stop not found (no route_run_id)" });
             }
 
-            const numericOrgId = await resolveNumericOrgId(req);
             const routeRun = await loadRouteRunById(routeRunId, numericOrgId);
             return res.json({ ok: true, route_run: routeRun });
 

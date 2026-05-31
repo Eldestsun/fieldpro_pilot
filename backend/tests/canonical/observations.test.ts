@@ -1,7 +1,6 @@
 import {
   pool,
   test,
-  assert,
   assertEqual,
   createRouteRunFixture,
   cleanupFixture,
@@ -24,7 +23,7 @@ async function setupVisit(client: any, routeRunStopId: number): Promise<number> 
   });
 }
 
-test("observations: submit phase writes washed_can=true observation", async () => {
+test("observations: submit phase writes washed_can=true observation (action row, empty payload)", async () => {
   const client = await pool.connect();
   const f = await createRouteRunFixture(client);
   try {
@@ -46,14 +45,18 @@ test("observations: submit phase writes washed_can=true observation", async () =
       [visitId]
     );
     assertEqual(rows.rowCount, 1, "exactly one washed_can observation");
-    assertEqual(rows.rows[0].payload.value, true, "payload.value = true");
+    assertEqual(
+      Object.keys(rows.rows[0].payload).length,
+      0,
+      "payload is empty (intervention identified by observation_type)"
+    );
   } finally {
     await cleanupFixture(client, f);
     client.release();
   }
 });
 
-test("observations: submit phase writes washed_can=false observation", async () => {
+test("observations: submit phase does NOT write washed_can when false (no-manufactured-fact)", async () => {
   const client = await pool.connect();
   const f = await createRouteRunFixture(client);
   try {
@@ -70,12 +73,15 @@ test("observations: submit phase writes washed_can=false observation", async () 
     });
 
     const rows = await client.query(
-      `SELECT payload FROM core.observations
+      `SELECT 1 FROM core.observations
        WHERE visit_id = $1 AND observation_type = 'washed_can'`,
       [visitId]
     );
-    assertEqual(rows.rowCount, 1, "one washed_can row even when false");
-    assertEqual(rows.rows[0].payload.value, false, "payload.value = false");
+    assertEqual(
+      rows.rowCount,
+      0,
+      "no washed_can row when the act did not happen (canonical state layer §2 invariant #5)"
+    );
   } finally {
     await cleanupFixture(client, f);
     client.release();
@@ -104,34 +110,6 @@ test("observations: submit phase does NOT write washed_can when field is absent"
       [visitId]
     );
     assertEqual(rows.rowCount, 0, "no washed_can observation when flag absent");
-  } finally {
-    await cleanupFixture(client, f);
-    client.release();
-  }
-});
-
-test("observations: arrival phase writes ground_condition (defaults path)", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
-  try {
-    const visitId = await setupVisit(client, f.routeRunStopId);
-    // No stopId → uses arrivalObservationDefaults, which emits ground_condition=dirty.
-    await emitObservationsForStop({
-      phase: "arrival",
-      visitId,
-      orgId: FIXTURE_ORG_ID,
-      assetId: FIXTURE_ASSET_ID,
-      locationId: FIXTURE_LOCATION_ID,
-      actorOid: FIXTURE_ACTOR_OID,
-      client,
-    });
-
-    const rows = await client.query(
-      `SELECT observation_type FROM core.observations
-       WHERE visit_id = $1 AND observation_type = 'ground_condition'`,
-      [visitId]
-    );
-    assert(rows.rowCount! >= 1, "ground_condition observation emitted");
   } finally {
     await cleanupFixture(client, f);
     client.release();

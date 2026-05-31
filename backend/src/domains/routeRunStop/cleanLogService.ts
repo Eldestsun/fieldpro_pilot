@@ -184,13 +184,39 @@ export async function completeStop(
                 ELSE 'standard'
             END,
             NULL,
+            -- Generic 'safety_concern_present' was retired (canonical state layer
+            -- §1, 2026-05-25) — any specific safety presence on the visit indicates
+            -- a hazard occurred.
             EXISTS (
                 SELECT 1 FROM core.observations o3
-                WHERE o3.visit_id = v.id AND o3.observation_type = 'safety_concern_present'
+                WHERE o3.visit_id = v.id
+                  AND o3.observation_type IN (
+                    'encampment_present',
+                    'fire_present',
+                    'dangerous_activity_present',
+                    'drug_use_present',
+                    'violence_present',
+                    'biohazard_present',
+                    'access_blocked',
+                    'other_safety_concern_present'
+                  )
             ),
+            -- Generic 'infrastructure_issue_present' was retired (canonical
+            -- state layer §2.1, 2026-05-25) — any specific infra presence on
+            -- the visit indicates an infrastructure issue occurred.
             EXISTS (
                 SELECT 1 FROM core.observations o4
-                WHERE o4.visit_id = v.id AND o4.observation_type = 'infrastructure_issue_present'
+                WHERE o4.visit_id = v.id
+                  AND o4.observation_type IN (
+                    'glass_damage_present',
+                    'graffiti_present',
+                    'receptacle_damage_present',
+                    'shelter_panel_damage_present',
+                    'lighting_failure_present',
+                    'access_obstructed_by_landscape',
+                    'structural_damage_present',
+                    'other_infrastructure_issue_present'
+                  )
             ),
             (SELECT (o5.payload->>'level')::numeric FROM core.observations o5
              WHERE o5.visit_id = v.id AND o5.observation_type = 'trash_volume'

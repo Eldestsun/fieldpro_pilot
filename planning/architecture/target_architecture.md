@@ -155,6 +155,8 @@ It remains aggregate-only and non-attributive.
 
 The target architecture assumes intelligence is downstream of canonical state.
 
+> **Detailed expansion.** The data-architecture authority for how the four canonical nouns (assets, visits, observations, evidence), the observation type registry, and the normalized observation columns enforce the constraints below is `CANONICAL_STATE_LAYER_DESIGN.md` (this directory). The mechanisms in particular: (a) intelligence reads only the normalized columns (`obs_kind` / `norm_status` / `norm_severity`), never `payload` — §3.3, §4.3; (b) worker identity lives in an audit-only sidecar that the intelligence DB role has no grant on, making non-attribution a permission-layer guarantee rather than a code-review rule — §3.2. **Status: target design, pending §9 verification — do not treat its DDL as ratified.**
+
 ### Intelligence must be:
 
 * explainable
