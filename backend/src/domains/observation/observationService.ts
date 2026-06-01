@@ -260,7 +260,9 @@ async function insertObservations(
     observations: ObservationInsert[]
 ) {
     for (const o of observations) {
-        await client.query(
+        // Worker identity is NOT written to core.observations — it goes to the
+        // no-grant sidecar core.observation_actor_audit (§3.2 structural boundary).
+        const res = await client.query(
             `
       INSERT INTO core.observations (
         org_id,
@@ -269,10 +271,10 @@ async function insertObservations(
         asset_id,
         observation_type,
         payload,
-        severity,
-        created_by_oid
+        severity
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      RETURNING id
       `,
             [
                 context.orgId,
@@ -281,9 +283,16 @@ async function insertObservations(
                 context.assetId,
                 o.observation_type,
                 o.payload,
-                o.severity ?? null,
-                context.actorOid
+                o.severity ?? null
             ]
+        );
+        await client.query(
+            `
+      INSERT INTO core.observation_actor_audit (observation_id, org_id, actor_ref)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (observation_id) DO NOTHING
+      `,
+            [res.rows[0].id, context.orgId, context.actorOid]
         );
     }
 }
@@ -297,7 +306,8 @@ export async function emitSpotCheckObservation(params: {
     actorOid: string;
 }) {
     const { client, visitId, orgId, locationId, assetId, actorOid } = params;
-    await client.query(
+    // Worker identity goes to the no-grant sidecar, never on core.observations (§3.2).
+    const res = await client.query(
         `
     INSERT INTO core.observations (
       org_id,
@@ -305,10 +315,18 @@ export async function emitSpotCheckObservation(params: {
       location_id,
       asset_id,
       observation_type,
-      payload,
-      created_by_oid
-    ) VALUES ($1, $2, $3, $4, 'spot_check', '{}'::jsonb, $5)
+      payload
+    ) VALUES ($1, $2, $3, $4, 'spot_check', '{}'::jsonb)
+    RETURNING id
     `,
-        [orgId, visitId, locationId, assetId, actorOid]
+        [orgId, visitId, locationId, assetId]
+    );
+    await client.query(
+        `
+    INSERT INTO core.observation_actor_audit (observation_id, org_id, actor_ref)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (observation_id) DO NOTHING
+    `,
+        [res.rows[0].id, orgId, actorOid]
     );
 }

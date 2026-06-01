@@ -87,16 +87,26 @@ exportDeleteRoutes.post(
       );
       exportData.locations = locRes.rows;
 
+      // Identity now lives in the per-table sidecars (§3.2). LEFT JOIN and alias
+      // back to the original column names so the export bundle format is unchanged.
       // core.assignments
       const assignRes = await client.query(
-        "SELECT * FROM core.assignments WHERE org_id = $1",
+        `SELECT a.*, s.actor_ref AS created_by_oid
+         FROM core.assignments a
+         LEFT JOIN core.assignment_actor_audit s ON s.assignment_id = a.id
+         WHERE a.org_id = $1`,
         [orgInt],
       );
       exportData.assignments = assignRes.rows;
 
-      // core.visits — include both plaintext and KMS-ciphertext OID fields (S1-13 dual-write)
+      // core.visits — include both plaintext and KMS-ciphertext OID fields (relocated to sidecar)
       const visitsRes = await client.query(
-        "SELECT * FROM core.visits WHERE org_id = $1",
+        `SELECT v.*, s.actor_ref AS actor_oid,
+                s.actor_ref_ciphertext AS captured_by_oid_ciphertext,
+                s.actor_ref_key_id     AS captured_by_oid_key_id
+         FROM core.visits v
+         LEFT JOIN core.visit_actor_audit s ON s.visit_id = v.id
+         WHERE v.org_id = $1`,
         [orgInt],
       );
       exportData.visits = visitsRes.rows;
@@ -104,14 +114,20 @@ exportDeleteRoutes.post(
 
       // core.observations
       const obsRes = await client.query(
-        "SELECT * FROM core.observations WHERE org_id = $1",
+        `SELECT o.*, s.actor_ref AS created_by_oid
+         FROM core.observations o
+         LEFT JOIN core.observation_actor_audit s ON s.observation_id = o.id
+         WHERE o.org_id = $1`,
         [orgInt],
       );
       exportData.observations = obsRes.rows;
 
       // core.evidence (metadata only — storage_key references blobs, blobs not included)
       const evRes = await client.query(
-        "SELECT * FROM core.evidence WHERE org_id = $1",
+        `SELECT e.*, s.actor_ref AS captured_by_oid
+         FROM core.evidence e
+         LEFT JOIN core.evidence_actor_audit s ON s.evidence_id = e.id
+         WHERE e.org_id = $1`,
         [orgInt],
       );
       exportData.evidence = evRes.rows;

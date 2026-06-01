@@ -389,3 +389,27 @@ An unrecognized enum key should produce an **explicit** signal rather than a sil
 Independent of the two deferred §9 migrations (normalized-columns backfill; actor-audit sidecar extraction). Can be fixed before, after, or alongside them. Live today with low-volume impact while the specific hazard/infra key sets are stable; the risk is **latent** and grows the moment the capture UI gains a hazard/infra option ahead of a registry seed. See the §9 verification changelog (`docs/changelog/2026-05-30-s9-verification-pass.md`) and `CANONICAL_STATE_LAYER_DESIGN.md` §2.1 (umbrella anti-pattern) and §9 item 3 (validation gap).
 
 **Target:** Fold into the offline-validation / registry-aware write-validation buildout (§9 item 3 follow-up), or fix standalone if a new specific hazard/infra type is seeded before that buildout lands — whichever comes first.
+
+---
+
+## ISSUE-018 — Intelligence reads not yet routed through the `intelligence_reader` role — sidecar boundary not yet binding on the running app
+**Status:** Open — follow-on to the 2026-06-01 sidecar-extraction migration
+**Discovered:** 2026-06-01 (sidecar extraction, `feat/sidecar-extraction`)
+**Area:** backend — DB connection/role wiring (`backend/src/db.ts` pool, intelligence read paths: `riskMapService`, MVs, any future intelligence consumer)
+**Severity:** medium (latent — the structural boundary exists at the DB level but the app does not yet use it)
+
+**Context:**
+The sidecar-extraction migration (2026-06-01) made worker non-attribution (canonical state layer invariant #1) structural at the DB level: worker identity now lives only in the no-grant sidecars `core.{visit,observation,evidence,assignment}_actor_audit`, the plaintext identity columns are dropped from the canonical tables, and a `NOLOGIN` group role `intelligence_reader` exists with **no grant** on any sidecar (verified: `permission denied`). An `audit_reader` role holds the sidecar grant for legitimate audit/export.
+
+**The gap:**
+The running app opens **every** DB connection as `fieldpro` (see the pool in `backend/src/db.ts`), and `fieldpro` retains access to everything (it must — it writes the sidecars and runs the export/delete paths). The no-grant boundary therefore binds an *intelligence query* only once that query actually runs **as `intelligence_reader`** — a separate connection or a `SET ROLE`. Until that wiring lands, the structural guarantee is **proven and ready but not yet binding on the running app**; in-app, invariant #1 still leans on query discipline (which today holds, because no intelligence code reads identity — but that is discipline, not enforcement).
+
+**Fix shape (its own dispatch):**
+- Give `intelligence_reader` a `LOGIN` attribute + credentials (or adopt a `SET ROLE intelligence_reader` wrapper for read-only intelligence transactions), and route intelligence reads (`riskMapService`, MV refreshes, any executive/stewardship read surface) through that role/connection.
+- Keep RLS in mind (PATTERN-001): the role is non-superuser/non-bypassrls, so intelligence reads under it must still set `app.current_org_id` via `withOrgContext`.
+- Decide whether a second pool (intelligence-reader pool) or per-transaction `SET ROLE`/`RESET ROLE` is cleaner; the former is simpler to reason about, the latter avoids a second connection pool.
+- Add a test that asserts an intelligence-path connection **cannot** `SELECT` from a sidecar (the boundary is live in-app, not just at the DB).
+
+**Why deferred:** Decided as a follow-on at the start of the sidecar-extraction dispatch (Decision C). The extraction itself — the net-new schema + role provisioning + write/read repoint — was the scoped deliverable; the connection-routing is a separate, lower-risk change that does not touch schema. The DB-level boundary is the hard part and it is done and verified.
+
+**Target:** Intelligence-layer workstream (the no-grant role becomes load-bearing the moment intelligence reads run under it). See `CANONICAL_STATE_LAYER_DESIGN.md` §3.2 "VERIFIED" note and §9 item 6.

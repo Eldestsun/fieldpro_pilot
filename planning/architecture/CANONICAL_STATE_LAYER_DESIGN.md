@@ -15,15 +15,23 @@
 >   §3.3's normalized shape is target-only. Backfill + complexity_score recompute
 >   have nowhere to write until a migration lands. Migration shape (in-place vs.
 >   shadow column) is its own dispatch.
-> - §9 item **6 OPEN FINDING** — the actor-audit sidecar (§3.2) does **not**
->   exist. Worker identity lives in plaintext (`core.visits.actor_oid`,
->   `core.observations.created_by_oid`, both NOT NULL). Anonymity (invariant #1)
->   is currently enforced by **query discipline only**, not by grants. The
->   structural guarantee is target-state pending sidecar extraction.
+> - §9 item **6 RESOLVED at the DB level (sidecar extraction, 2026-06-01).**
+>   Worker identity has been extracted from the four canonical tables into
+>   no-grant sidecars (`core.{visit,observation,evidence,assignment}_actor_audit`);
+>   the plaintext (and S1-13 cipher) identity columns are **dropped** from
+>   `core.visits`/`observations`/`evidence`/`assignments`; the `intelligence_reader`
+>   role has **no grant** on any sidecar and the `audit_reader` role does. Verified
+>   end-to-end on the working dev DB (drop + permission-denied + all legitimate
+>   reads). **Caveat (not yet binding on the running app):** the app still connects
+>   as `fieldpro` for all queries; the guarantee binds intelligence reads only once
+>   they are routed through `intelligence_reader` — tracked as a follow-on
+>   (KNOWN_ISSUES ISSUE-018). The structural boundary now *exists*; wiring the app
+>   to *use* it is the remaining step. See §3.2 and §9 item 6.
 >
-> Do not treat the normalized-column or sidecar DDL as deployed. Reconcile all DDL
-> against the live schema before any migration. See §9 for the per-item detail and
-> the live-schema reconciliation notes from the 2026-05-30 pass.
+> Do not treat the normalized-column DDL (§9 items 4/5) as deployed. The sidecar
+> DDL (§3.2) IS deployed on dev as of 2026-06-01. Reconcile remaining DDL against
+> the live schema before any migration. See §9 for per-item detail and the
+> live-schema reconciliation notes.
 
 > A portable state layer for any field-condition work that shares these invariants:
 > someone **visits** a **thing**, records **what they found or did**, optionally with **proof** —
@@ -208,32 +216,42 @@ The intelligence layer is given a DB role with **no grant** on `visit_actor_audi
 A signal that tried to attribute a metric to a worker would fail at the permission
 layer, not at code review. That is the guarantee made structural.
 
-> **CURRENT STATE vs. TARGET STATE (verified 2026-05-30, §9 item 6).** The
-> structural guarantee above is **target state, not live state.** As of the
-> 2026-05-30 verification pass, `core.visit_actor_audit` **does not exist**, and
-> worker identity is stored **in plaintext, directly on the canonical tables the
-> intelligence layer must read**:
-> - `core.visits.actor_oid` — `text NOT NULL`
-> - `core.observations.created_by_oid` — `text NOT NULL`
+> **VERIFIED AT THE DB LEVEL — sidecar extraction, 2026-06-01 (§9 item 6).** The
+> structural guarantee above is now **live on dev**, not target. The
+> 2026-06-01 sidecar-extraction migration (see the §9 item 6 entry for commit and
+> changelog) implemented it across **four** canonical tables, not just visits:
+> - Identity was extracted into no-grant sidecars
+>   `core.{visit,observation,evidence,assignment}_actor_audit`, each following one
+>   template: `<entity>_id` PK FK `ON DELETE CASCADE`, `org_id` (RLS-forced,
+>   guarded `org_isolation`), `actor_ref text NOT NULL`, optional
+>   `actor_ref_ciphertext`/`actor_ref_key_id` (the relocated S1-13 envelope —
+>   **populated only on `visit_actor_audit`** today; extending encryption to the
+>   other three is a tracked follow-on, a backfill not a schema change since the
+>   columns already exist), `recorded_at`.
+> - The plaintext (and visit cipher) identity columns —
+>   `core.visits.actor_oid`/`captured_by_oid_ciphertext`/`captured_by_oid_key_id`,
+>   `core.observations.created_by_oid`, `core.evidence.captured_by_oid`,
+>   `core.assignments.created_by_oid` — are **dropped**.
+> - `intelligence_reader` has **no grant** on any sidecar (verified:
+>   `permission denied` on all four); `audit_reader` holds the grant for
+>   legitimate audit/export. A signal that tried to attribute a metric to a worker
+>   now fails at the permission layer **and** finds no column to read — the
+>   guarantee is structural in fact.
 >
-> (A partial at-rest-encryption effort exists on visits — `captured_by_oid_ciphertext`
-> + `captured_by_oid_key_id`, both nullable — but `actor_oid` plaintext NOT NULL
-> sits alongside it, so it does not change the exposure.)
+> (The illustrative DDL above predates the implementation — the live keys are
+> `bigint` not `uuid`, there are four sidecars on the one template, and
+> `visit_actor_audit` carries the S1-13 cipher columns. Treat the migration files
+> `backend/migrations/20260530_sidecar_extraction_{a_additive,b_drop}.sql` —
+> rollbacks under `migrations/rollback/` — as the source of truth for the shape.)
 >
-> Consequently, **invariant #1 (worker anonymity) is presently enforced by QUERY
-> DISCIPLINE only — not by the permission layer.** There is no separate table to
-> withhold a grant on; denying intelligence access to identity today would mean
-> denying it `SELECT` on `core.visits`/`core.observations` themselves, which it
-> must read. The no-grant role test (§9 item 6) therefore **cannot be run against
-> the live schema** — there is no boundary to test.
->
-> Closing this gap requires a dedicated migration that **extracts** `actor_oid`
-> and `created_by_oid` into no-grant sidecars (`core.visit_actor_audit` and an
-> observation-side equivalent), then stands up the `intelligence_reader` role
-> against the real boundary. That is net-new schema work, scoped as its own
-> dispatch and recommended as **the next build target after this §9 pass.** The
-> wording of the guarantee above is deliberately left un-softened: it describes
-> the target the extraction migration must reach.
+> **Caveat — not yet binding on the running app.** The app still opens every
+> connection as `fieldpro`, which retains access. The no-grant boundary binds
+> intelligence reads only once those reads run **as `intelligence_reader`** (a
+> separate connection/role). Until that app-connection wiring lands, invariant #1
+> in the *running app* still leans on query discipline; the DB-level boundary is
+> proven and ready. The wiring is tracked as a follow-on dispatch — see
+> **KNOWN_ISSUES ISSUE-018**. (The roles are `NOLOGIN` group roles for now; the
+> wiring dispatch adds `LOGIN`/credentials or `SET ROLE` routing.)
 
 ### 3.3 Observation — the center of the system
 
@@ -780,22 +798,38 @@ alert.
    normalized-column migration lands** — there is no `norm_status` to count
    against today. (`stop_effort_history.complexity_score` is still written `NULL`
    at `cleanLogService.ts:186`.) Verification staged behind item 4.
-6. **(OPEN FINDING 2026-05-30 — sidecar absent; boundary cannot be tested as
-   designed.)** *Identity sidecar grants.* Confirm the intelligence layer can run
-   under a DB role with no grant on the actor-audit table without breaking
+6. **(RESOLVED at the DB level 2026-06-01 — sidecar extraction; app-wiring is a
+   tracked follow-on.)** *Identity sidecar grants.* Confirm the intelligence layer
+   can run under a DB role with no grant on the actor-audit table without breaking
    existing reads.
 
-   **Verified live state:** the actor-audit sidecar **does not exist** (no
-   `core.visit_actor_audit`, no `%actor%`/`%audit%`/`%identity%` table in
-   `core`). Worker identity is plaintext NOT NULL on the canonical tables
-   intelligence must read (`core.visits.actor_oid`,
-   `core.observations.created_by_oid`). The no-grant role test **cannot run** —
-   there is no separate surface to withhold a grant on. Invariant #1 is presently
-   enforced by **query discipline only**, not by the permission layer. See the
-   "CURRENT STATE vs. TARGET STATE" note in §3.2. Closing this requires a
-   dedicated sidecar-extraction migration (recommended next build target after
-   this pass), after which the `intelligence_reader` no-grant role can be stood
-   up and the refused-read / legitimate-reads matrix demonstrated for real.
+   **Resolution (sidecar-extraction migration, branch `feat/sidecar-extraction`):**
+   Worker identity was extracted from **four** canonical tables (`core.visits`,
+   `core.observations`, `core.evidence`, `core.assignments` — the §9 pass named
+   two; discovery found all four) into no-grant sidecars
+   `core.{visit,observation,evidence,assignment}_actor_audit` (one template; see
+   §3.2). The migration ran in two phases (additive-before-removing): Migration A
+   created the sidecars, backfilled identity, dropped `NOT NULL`, and provisioned
+   the `intelligence_reader` (no sidecar grant) and `audit_reader` (sidecar grant)
+   roles; Migration B dropped the plaintext + S1-13 cipher identity columns. The
+   S1-13 commitment (NIST SC-13/SC-28 audit-logging on decrypt) is preserved by
+   **relocating** the cipher into `visit_actor_audit` (B2), not duplicating it;
+   `oidCipher.decrypt` is storage-agnostic so no functional repoint was needed.
+
+   **Verified on the working dev DB (2026-06-01):** all four sidecars refuse
+   `intelligence_reader` with `permission denied`; `audit_reader` reads them;
+   every legitimate intelligence read (riskMapService CTEs over `core.visits`/
+   `core.observations`, the 5 MVs, `transit_stop_assets`) still works; the four
+   write paths (visit/observation/evidence/assignment) were exercised end-to-end
+   through the real UI (route run, 4 visits, 18 observations, incl. the
+   `mapInfraIssue` path) and confirmed to write identity to the sidecars with the
+   canonical columns NULL, then dropped. See the "VERIFIED" note in §3.2.
+
+   **Remaining (does not reopen the finding):** the running app still connects as
+   `fieldpro`, so the boundary binds intelligence reads only once they are routed
+   through `intelligence_reader`. That app-connection wiring is a follow-on —
+   **KNOWN_ISSUES ISSUE-018**. The DB-level boundary is proven; using it from the
+   app is the next step.
 
 ---
 

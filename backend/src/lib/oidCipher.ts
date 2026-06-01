@@ -1,6 +1,10 @@
 /**
- * oidCipher.ts — Application-layer AES-256-GCM envelope encryption for
- * core.visits.actor_oid (stored in captured_by_oid_ciphertext / _key_id).
+ * oidCipher.ts — Application-layer AES-256-GCM envelope encryption for worker
+ * OID identity. As of 2026-05-30 the ciphertext is stored in the identity sidecar
+ * core.visit_actor_audit (actor_ref_ciphertext / actor_ref_key_id), relocated
+ * from core.visits per CANONICAL_STATE_LAYER_DESIGN §3.2. encrypt/decrypt and the
+ * mandatory admin.oid_decrypt audit trail are unchanged — only the storage
+ * location moved. This module is storage-agnostic: callers pass the ciphertext in.
  *
  * WHY ENVELOPE ENCRYPTION:
  * A per-record DEK (data encryption key) is generated for each OID. The DEK
@@ -259,10 +263,10 @@ function unpackBlob(blob: Buffer): {
 /**
  * Encrypt an OID string using envelope encryption.
  *
- * @param plaintext - the Azure Entra OID to encrypt (e.g. actor_oid)
+ * @param plaintext - the Azure Entra OID to encrypt (the worker actor ref)
  * @param reason    - documented reason for this encryption (for audit paper trail;
  *                    stored in the decrypt audit entry when the OID is later read)
- * @returns ciphertext blob (BYTEA) and keyId (stored in captured_by_oid_key_id)
+ * @returns ciphertext blob (BYTEA) and keyId (stored in core.visit_actor_audit.actor_ref_key_id)
  */
 export async function encrypt(
   plaintext: string,
@@ -298,8 +302,8 @@ export async function encrypt(
  * a trail. This converts any bad-actor key-release request from an invisible
  * operation into a documented, timestamped, actor-attributed event.
  *
- * @param ciphertext - BYTEA blob from core.visits.captured_by_oid_ciphertext
- * @param keyId      - from core.visits.captured_by_oid_key_id
+ * @param ciphertext - BYTEA blob from core.visit_actor_audit.actor_ref_ciphertext
+ * @param keyId      - from core.visit_actor_audit.actor_ref_key_id
  * @param reason     - required justification; written verbatim to audit log detail
  * @param req        - authenticated HTTP request (supplies actor_oid + org_id for audit)
  * @param visitId    - optional: core.visits.id being decrypted (written to resource_id)

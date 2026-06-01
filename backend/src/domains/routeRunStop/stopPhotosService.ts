@@ -54,19 +54,28 @@ export async function createStopPhotos(
             );
         }
 
-        // Canonical evidence write
+        // Canonical evidence write — captured-by identity goes to the no-grant
+        // sidecar core.evidence_actor_audit (§3.2), never onto core.evidence.
         const evidenceRes = await client.query(
-            `INSERT INTO core.evidence (org_id, visit_id, observation_id, kind, storage_key, captured_by_oid)
-             SELECT v.org_id, v.id, NULL, $1, $2, $3
+            `INSERT INTO core.evidence (org_id, visit_id, observation_id, kind, storage_key)
+             SELECT v.org_id, v.id, NULL, $1, $2
              FROM core.visits v
-             WHERE v.client_visit_id = $4
-             LIMIT 1`,
-            [kind, key, userOid, clientVisitId]
+             WHERE v.client_visit_id = $3
+             LIMIT 1
+             RETURNING id, org_id`,
+            [kind, key, clientVisitId]
         );
 
         if (evidenceRes.rowCount === 0) {
             console.warn(
                 `[createStopPhotos] No visit found for routeRunStopId=${routeRunStopId} — evidence row skipped for key=${key}`
+            );
+        } else {
+            await client.query(
+                `INSERT INTO core.evidence_actor_audit (evidence_id, org_id, actor_ref)
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT (evidence_id) DO NOTHING`,
+                [evidenceRes.rows[0].id, evidenceRes.rows[0].org_id, userOid]
             );
         }
     }
