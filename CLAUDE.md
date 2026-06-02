@@ -174,6 +174,19 @@ Two auth paths, two separate contexts:
 
 Do not commit directly to `main`. Do not cherry-pick. When a workstream branch is complete, it is closed — do not reopen it.
 
+### Merge discipline — PRs from here forward
+
+Feature branches reach `main` via PR, not direct merge. Once work is reviewed and pushed, open a PR on the feature branch.
+
+**PR description structure:**
+- **SIGNIFICANCE:** one or two sentences on what this commit means — what it unlocks or closes, not just what it does.
+- **WHAT LANDED:** by phase or file group, brief — the changelog is the long-form record; the PR is the orientation.
+- **HONEST RESIDUAL:** if the work is partial, name what's still ahead and link the tracking issue.
+
+**Title convention:** if the work is partial, carry `(partial — ISSUE-XXX)` in the title so the partial state is visible at the PR-list level, not just in the description body.
+
+Agents may draft PR descriptions from the changelog. The human reviews before opening the PR for merge.
+
 ---
 
 ## MCP Tools
