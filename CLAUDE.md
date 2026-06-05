@@ -77,7 +77,7 @@ Analysis-only tasks (no code or schema changes) do not require a changelog entry
 - `planning/architecture/current_state.md` — always (marks broken state + must-not-regress list)
 - `pg_state.sql` — DB-related tasks only. **Note: this file becomes stale after any schema-changing tier or migration. If the task involves tables added or dropped after 2026-05-08 (Tiers 4, 5, R10), regenerate it first:** `PGPASSWORD=fieldpro_pass pg_dump -h localhost -U fieldpro -d fieldpro_db --schema-only > pg_state.sql`
 - `planning/architecture/ADAPTER_BOUNDARY.md` — required for any task touching `core.observations`, `core.visits`, `observationService.ts`, `visitService.ts`, or `riskMapService.ts`
-- `planning/architecture/CANONICAL_STATE_LAYER_DESIGN.md` — required for any task touching `core.observations`, `core.visits`, `core.assets`, `core.evidence`, `core.observation_type_registry`, the observation normalizer, or any intelligence/MV that reads observation condition. **STATUS: partially verified (§9 items 1, 2, 3 closed 2026-05-30; items 4, 5, 6 are documented findings with named follow-on dispatches).** The four-kind taxonomy and no-manufactured-state rules are enforced in code. The structural guarantees of §3.2 (identity sidecar) and §4 (normalized columns) are target state pending dedicated migrations. Conform new work to this doc; consult §9 for current-vs-target on a given guarantee before migrating against it.
+- `planning/architecture/CANONICAL_STATE_LAYER_DESIGN.md` — required for any task touching `core.observations`, `core.visits`, `core.assets`, `core.evidence`, `core.observation_type_registry`, the observation normalizer, or any intelligence/MV that reads observation condition. **STATUS: partially verified.** §9 items 1, 2, 3 closed 2026-05-30. Item 6 (§3.2 identity sidecar) **verified at the DB level 2026-06-01** — worker identity is extracted into no-grant sidecars (`core.*_actor_audit`) and the plaintext columns are dropped; the no-grant `intelligence_reader` boundary is structural at the DB level, with app-connection wiring tracked as a follow-on (KNOWN_ISSUES ISSUE-018). Items 4, 5 (§4 normalized columns) remain **deferred** — target state pending a dedicated migration. The four-kind taxonomy and no-manufactured-state rules are enforced in code. Conform new work to this doc; consult §9 for current-vs-target on a given guarantee before migrating against it.
 
 ---
 
@@ -173,6 +173,19 @@ Two auth paths, two separate contexts:
    The new commit must appear in the output. If it does not, the push silently failed — STOP, do not mark the task complete, and report the discrepancy to the operator. Do not retry without diagnosis.
 
 Do not commit directly to `main`. Do not cherry-pick. When a workstream branch is complete, it is closed — do not reopen it.
+
+### Merge discipline — PRs from here forward
+
+Feature branches reach `main` via PR, not direct merge. Once work is reviewed and pushed, open a PR on the feature branch.
+
+**PR description structure:**
+- **SIGNIFICANCE:** one or two sentences on what this commit means — what it unlocks or closes, not just what it does.
+- **WHAT LANDED:** by phase or file group, brief — the changelog is the long-form record; the PR is the orientation.
+- **HONEST RESIDUAL:** if the work is partial, name what's still ahead and link the tracking issue.
+
+**Title convention:** if the work is partial, carry `(partial — ISSUE-XXX)` in the title so the partial state is visible at the PR-list level, not just in the description body.
+
+Agents may draft PR descriptions from the changelog. The human reviews before opening the PR for merge.
 
 ---
 

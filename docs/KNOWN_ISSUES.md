@@ -389,3 +389,85 @@ An unrecognized enum key should produce an **explicit** signal rather than a sil
 Independent of the two deferred §9 migrations (normalized-columns backfill; actor-audit sidecar extraction). Can be fixed before, after, or alongside them. Live today with low-volume impact while the specific hazard/infra key sets are stable; the risk is **latent** and grows the moment the capture UI gains a hazard/infra option ahead of a registry seed. See the §9 verification changelog (`docs/changelog/2026-05-30-s9-verification-pass.md`) and `CANONICAL_STATE_LAYER_DESIGN.md` §2.1 (umbrella anti-pattern) and §9 item 3 (validation gap).
 
 **Target:** Fold into the offline-validation / registry-aware write-validation buildout (§9 item 3 follow-up), or fix standalone if a new specific hazard/infra type is seeded before that buildout lands — whichever comes first.
+
+---
+
+## ISSUE-018 — Intelligence reads not yet routed through the `intelligence_reader` role — sidecar boundary not yet binding on the running app
+**Status:** Open — follow-on to the 2026-06-01 sidecar-extraction migration
+**Discovered:** 2026-06-01 (sidecar extraction, `feat/sidecar-extraction`)
+**Area:** backend — DB connection/role wiring (`backend/src/db.ts` pool, intelligence read paths: `riskMapService`, MVs, any future intelligence consumer)
+**Severity:** medium (latent — the structural boundary exists at the DB level but the app does not yet use it)
+
+**Context:**
+The sidecar-extraction migration (2026-06-01) made worker non-attribution (canonical state layer invariant #1) structural at the DB level: worker identity now lives only in the no-grant sidecars `core.{visit,observation,evidence,assignment}_actor_audit`, the plaintext identity columns are dropped from the canonical tables, and a `NOLOGIN` group role `intelligence_reader` exists with **no grant** on any sidecar (verified: `permission denied`). An `audit_reader` role holds the sidecar grant for legitimate audit/export.
+
+**The gap:**
+The running app opens **every** DB connection as `fieldpro` (see the pool in `backend/src/db.ts`), and `fieldpro` retains access to everything (it must — it writes the sidecars and runs the export/delete paths). The no-grant boundary therefore binds an *intelligence query* only once that query actually runs **as `intelligence_reader`** — a separate connection or a `SET ROLE`. Until that wiring lands, the structural guarantee is **proven and ready but not yet binding on the running app**; in-app, invariant #1 still leans on query discipline (which today holds, because no intelligence code reads identity — but that is discipline, not enforcement).
+
+**Fix shape (its own dispatch):**
+- Give `intelligence_reader` a `LOGIN` attribute + credentials (or adopt a `SET ROLE intelligence_reader` wrapper for read-only intelligence transactions), and route intelligence reads (`riskMapService`, MV refreshes, any executive/stewardship read surface) through that role/connection.
+- Keep RLS in mind (PATTERN-001): the role is non-superuser/non-bypassrls, so intelligence reads under it must still set `app.current_org_id` via `withOrgContext`.
+- Decide whether a second pool (intelligence-reader pool) or per-transaction `SET ROLE`/`RESET ROLE` is cleaner; the former is simpler to reason about, the latter avoids a second connection pool.
+- Add a test that asserts an intelligence-path connection **cannot** `SELECT` from a sidecar (the boundary is live in-app, not just at the DB).
+
+**Why deferred:** Decided as a follow-on at the start of the sidecar-extraction dispatch (Decision C). The extraction itself — the net-new schema + role provisioning + write/read repoint — was the scoped deliverable; the connection-routing is a separate, lower-risk change that does not touch schema. The DB-level boundary is the hard part and it is done and verified.
+
+---
+
+## ISSUE-019 — Frontend TS error: `StopDetail.tsx` `PhotoDto` id type mismatch fails `build-frontend` on every PR
+**Status:** Open — pre-existing, surfaced by sidecar-PR CI triage (2026-06-04)
+**Discovered:** 2026-06-04 (CI triage on `feat/sidecar-extraction` PR #1)
+**Area:** frontend — `frontend/src/components/today-route/StopDetail.tsx:394` (`PhotoDto` type)
+**Severity:** medium (blocks green `build-frontend` CI on every PR; no runtime data impact)
+
+**Symptom:**
+`tsc -b` fails the `build-frontend` CI check with `TS2345` at `StopDetail.tsx:394`. A `setPhotos`-style state updater builds an object literal with `id: number`, but `PhotoDto.id` is typed `string` — so the updater's return type is not assignable to `SetStateAction<PhotoDto[]>`. Build exits with code 2.
+
+**Scope — pre-existing, not caused by the sidecar work:**
+The identical failure is present on `main` (verified against CI run `26703160245`, head `69016fec`, 2026-05-31) with the same file, line, and error. The sidecar PR touches **zero** frontend files. The `created_by_oid` field name visible inside the offending object literal is a **red herring** — it is a coincidental field name in a frontend literal, not a reference to the dropped backend identity column; the actual error is purely `id` number-vs-string.
+
+**Fix shape (frontend-only):**
+Either correct the literal to produce `id: string` (coerce/format the numeric id), or update the `PhotoDto` type to `id: number` if a numeric id is intentional and propagate that through consumers. One file, no backend/schema involvement.
+
+**Priority:** Blocks green `build-frontend` CI on every PR. Should land soon, but is not blocking other merges since `main` is already in this state.
+
+---
+
+## ISSUE-020 — Dependency: `vitest <4.1.0` critical advisory (GHSA-5xrq-8626-4rwp) fails `dependency-audit`
+**Status:** Open — environmental (advisory-DB drift), surfaced by sidecar-PR CI triage (2026-06-04)
+**Discovered:** 2026-06-04 (CI triage on `feat/sidecar-extraction` PR #1)
+**Area:** backend — dev dependency `vitest` (`backend/package.json`)
+**Severity:** moderate (security advisory on a dev/test dependency; fails the `dependency-audit` check)
+
+**Symptom:**
+`pnpm audit --audit-level=high` reports a **critical** advisory against `vitest` (`<4.1.0`, GHSA-5xrq-8626-4rwp — "when the Vitest UI server is listening, an arbitrary file can be read and executed"), so the backend audit step exits 1 and fails the `dependency-audit` check.
+
+**Scope — environmental, not caused by the diff:**
+The same `vitest` version **passed** `dependency-audit` on `main` as recently as 2026-05-31 (CI run `26703160245` — `dependency-audit: success`); the advisory was published/escalated since then. `pnpm audit` queries a **live** advisory database, so this is version/time drift, not anything introduced by the PR (which touches no `package.json`, lockfile, or `vitest`). **Re-running CI will not clear it** — the advisory persists until the dependency is bumped.
+
+**Fix shape (separate chore commit):**
+Bump `vitest` to `>=4.1.0` in backend dev dependencies, refresh the lockfile, and verify no breaking changes in the test runner / fixtures (`backend/tests/`).
+
+**Priority:** Security advisory; bump in the next reasonable window. Not actively exploitable in dev (the vulnerability requires the Vitest UI server to be listening), but should not linger.
+
+---
+
+## ISSUE-021 — CI config: missing `AZURE_TENANT_ID` / `AZURE_API_AUDIENCE` hard-throws at import, preventing ALL backend test execution
+**Status:** Open — pre-existing CI-config gap, surfaced by sidecar-PR CI triage (2026-06-04)
+**Discovered:** 2026-06-04 (CI triage on `feat/sidecar-extraction` PR #1)
+**Area:** CI config (`.github/workflows/ci.yml` `test-backend` job secrets) + `backend/src/authz.ts:14` (module-load env check)
+**Severity:** HIGH (structural — backend CI has had no test coverage for an unknown period)
+
+**Symptom:**
+`backend/src/authz.ts:14` throws `Error: Missing AZURE_TENANT_ID or AZURE_API_AUDIENCE in environment.` at **module import time** when those env vars are empty. In CI they are empty: the `test-backend` job maps them from repo secrets (`AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}`, `AZURE_API_AUDIENCE: ${{ secrets.AZURE_API_AUDIENCE }}`) that are unset. `tests/canonical/authClaims.test.ts:2` imports `authz.ts`, so the throw fires at test **bootstrap** — the runner (`ts-node tests/run.ts`) dies before a single backend test loads, and the job exits 1.
+
+**Scope — pre-existing on main, and a coverage blind spot:**
+The identical failure (same `authz.ts:14` throw, same `authClaims.test.ts:2` import site) is present on `main` (CI run `26703160245`, head `69016fec`, 2026-05-31). The sidecar PR touches neither `authz.ts` nor the CI workflow. **Consequence:** because the test process dies at bootstrap, **no backend test has actually run in CI for an unknown period** — every backend change in that window (including this sidecar PR) has landed under **local-test-only** verification. The migrations in the sidecar PR did apply cleanly in CI (`Migration run complete`), but the test suite never executed.
+
+**Fix shape — choose one:**
+- **(a) CI secrets:** add `AZURE_TENANT_ID` and `AZURE_API_AUDIENCE` to repo secrets for the `test-backend` job. Dummy values that satisfy the non-empty check are sufficient — the tests do not call Azure, they only need the import not to throw.
+- **(b) Soften the env check:** lazy-load or guard the check in `authz.ts` so module import does not hard-throw — fail later, at first actual auth use, with an error message that distinguishes "config missing" from "config invalid." This also makes any test that doesn't exercise auth importable without Azure config.
+
+**Priority:** HIGH. This is the issue that means backend CI is **structurally broken** for the whole project — green backend CI is currently impossible regardless of diff quality. Should be the next real fix after the sidecar PR merges. Without it, every backend change going forward lands without CI verification, including ISSUE-018's `intelligence_reader` wiring (whose fix shape explicitly calls for a boundary test that would itself never run under the current CI state). See ISSUE-018.
+
+**Target:** Intelligence-layer workstream (the no-grant role becomes load-bearing the moment intelligence reads run under it). See `CANONICAL_STATE_LAYER_DESIGN.md` §3.2 "VERIFIED" note and §9 item 6.

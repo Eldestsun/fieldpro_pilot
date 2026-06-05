@@ -184,27 +184,43 @@ async function fetchOrgData(
     [orgId],
   );
 
+  // Identity now lives in the per-table sidecars (§3.2). LEFT JOIN and alias back
+  // to the original column names so the export bundle format is unchanged.
   const assignRes = await client.query(
-    "SELECT * FROM core.assignments WHERE org_id = $1",
+    `SELECT a.*, s.actor_ref AS created_by_oid
+     FROM core.assignments a
+     LEFT JOIN core.assignment_actor_audit s ON s.assignment_id = a.id
+     WHERE a.org_id = $1`,
     [orgId],
   );
 
   // Include captured_by_oid (plaintext) AND the S1-13 ciphertext columns so
   // the bundle is consistent with the S1-4 export-and-delete format.
   const visitsRes = await client.query(
-    "SELECT * FROM core.visits WHERE org_id = $1",
+    `SELECT v.*, s.actor_ref AS actor_oid,
+            s.actor_ref_ciphertext AS captured_by_oid_ciphertext,
+            s.actor_ref_key_id     AS captured_by_oid_key_id
+     FROM core.visits v
+     LEFT JOIN core.visit_actor_audit s ON s.visit_id = v.id
+     WHERE v.org_id = $1`,
     [orgId],
   );
   const visitIds: string[] = visitsRes.rows.map((r: any) => String(r.id));
 
   const obsRes = await client.query(
-    "SELECT * FROM core.observations WHERE org_id = $1",
+    `SELECT o.*, s.actor_ref AS created_by_oid
+     FROM core.observations o
+     LEFT JOIN core.observation_actor_audit s ON s.observation_id = o.id
+     WHERE o.org_id = $1`,
     [orgId],
   );
 
   // core.evidence: metadata only — storage_key references blobs; blobs not included.
   const evRes = await client.query(
-    "SELECT * FROM core.evidence WHERE org_id = $1",
+    `SELECT e.*, s.actor_ref AS captured_by_oid
+     FROM core.evidence e
+     LEFT JOIN core.evidence_actor_audit s ON s.evidence_id = e.id
+     WHERE e.org_id = $1`,
     [orgId],
   );
 

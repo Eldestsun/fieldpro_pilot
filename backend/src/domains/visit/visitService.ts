@@ -103,11 +103,15 @@ export async function ensureVisitForRouteRunStop(client: PoolClient, params: Ens
   );
   const assignmentId: number | null = assignmentResult.rows[0]?.id ?? null;
 
-  // 3) Encrypt actor OID before insert (S1-13 dual-write)
+  // 3) Encrypt actor OID for the identity sidecar. The S1-13 KMS envelope is
+  //    relocated to core.visit_actor_audit (CANONICAL_STATE_LAYER_DESIGN §3.2);
+  //    encrypt + the admin.oid_decrypt audit trail are unchanged, only the
+  //    storage location moved off the canonical row.
   const { ciphertext: oidCiphertext, keyId: oidKeyId } =
     await encryptOid(params.actorOid, "visit_create");
 
-  // 4) Insert (idempotent + race-safe)
+  // 4) Insert the visit (idempotent + race-safe). Worker identity is NOT written
+  //    to core.visits — it goes to the no-grant sidecar in step 5.
   const insert = await client.query(
     `
     INSERT INTO core.visits (
@@ -115,15 +119,12 @@ export async function ensureVisitForRouteRunStop(client: PoolClient, params: Ens
       location_id,
       primary_asset_id,
       assignment_id,
-      actor_oid,
       visit_type,
       outcome,
       client_visit_id,
-      started_at,
-      captured_by_oid_ciphertext,
-      captured_by_oid_key_id
+      started_at
     )
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8, NOW(), $9, $10)
+    VALUES ($1,$2,$3,$4,$5,$6,$7, NOW())
     ON CONFLICT (client_visit_id) DO NOTHING
     RETURNING id
     `,
@@ -132,29 +133,43 @@ export async function ensureVisitForRouteRunStop(client: PoolClient, params: Ens
       locationId,
       assetId,
       assignmentId,
-      params.actorOid,        // plaintext retained during dual-write period
       params.visitType,
       params.outcome ?? null,
       visitClientId,
-      oidCiphertext,
-      oidKeyId,
     ]
   );
 
-  if (insert.rows.length) return insert.rows[0].id as number;
-
-
-  // Concurrent insert: fetch the row that won the race
-  const after = await client.query(
-    `SELECT id FROM core.visits WHERE client_visit_id = $1 LIMIT 1`,
-    [visitClientId]
-  );
-  if (!after.rows.length) {
-    throw new Error(
-      `ensureVisitForRouteRunStop: insert race but visit not found for client_visit_id=${visitClientId}`
+  let visitId: number;
+  if (insert.rows.length) {
+    visitId = insert.rows[0].id as number;
+  } else {
+    // Concurrent insert: fetch the row that won the race
+    const after = await client.query(
+      `SELECT id FROM core.visits WHERE client_visit_id = $1 LIMIT 1`,
+      [visitClientId]
     );
+    if (!after.rows.length) {
+      throw new Error(
+        `ensureVisitForRouteRunStop: insert race but visit not found for client_visit_id=${visitClientId}`
+      );
+    }
+    visitId = after.rows[0].id as number;
   }
-  return after.rows[0].id as number;
+
+  // 5) Identity sidecar — worker OID (plaintext + S1-13 envelope) lives here,
+  //    never on core.visits. intelligence_reader has no grant on this table; the
+  //    labor-safety boundary (invariant #1) is structural here, not in query code.
+  await client.query(
+    `
+    INSERT INTO core.visit_actor_audit
+      (visit_id, org_id, actor_ref, actor_ref_ciphertext, actor_ref_key_id)
+    VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (visit_id) DO NOTHING
+    `,
+    [visitId, orgId, params.actorOid, oidCiphertext, oidKeyId]
+  );
+
+  return visitId;
 }
 
 /**

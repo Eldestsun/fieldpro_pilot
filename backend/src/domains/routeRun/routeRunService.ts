@@ -413,28 +413,44 @@ export async function createRouteRun(
     }
 
     // Write canonical assignments — one per stop, within the same transaction.
-    // created_by_oid is NOT NULL in schema; fall back to 'system' if Lead OID unavailable.
+    // Creator identity goes to the no-grant sidecar core.assignment_actor_audit
+    // (§3.2), never onto core.assignments. Fall back to 'system' if Lead OID unavailable.
     const effectiveCreatedByOid = created_by_oid ?? 'system';
     if (!created_by_oid) {
-      console.warn('[createRouteRun] created_by_oid not provided — using system placeholder for core.assignments');
+      console.warn('[createRouteRun] created_by_oid not provided — using system placeholder for assignment_actor_audit');
     }
-    await client.query(`
+    const assignRes = await client.query(`
       INSERT INTO core.assignments (
         org_id, assignment_type, status, location_id,
-        primary_asset_id, planned_for_date, created_by_oid,
+        primary_asset_id, planned_for_date,
         source_system, source_ref, meta
       )
       SELECT
         a.org_id, 'transit_stop_clean', 'planned', loc.location_id,
-        s.asset_id, $1::date, $2,
-        'route_runs', $3::text, '{}'::jsonb
+        s.asset_id, $1::date,
+        'route_runs', $2::text, '{}'::jsonb
       FROM route_run_stops rrs
       JOIN public.stops s ON s.stop_id = rrs.stop_id
       JOIN public.assets a ON a.id = rrs.asset_id
       LEFT JOIN core.v_locations_transit loc ON loc.stop_id = rrs.stop_id
-      WHERE rrs.route_run_id = $3::bigint
+      WHERE rrs.route_run_id = $2::bigint
       ON CONFLICT DO NOTHING
-    `, [runDateVal, effectiveCreatedByOid, routeRunId]);
+      RETURNING id, org_id
+    `, [runDateVal, routeRunId]);
+
+    // Identity sidecar for the assignments just created (RETURNING yields only the
+    // rows actually inserted, so ON CONFLICT-skipped duplicates get no sidecar row).
+    if (assignRes.rows.length > 0) {
+      await client.query(`
+        INSERT INTO core.assignment_actor_audit (assignment_id, org_id, actor_ref)
+        SELECT UNNEST($1::bigint[]), UNNEST($2::bigint[]), $3
+        ON CONFLICT (assignment_id) DO NOTHING
+      `, [
+        assignRes.rows.map((r: any) => r.id),
+        assignRes.rows.map((r: any) => r.org_id),
+        effectiveCreatedByOid,
+      ]);
+    }
 
     await client.query("COMMIT");
 
