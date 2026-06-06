@@ -21,18 +21,41 @@ thinking; an open log of latent issues reads as unfinished foundation.
 The pilot pitch ("this is real, it's structural, it's defensible")
 depends on the foundation being visibly done.
 
-## Phase 1 — CI / test infrastructure (gate dispatch, must be first)
+## Phase 1 — CI / test infrastructure (gate dispatch, must be first) — ✅ COMPLETE 2026-06-05
 
 The safety net for everything downstream. Backend integration tests
 must run on CI before any subsequent fix can be safely landed — without
 that net, fixing deferred items late is unverified.
 
-| Issue | Action | Effort |
-|-------|--------|--------|
-| ISSUE-022 | Add seed step to `ci.yml`'s test-backend job after migrations (Option A from the issue's triage). Seed TEST_POOL and any other minimal fixture rows. | half day to day |
-| ISSUE-009 | Fix fixture stop_id → location_id mapping broken after R11. Pair with 022 since both touch test infrastructure. | (in same dispatch) |
+| Issue | Action | Effort | Status |
+|-------|--------|--------|--------|
+| ISSUE-022 | Add seed step to `ci.yml`'s test-backend job after migrations (Option A from the issue's triage). Seed TEST_POOL and any other minimal fixture rows. | half day to day | ✅ Fixed 2026-06-05 |
+| ISSUE-009 | Fix fixture stop_id → location_id mapping broken after R11. Pair with 022 since both touch test infrastructure. | (in same dispatch) | ✅ Fixed 2026-06-05 (same seed) |
 
 Single paired dispatch. Phase 1 ships in ~1 dispatch.
+
+**Completion note (2026-06-05).** The Phase 1 gate criterion — *backend
+integration tests run on CI* — is met: the suite now executes end-to-end
+with no fixture-setup crash (ISSUE-022/009 fixed via
+`backend/tests/fixtures/seed.sql` + a CI seed step). The dispatch also
+folded in **ISSUE-023** (5 canonical tests referencing sidecar-dropped
+identity columns — filed and fixed same dispatch), since stale-test fixes
+are the same *shape* of work as the seed work.
+
+Two findings surfaced that are a different *kind* of work and were filed
+for their proper dispatches rather than folded in:
+- **ISSUE-024** — latent `sync_transit_stop_primary_asset` trigger defect
+  (omits NOT NULL `org_id`); seed works around it, trigger still needs a
+  dedicated fix.
+- **ISSUE-025** — CI's `test-backend` connects as a superuser, bypassing
+  RLS, so six RLS-enforcement tests stay red on CI. Its resolution is
+  bound to **ISSUE-018**'s app-connection-role wiring (Phase 3) and
+  should be decided there.
+
+**Full-green CI awaits ISSUE-024 and ISSUE-025.** The gate goal (suite
+executes; failures are categorized and tracked, not fixture crashes) is
+satisfied now; "every check green" follows once 024 and 025 land in
+their dispatches.
 
 ## Phase 2 — Small contained fixes (parallelizable, low risk)
 
