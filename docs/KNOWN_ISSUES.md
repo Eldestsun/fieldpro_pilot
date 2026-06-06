@@ -412,6 +412,8 @@ The running app opens **every** DB connection as `fieldpro` (see the pool in `ba
 
 **Why deferred:** Decided as a follow-on at the start of the sidecar-extraction dispatch (Decision C). The extraction itself — the net-new schema + role provisioning + write/read repoint — was the scoped deliverable; the connection-routing is a separate, lower-risk change that does not touch schema. The DB-level boundary is the hard part and it is done and verified.
 
+**Target:** Intelligence-layer workstream (the no-grant role becomes load-bearing the moment intelligence reads run under it). See `CANONICAL_STATE_LAYER_DESIGN.md` §3.2 "VERIFIED" note and §9 item 6.
+
 ---
 
 ## ISSUE-019 — Frontend TS error: `StopDetail.tsx` `PhotoDto` id type mismatch fails `build-frontend` on every PR
@@ -453,10 +455,13 @@ Bump `vitest` to `>=4.1.0` in backend dev dependencies, refresh the lockfile, an
 ---
 
 ## ISSUE-021 — CI config: missing `AZURE_TENANT_ID` / `AZURE_API_AUDIENCE` hard-throws at import, preventing ALL backend test execution
-**Status:** Open — pre-existing CI-config gap, surfaced by sidecar-PR CI triage (2026-06-04)
+**Status:** Fixed 2026-06-05 — `AZURE_TENANT_ID` and `AZURE_API_AUDIENCE` added to repo secrets (Fix shape (a)) for the `test-backend` job
 **Discovered:** 2026-06-04 (CI triage on `feat/sidecar-extraction` PR #1)
 **Area:** CI config (`.github/workflows/ci.yml` `test-backend` job secrets) + `backend/src/authz.ts:14` (module-load env check)
-**Severity:** HIGH (structural — backend CI has had no test coverage for an unknown period)
+**Severity:** HIGH (structural — backend CI had no test coverage for an unknown period)
+
+**Resolution:**
+Fix shape (a) was taken: the two repo secrets were populated, so `authz.ts:14` no longer throws at module import and the `ts-node tests/run.ts` bootstrap completes. Confirmed by the first post-fix CI test run (workflow run #81 on `45ae234`, the merged sidecar commit): the suite now **loads and executes** — pure-function tests (e.g. `deriveClientVisitId`) pass, and the run reaches the integration tests rather than dying at the `authz` import. The env-check is no longer the blocker. That same run immediately surfaced the *next* layer — a missing `TEST_POOL` seed row in the CI test database — now tracked as ISSUE-022. `authz.ts` was left unchanged (Fix shape (b) not taken); the module still hard-throws on genuinely-absent config, which is acceptable now that CI supplies the values.
 
 **Symptom:**
 `backend/src/authz.ts:14` throws `Error: Missing AZURE_TENANT_ID or AZURE_API_AUDIENCE in environment.` at **module import time** when those env vars are empty. In CI they are empty: the `test-backend` job maps them from repo secrets (`AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}`, `AZURE_API_AUDIENCE: ${{ secrets.AZURE_API_AUDIENCE }}`) that are unset. `tests/canonical/authClaims.test.ts:2` imports `authz.ts`, so the throw fires at test **bootstrap** — the runner (`ts-node tests/run.ts`) dies before a single backend test loads, and the job exits 1.
@@ -470,4 +475,24 @@ The identical failure (same `authz.ts:14` throw, same `authClaims.test.ts:2` imp
 
 **Priority:** HIGH. This is the issue that means backend CI is **structurally broken** for the whole project — green backend CI is currently impossible regardless of diff quality. Should be the next real fix after the sidecar PR merges. Without it, every backend change going forward lands without CI verification, including ISSUE-018's `intelligence_reader` wiring (whose fix shape explicitly calls for a boundary test that would itself never run under the current CI state). See ISSUE-018.
 
-**Target:** Intelligence-layer workstream (the no-grant role becomes load-bearing the moment intelligence reads run under it). See `CANONICAL_STATE_LAYER_DESIGN.md` §3.2 "VERIFIED" note and §9 item 6.
+---
+
+## ISSUE-022 — CI test database missing `TEST_POOL` seed row, causes all integration tests to fail
+**Status:** Open — pre-existing CI gap, surfaced once ISSUE-021's fix restored backend test execution (2026-06-05)
+**Discovered:** 2026-06-05 (first post-ISSUE-021 CI test run — workflow run #81 on `45ae234`)
+**Area:** CI config (`.github/workflows/ci.yml` `test-backend` job — no seed step) + `backend/tests/setup.ts` `createRouteRunFixture` (~line 38)
+**Severity:** HIGH (every integration test in `canonical/` fails; backend changes still land without integration coverage)
+
+**Symptom:**
+`createRouteRunFixture` references `route_pool_id 'TEST_POOL'` from the test database. Every integration test that uses the fixture fails with `route_pool_id TEST_POOL not found`. Tests that do **not** use the fixture (pure-function tests such as `deriveClientVisitId`) pass — so the suite now loads and runs (ISSUE-021 is genuinely fixed), but every fixture-backed integration test errors out.
+
+**Scope — pre-existing, not caused by the sidecar work:**
+The `TEST_POOL` seed row exists on local dev DBs (created manually or by a seed script at some point) but **not** on CI's test database: the workflow's "Run migrations" step creates **schema only**, not seed data. The gap was invisible until now because, until ISSUE-021 closed, the suite died at bootstrap before any integration test could run. The sidecar work has no relationship to test seed data — this same failure would occur on a CI run of **any** branch, including `main` at any point in the past several weeks; verifiable by triggering a CI run on a branch with no sidecar changes. Affects every integration test in the `canonical/` directory (visits, observations, evidence, and likely more — the first CI run's failure list was the visible portion).
+
+**Fix shape — two reasonable options, neither implemented here:**
+- **(a) Seed step in CI:** add a seed step to the `test-backend` job after "Run migrations" — a small SQL file (e.g. `backend/tests/fixtures/seed.sql`) or a node script inserting the minimal rows (`TEST_POOL` and any siblings the integration tests assume). Smallest change, but couples CI config to test assumptions. **Probably the right first move.**
+- **(b) Self-seeding fixture:** make `createRouteRunFixture` own its state — create `TEST_POOL` if absent (idempotent), or generate ephemeral random IDs per run, or adopt a fixture strategy that assumes no pre-existing rows. Larger change, but more durable (tests own their own state).
+
+**Priority:** HIGH (same standing ISSUE-021 had). Every backend change going forward lands without **integration**-test coverage until this is fixed. Should be the next CI-tooling dispatch after ISSUE-021's closure, before any further substantive backend changes ship.
+
+**Relation to ISSUE-021:** Same structural shape — a pre-existing CI gap that stayed invisible while CI was broken in another way. Closing ISSUE-021 (the `authz` import throw) surfaced ISSUE-022 (the missing seed). If a further "next layer" gap exists behind ISSUE-022, the same pattern will surface it once 022 closes.
