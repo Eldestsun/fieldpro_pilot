@@ -57,18 +57,27 @@ executes; failures are categorized and tracked, not fixture crashes) is
 satisfied now; "every check green" follows once 024 and 025 land in
 their dispatches.
 
-## Phase 2 — Small contained fixes (parallelizable, low risk)
+## Phase 2 — Small contained fixes (parallelizable, low risk) — ✅ COMPLETE 2026-06-06
 
 Once CI runs tests, these can land quickly with the safety net active.
 
-| Issue | Action | Effort |
-|-------|--------|--------|
-| ISSUE-019 | `StopDetail.tsx:394` PhotoDto id type fix (one file). | 30 min |
-| ISSUE-020 | Bump vitest `>=4.1.0` in backend dev deps; verify no test breakage. | 1 hr |
-| ISSUE-001 | OfflineSyncManager terminal-action pending-count cosmetic fix. | 1 hr |
-| ISSUE-011 | Bearer token: decision (re-implement vs. formally close). Most likely formally closed since no current need. | 15 min decision |
+| Issue | Action | Effort | Status |
+|-------|--------|--------|--------|
+| ISSUE-019 | `StopDetail.tsx:394` PhotoDto id type fix (one file). | 30 min | ✅ Fixed 2026-06-06 |
+| ISSUE-020 | Bump vitest `>=4.1.0`; verify no test breakage. | 1 hr | ✅ Fixed 2026-06-06 |
+| ISSUE-001 | OfflineSyncManager terminal-action pending-count cosmetic fix. | 1 hr | ✅ Closed 2026-06-06 (not reproducible; regression test added) |
+| ISSUE-011 | Bearer token: decision (re-implement vs. formally close). | 15 min decision | ✅ Closed (won't fix) 2026-06-06 |
 
 Phase 2 ships in ~1 day across 2-3 small dispatches (some parallel).
+
+**Completion note (2026-06-06).** All four Phase 2 issues are resolved in one bundled dispatch (branch `feat/cleanup-phase-2-small-fixes`):
+
+- **ISSUE-019** — fixed the optimistic `PhotoDto` literal to a `string` id (the type is correct: `stop_photos.id` is `bigint`, serialized as string by node-postgres). `tsc -b` clean.
+- **ISSUE-020** — **the issue mislabeled the area as backend**; `vitest` actually lives in `frontend/` (the backend has no vitest). Bumped frontend `vitest` `^2.1.0 → ^4.1.8` (major 2→4 jump, no cascade bump needed); `pnpm audit --audit-level=high` now clean; 27/27 frontend tests pass.
+- **ISSUE-001** — **diverged from the dispatch's premise of a live bug**: the spot-check pending-count miscount is **not reproducible in the current code**. The R4 Sub-task D rewrite made the count derivation type-agnostic (status-based), which inherently clears spot-check completions. Verified by code reasoning + a new regression test (`frontend/src/offline/offlineQueue.test.ts`); no production code change was required. Closed as resolved-by-Sub-task-D rather than a new fix.
+- **ISSUE-011** — formally closed Won't-fix per the 2026-06-06 founder decision (dev bypass repositioned as development-only). Its production-hardening concern is re-filed as **ISSUE-026** (gate dev-bypass code paths behind `NODE_ENV` for production) — a pre-pilot item by timing, **not** fixed in this dispatch.
+
+The open-issue ledger after Phase 2: 019/020 Fixed, 001 Closed (not reproducible in current code — dissolved by the R4 Sub-task D rewrite; regression test added), 011 Closed (won't fix); net new open item ISSUE-026 (pre-pilot). Phases 3–5 carry the remaining open issues (018, 013, 014, 006, 015, 016, 017, 008, 010, 024, 025, 026).
 
 ## Phase 3 — Structural correctness (the real work)
 

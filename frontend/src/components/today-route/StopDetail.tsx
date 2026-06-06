@@ -384,7 +384,9 @@ export function StopDetail({
                     // (visit not yet created). Show optimistic thumbnails so the gate clears
                     // and the user sees feedback. These are replaced by real data on next fetch.
                     const optimistic = filesToUpload.map((f, i) => ({
-                        id: -(Date.now() + i),
+                        // PhotoDto.id is string (bigint PK serialized as string by pg);
+                        // optimistic placeholders use a non-colliding string id (ISSUE-019).
+                        id: `optimistic-${Date.now() + i}`,
                         s3_key: "",
                         kind: "completion",
                         captured_at: new Date().toISOString(),

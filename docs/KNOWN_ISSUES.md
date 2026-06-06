@@ -5,24 +5,18 @@ Issues deferred for future sessions. Each entry stays until fixed and a changelo
 ---
 
 ## ISSUE-001 — Offline queue pending count miscounts after spot check
-**Status:** Deferred  
+**Status:** Closed (not reproducible in current code as of R4 Sub-task D rewrite; regression test added to prevent recurrence). 2026-06-06.  
 **Discovered:** 2026-05-10  
 **Area:** frontend — OfflineStatusBar / queue state derivation  
 **Severity:** low  
 
-**Symptom:**  
-After a spot check stop completes, the offline queue UI shows a pending action count instead of clearing to zero. Data writes correctly to the DB — display/counting issue only.
+**Symptom (at filing):**  
+After a spot check stop completes, the offline queue UI showed a pending action count instead of clearing to zero. Data wrote correctly to the DB — display/counting issue only. Filed 2026-05-10, before `OfflineSyncContext` existed.
 
-**Root cause (if known):**  
-Spot check action type may not be handled in the queue state derivation logic that drives `OfflineSyncContext`. The pending count filter may not recognise the spot check action type as terminal/done.
-
-**Deferred because:**  
-Data integrity confirmed correct. UI cosmetic issue only. `OfflineSyncContext` doesn't exist yet — it's being built in R4 Sub-task D.
-
-**Fix hint:**  
-Investigate spot check action type handling in queue state derivation inside `OfflineSyncManager.tsx` once Sub-task D is implemented. Ensure all terminal action types are covered in the pending count filter.
-
-**Target:** R4 Sub-task D or post-R4 triage
+**Resolution (cleanup Phase 2, 2026-06-06):**  
+The original defect was a queue-state derivation that did not treat the spot-check action as terminal. The R4 Sub-task D rewrite replaced that derivation with a **type-agnostic, status-based** filter: the pending count is `actions.filter(a => a.status === 'pending').length`, computed identically in `OfflineSyncManager.tsx` (driving `OfflineSyncContext`), `useSyncStatus.ts`, and `getQueueSummary` in `offlineQueue.ts`. Because the filter keys on `status`, not action `type`, every terminal action — including a `COMPLETE_STOP` carrying `spotCheck: true` — clears from the count once `runReplay` marks it `done`. Traced the spot-check completion path (capture → enqueue → `runReplay` → status transition) and found no current path that leaves a spot-check action permanently `pending` (only transient auth/network resets keep an action pending, and those resolve on the next replay). The live miscount described at filing is **not reproducible in the current code** — it was eliminated by the Sub-task D rewrite rather than by a new code change in this dispatch.  
+Locked in with a regression test, `frontend/src/offline/offlineQueue.test.ts`, asserting `totalPending` clears to zero after an offline spot-check stop (`START_STOP` + after-photo `UPLOAD_STOP_PHOTOS` + `COMPLETE_STOP{spotCheck:true}`) replays, and that the spot-check `COMPLETE_STOP` reaches `done`. Verified by code reasoning + the unit test (27/27 frontend tests pass); not re-verified via a live browser smoke test in this dispatch.  
+Changelog: `2026-06-06-cleanup-phase-2-small-fixes.md`
 
 ---
 
@@ -162,10 +156,15 @@ current surface.
 ---
 
 ## ISSUE-011 — Dev bypass Bearer token enhancement (deferred)
-**Status:** Deferred
+**Status:** Closed — Won't fix (2026-06-06 founder decision)
 **Discovered:** 2026-05-15
 **Area:** backend — `backend/src/middleware/devAuthBypass.ts`
 **Severity:** low
+
+**Resolution (2026-06-06):**
+The Bearer-token enhancement is not being pursued. Dev bypass remains the localStorage/cookie mechanism for headless agent testing during development. Production deployment will gate dev-bypass code paths behind a `NODE_ENV` check (tracked as ISSUE-026). 2026-06-06 founder decision.
+
+---
 
 A partially-implemented enhancement to the dev auth bypass middleware added Bearer sentinel support and env-var fallback identity (`DEV_BYPASS_OID`, `DEV_BYPASS_ROLES`, `DEV_BYPASS_ORG_ID`). This work was reverted on 2026-05-15 because the audit detail payload was renamed (`x-dev-user-oid` → `resolved-oid`) without a corresponding update to the test assertion at `devAuthBypass.test.ts` ~line 192–196.
 
@@ -421,7 +420,7 @@ The running app opens **every** DB connection as `fieldpro` (see the pool in `ba
 ---
 
 ## ISSUE-019 — Frontend TS error: `StopDetail.tsx` `PhotoDto` id type mismatch fails `build-frontend` on every PR
-**Status:** Open — pre-existing, surfaced by sidecar-PR CI triage (2026-06-04)
+**Status:** Fixed 2026-06-06 (cleanup Phase 2)
 **Discovered:** 2026-06-04 (CI triage on `feat/sidecar-extraction` PR #1)
 **Area:** frontend — `frontend/src/components/today-route/StopDetail.tsx:394` (`PhotoDto` type)
 **Severity:** medium (blocks green `build-frontend` CI on every PR; no runtime data impact)
@@ -435,12 +434,16 @@ The identical failure is present on `main` (verified against CI run `26703160245
 **Fix shape (frontend-only):**
 Either correct the literal to produce `id: string` (coerce/format the numeric id), or update the `PhotoDto` type to `id: number` if a numeric id is intentional and propagate that through consumers. One file, no backend/schema involvement.
 
+**Resolution (cleanup Phase 2, 2026-06-06):**
+Took the first option — fixed the optimistic literal to produce a `string` id. Confirmed `PhotoDto.id: string` is the correct type, not the literal's `number`: `stop_photos.id` is a `bigint` column (`backend/migrations/00000000_consolidated_schema.sql:987`), and node-postgres serializes `bigint` as a JS `string`, so the backend (`stopPhotosService.ts` `StopPhoto.id: string`) and the API contract (`routeRuns.ts` `PhotoDto.id: string`) are already string-typed end to end. Only the optimistic placeholder at `StopDetail.tsx:394` produced a `number` (`-(Date.now() + i)`). Changed it to a non-colliding string id (`` `optimistic-${Date.now() + i}` ``) with an explanatory comment; the value is only used as a React `key` and in an `id !== id` filter (both type-agnostic) and is replaced by real DB-backed data on the next fetch. `tsc -b` is clean (exit 0); the TS2345 at `StopDetail.tsx:394` is gone.  
+Changelog: `2026-06-06-cleanup-phase-2-small-fixes.md`
+
 **Priority:** Blocks green `build-frontend` CI on every PR. Should land soon, but is not blocking other merges since `main` is already in this state.
 
 ---
 
 ## ISSUE-020 — Dependency: `vitest <4.1.0` critical advisory (GHSA-5xrq-8626-4rwp) fails `dependency-audit`
-**Status:** Open — environmental (advisory-DB drift), surfaced by sidecar-PR CI triage (2026-06-04)
+**Status:** Fixed 2026-06-06 (cleanup Phase 2)
 **Discovered:** 2026-06-04 (CI triage on `feat/sidecar-extraction` PR #1)
 **Area:** backend — dev dependency `vitest` (`backend/package.json`)
 **Severity:** moderate (security advisory on a dev/test dependency; fails the `dependency-audit` check)
@@ -453,6 +456,10 @@ The same `vitest` version **passed** `dependency-audit` on `main` as recently as
 
 **Fix shape (separate chore commit):**
 Bump `vitest` to `>=4.1.0` in backend dev dependencies, refresh the lockfile, and verify no breaking changes in the test runner / fixtures (`backend/tests/`).
+
+**Resolution (cleanup Phase 2, 2026-06-06):**
+**Correction to the issue's "Area":** `vitest` is **not** a backend dependency — the backend has no `vitest` (its test runner is `ts-node tests/run.ts`). `vitest` lives in `frontend/package.json` (was `^2.1.0`). The CI `dependency-audit` job audits **both** workspaces (`.github/workflows/ci.yml` — "Audit frontend (fail on HIGH or CRITICAL)"), so it was the frontend audit step that the advisory failed. Bumped `frontend` `vitest` `^2.1.0` → `^4.1.8` (a major 2.x→4.x jump; `vite ^7` and `@vitejs/plugin-react ^5` already satisfy vitest 4's peer ranges, so no cascade bump was needed). Ran `pnpm install` (lockfile refreshed, resolved to 4.1.8) and the full frontend suite: **27/27 tests pass** — no matcher/fixture breakage from the major bump. `pnpm audit --audit-level=high` (the exact CI gate) now reports **"No known vulnerabilities found"** (exit 0); GHSA-5xrq-8626-4rwp no longer appears.  
+Changelog: `2026-06-06-cleanup-phase-2-small-fixes.md`
 
 **Priority:** Security advisory; bump in the next reasonable window. Not actively exploitable in dev (the vulnerability requires the Vitest UI server to be listening), but should not linger.
 
@@ -572,3 +579,23 @@ Run the `test-backend` test connection as a **non-superuser, non-`BYPASSRLS` rol
 The choice of which role the app/test connection uses is the same decision ISSUE-018 must make when it wires the no-grant `intelligence_reader` boundary into the live app connection (`CANONICAL_STATE_LAYER_DESIGN.md` §3.2). Deciding the CI test role here, ahead of ISSUE-018, risks either conflicting with ISSUE-018's app-connection-role routing (rework) or pulling that architecture conversation into a CI dispatch. **The right resolution is to make this decision as part of ISSUE-018's wiring dispatch**, so the test role and the runtime role are chosen together rather than re-litigated.
 
 **Target:** ISSUE-018's app-connection wiring dispatch (Phase 3 of the cleanup drain plan).
+
+---
+
+## ISSUE-026 — Dev bypass code paths must be gated for production deployment
+**Status:** Open — filed 2026-06-06 (cleanup Phase 2; replaces ISSUE-011's tracking)
+**Discovered:** 2026-06-06 (founder decision repositioning dev bypass as development-only)
+**Area:** backend — dev-bypass auth middleware (`backend/src/middleware/devAuthBypass.ts`) + frontend dev-bypass initializer (`localStorage.__dev_user__` / `dev-bypass-token`)
+**Severity:** HIGH (pre-pilot blocker — auth bypass must be unreachable where real users authenticate)
+
+**What:**
+The dev-bypass mechanism (`localStorage.__dev_user__`, `dev-bypass-token`, and the `X-Dev-User-*` header path) exists for headless agent testing in development. It must not be reachable in production builds.
+
+**Scope:**
+Gate the bypass code paths behind a `NODE_ENV === 'development'` check (or equivalent), or strip them entirely via bundler/build configuration for production builds. Verify by attempting to authenticate via the bypass in a production build and confirming it fails.
+
+**Priority:** Pre-pilot. Required before any pilot deployment. The bypass cannot be reachable in environments where real users authenticate.
+
+**Fix shape:** Small. Likely 1–2 file changes (auth middleware + possibly the frontend dev-bypass initializer), plus a verification step that proves the bypass fails in production builds.
+
+**Relates to:** Replaces ISSUE-011's tracking (ISSUE-011 closed Won't-fix; the Bearer-token enhancement is not being pursued and dev bypass stays the localStorage/cookie mechanism for development). Distinct from ISSUE-018, which is about the `intelligence_reader` role wiring for legitimate in-app auth, not the dev bypass.
