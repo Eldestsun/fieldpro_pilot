@@ -137,12 +137,16 @@ Changelogs: `2026-05-11-fix-007-hazard-severity-write.md`,
 ---
 
 ## ISSUE-009 — Four canonical test files are red: stop_id → location_id mapping broken in fixture
-**Status:** Deferred  
+**Status:** Fixed 2026-06-05  
 **Discovered:** 2026-05-13  
 **Area:** backend — `tests/canonical/` — visits, observations, evidence, assignments  
 **Severity:** medium  
 
 `visits.test.ts` (4/6 red), `observations.test.ts` (5/5 red), `evidence.test.ts` (3/4 red), `assignments.test.ts` (3/5 red) — all fail with `getVisitContext: missing location_id for route_run_stop N (stop_id mapping failed)`; root cause is the fixture stop (`FIXTURE_STOP_ID = "31150"`) no longer resolving through `core.v_locations_transit` after the R11 schema changes.
+
+**Resolution:**  
+Investigated as part of the cleanup Phase 1 dispatch. On the current schema the mapping resolves correctly *given seed data* — `core.v_locations_transit` reads `core.locations` (`location_type='transit_stop'`) joined to `core.location_external_ids` (`source_system='metro_stop'`, `external_id='31150'`). The failure was the same root cause as ISSUE-022: the CI test DB has schema but no seed data, so the location rows the mapping needs were absent. Fixed by the same `backend/tests/fixtures/seed.sql` (rows 7–8: `core.locations` + `core.location_external_ids`). No fixture or view code change was required — `tests/setup.ts` already targets the view correctly. Verified by a faithful CI replication (fresh DB → migrate → seed → run suite): visits/observations/evidence all pass.  
+Changelog: `2026-06-05-cleanup-phase-1-ci-test-infra.md`
 
 ---
 
@@ -478,7 +482,7 @@ The identical failure (same `authz.ts:14` throw, same `authClaims.test.ts:2` imp
 ---
 
 ## ISSUE-022 — CI test database missing `TEST_POOL` seed row, causes all integration tests to fail
-**Status:** Open — pre-existing CI gap, surfaced once ISSUE-021's fix restored backend test execution (2026-06-05)
+**Status:** Fixed 2026-06-05 — seed step added to CI (`test-backend`) + `backend/tests/fixtures/seed.sql`
 **Discovered:** 2026-06-05 (first post-ISSUE-021 CI test run — workflow run #81 on `45ae234`)
 **Area:** CI config (`.github/workflows/ci.yml` `test-backend` job — no seed step) + `backend/tests/setup.ts` `createRouteRunFixture` (~line 38)
 **Severity:** HIGH (every integration test in `canonical/` fails; backend changes still land without integration coverage)
@@ -496,3 +500,75 @@ The `TEST_POOL` seed row exists on local dev DBs (created manually or by a seed 
 **Priority:** HIGH (same standing ISSUE-021 had). Every backend change going forward lands without **integration**-test coverage until this is fixed. Should be the next CI-tooling dispatch after ISSUE-021's closure, before any further substantive backend changes ship.
 
 **Relation to ISSUE-021:** Same structural shape — a pre-existing CI gap that stayed invisible while CI was broken in another way. Closing ISSUE-021 (the `authz` import throw) surfaced ISSUE-022 (the missing seed). If a further "next layer" gap exists behind ISSUE-022, the same pattern will surface it once 022 closes.
+
+**Resolution:**  
+Fix shape (a) taken. Added `backend/tests/fixtures/seed.sql` — a minimal, idempotent (`ON CONFLICT DO NOTHING`) reference graph (organizations, asset_types, bases, route_pools `TEST_POOL`, assets, transit_stops, `core.locations`, `core.location_external_ids`) — and a "Seed test fixtures" step to the `test-backend` job, after "Run migrations" and before "Run tests". The seed lives under `tests/`, never `migrations/`, so the migration runner never applies it. The `"route_pool_id TEST_POOL not found"` error originated in the `enforce_route_runs_pool_invariant` trigger (not a raw FK); seeding `route_pools` satisfies it and the trigger autofills `route_runs.org_id`/`base_id`. Verified by faithful CI replication (fresh DB → migrate → seed → run suite): the suite executes end-to-end with no fixture-setup crash.  
+As predicted in "Relation to ISSUE-021", closing 022 surfaced the next layers — see ISSUE-024 (a latent trigger defect found while seeding) and ISSUE-025 (CI's test role bypasses RLS).  
+Changelog: `2026-06-05-cleanup-phase-1-ci-test-infra.md`
+
+---
+
+## ISSUE-023 — Five canonical tests reference identity columns dropped by the sidecar extraction
+**Status:** Filed and Fixed 2026-06-05  
+**Discovered:** 2026-06-05 (cleanup Phase 1 dispatch — first fresh-DB CI replication after ISSUE-022's seed landed)  
+**Area:** backend — `tests/canonical/assignments.test.ts`, `tests/canonical/oidCipher.test.ts`  
+**Severity:** medium (blocked `test-backend` from going green; not a product defect)  
+
+**Symptom:**  
+Once the ISSUE-022 seed let the suite execute, five tests failed with `column ... does not exist`: `assignments.test.ts` (4) referenced `core.assignments.created_by_oid`, and `oidCipher.test.ts` (1) referenced `core.visits.actor_oid` / `captured_by_oid_ciphertext` / `captured_by_oid_key_id`. All five columns were dropped by `20260530_sidecar_extraction_b_drop.sql` (commit `b56c0bf`). The tests were written for the additive/dual-write phase and never updated when the drop migration completed the §3.2 extraction.
+
+**Scope — test code only, not a product defect:**  
+Production (`routeRunService.createRouteRun`, `visitService.ensureVisitForRouteRunStop`) was already correct — it writes creator/worker identity to the no-grant sidecars (`core.assignment_actor_audit`, `core.visit_actor_audit`) and omits the dropped plaintext columns. Only the tests had drifted.
+
+**Resolution:**  
+- `assignments.test.ts`: replaced the drifted inline `ASSIGNMENT_INSERT_SQL` (a snapshot copy that still had `created_by_oid`) with a `planAssignments` helper that reproduces *both* production statements — the `core.assignments` INSERT and the `core.assignment_actor_audit` sidecar INSERT — so the test stays a faithful reproduction of the contract going forward. The single identity assertion now reads `actor_ref` from `core.assignment_actor_audit`.  
+- `oidCipher.test.ts`: rewrote the integration assertion to read `actor_ref` / `actor_ref_ciphertext` / `actor_ref_key_id` from `core.visit_actor_audit` instead of the dropped `core.visits` columns; reframed the "plaintext retained for dual-write period" comment to "identity lives only in the no-grant sidecar post-extraction." Kept the test (rather than retiring it) — it is the only integration test asserting the OID encrypt path runs end-to-end during visit creation, which is labor-safety-relevant coverage.  
+Verified in both environments: 105/105 pass on the RLS-enforced dev DB; on the fresh CI-replica DB these five now pass (the only remaining reds are the ISSUE-025 RLS-bypass set).  
+Changelog: `2026-06-05-cleanup-phase-1-ci-test-infra.md`
+
+---
+
+## ISSUE-024 — `sync_transit_stop_primary_asset` trigger inserts into `transit_stop_assets` without NOT NULL `org_id`
+**Status:** Open — latent production defect, discovered during cleanup Phase 1  
+**Discovered:** 2026-06-05 (seeding `transit_stops` in the cleanup Phase 1 dispatch)  
+**Area:** backend — DB trigger `public.sync_transit_stop_primary_asset()` (fires `AFTER INSERT OR UPDATE OF asset_id ON public.transit_stops`)  
+**Severity:** medium (real defect, but no current runtime path inserts `transit_stops` — they are reference data)  
+
+**Symptom:**  
+Any `INSERT`/`UPDATE` that sets `transit_stops.asset_id` to a non-null value fires the trigger, which runs:
+```
+INSERT INTO public.transit_stop_assets (stop_id, asset_id, role, active)
+VALUES (NEW.stop_id, NEW.asset_id, 'primary', true)
+ON CONFLICT (stop_id, asset_id, role) WHERE active = true DO UPDATE ...
+```
+`transit_stop_assets.org_id` is `NOT NULL` with no default, and the trigger does not supply it → `null value in column "org_id" ... violates not-null constraint`. Worse, the `ON CONFLICT DO UPDATE` does not self-heal: inside the plpgsql function the arbiter fails to match a pre-existing active link row, even though an identical top-level statement matches it — so pre-creating the link row does not prevent the null-`org_id` insert.
+
+**Why it stayed hidden:**  
+`transit_stops` are bulk reference data loaded historically (when the rows were created the `org_id` NOT NULL constraint / current trigger shape evidently did not co-exist). No current write path inserts `transit_stops` at runtime, so the defect is latent.
+
+**Workaround in place (test seed only):**  
+`backend/tests/fixtures/seed.sql` disables the trigger for its single `asset_id` write and populates `transit_stops` + `transit_stop_assets` explicitly (CI runs the seed as the postgres container superuser). This is a seed-only workaround; the trigger itself is unfixed.
+
+**Fix shape:**  
+Have the trigger derive `org_id` for the `transit_stop_assets` insert — e.g. `NEW.org_id` (transit_stops carries `org_id`) — so the link row inherits the stop's org. A dedicated migration replacing `sync_transit_stop_primary_asset()`. Re-verify the `ON CONFLICT` self-heal path once `org_id` is supplied.
+
+**Target:** dedicated trigger-fix dispatch (own scope; not folded into the CI-test-infra dispatch that found it).
+
+---
+
+## ISSUE-025 — CI `test-backend` runs as a superuser, bypassing RLS; RLS-enforcement tests cannot pass
+**Status:** Open — CI infrastructure / architecture, discovered during cleanup Phase 1  
+**Discovered:** 2026-06-05 (fresh-DB CI replication in the cleanup Phase 1 dispatch)  
+**Area:** CI config (`.github/workflows/ci.yml` `test-backend`) + the test DB connection role  
+**Severity:** medium (six RLS-enforcement tests stay red on CI; the suite otherwise executes and passes)  
+
+**Symptom:**  
+After ISSUE-022/009/023 fixes, six tests still fail on a CI-identical DB — `audit_log` RLS (2), `audit_log_delete` policy (3), `loadRouteRunById` cross-tenant fail-closed (1) — all with the RLS-bypass signature (`expected 0, got 1`; `must return null, got <row>`). The same six pass on the local dev DB. Root cause: the postgres service image makes `POSTGRES_USER=fieldpro` a **superuser**, and the test suite connects as `fieldpro` — superusers bypass RLS even on `FORCE ROW LEVEL SECURITY` tables — so any test asserting RLS *blocks* a write or *hides* a foreign row fails. Locally `fieldpro` is a non-superuser, so RLS is enforced and the tests pass. These tests have likely never run-and-passed on CI (CI was broken by ISSUE-021, then ISSUE-022, until now).
+
+**Fix shape:**  
+Run the `test-backend` test connection as a **non-superuser, non-`BYPASSRLS` role** that mirrors the app's runtime role, so RLS is actually enforced — e.g. create a dedicated app-like role after migrations, grant it the privileges the app uses, and point the "Run tests" step's `DATABASE_URL` at it (migrations can still run as the superuser).
+
+**Architectural intersection — resolve within ISSUE-018:**  
+The choice of which role the app/test connection uses is the same decision ISSUE-018 must make when it wires the no-grant `intelligence_reader` boundary into the live app connection (`CANONICAL_STATE_LAYER_DESIGN.md` §3.2). Deciding the CI test role here, ahead of ISSUE-018, risks either conflicting with ISSUE-018's app-connection-role routing (rework) or pulling that architecture conversation into a CI dispatch. **The right resolution is to make this decision as part of ISSUE-018's wiring dispatch**, so the test role and the runtime role are chosen together rather than re-litigated.
+
+**Target:** ISSUE-018's app-connection wiring dispatch (Phase 3 of the cleanup drain plan).

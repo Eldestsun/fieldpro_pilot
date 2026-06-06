@@ -220,7 +220,7 @@ import { pool, createRouteRunFixture, cleanupFixture, deriveClientVisitIdLocal, 
 import { ensureVisitForRouteRunStop } from "../../src/domains/visit/visitService";
 
 test(
-  "oidCipher: ensureVisitForRouteRunStop writes captured_by_oid_ciphertext and _key_id",
+  "oidCipher: ensureVisitForRouteRunStop writes actor_ref_ciphertext and _key_id to visit_actor_audit",
   withFreshDevAdapter(async () => {
     const client = await pool.connect();
     const f = await createRouteRunFixture(client);
@@ -231,25 +231,31 @@ test(
         visitType: "service",
       });
 
+      // Post §3.2 sidecar extraction, worker identity (plaintext + S1-13 cipher
+      // envelope) lives ONLY in the no-grant sidecar core.visit_actor_audit,
+      // never on core.visits. This asserts the encrypt path still runs end-to-end
+      // during visit creation, just at its new storage location.
       const row = await client.query(
-        `SELECT actor_oid, captured_by_oid_ciphertext, captured_by_oid_key_id
-         FROM core.visits WHERE client_visit_id = $1`,
+        `SELECT va.actor_ref, va.actor_ref_ciphertext, va.actor_ref_key_id
+         FROM core.visit_actor_audit va
+         JOIN core.visits v ON v.id = va.visit_id
+         WHERE v.client_visit_id = $1`,
         [deriveClientVisitIdLocal(f.routeRunStopId)],
       );
-      assertEqual(row.rowCount, 1, "visit row exists");
+      assertEqual(row.rowCount, 1, "visit_actor_audit row exists");
       assert(
-        row.rows[0].captured_by_oid_ciphertext !== null,
-        "captured_by_oid_ciphertext must be populated",
+        row.rows[0].actor_ref_ciphertext !== null,
+        "actor_ref_ciphertext must be populated",
       );
       assertEqual(
-        row.rows[0].captured_by_oid_key_id,
+        row.rows[0].actor_ref_key_id,
         "dev-static-v1",
         "key_id matches dev adapter",
       );
       assertEqual(
-        row.rows[0].actor_oid,
+        row.rows[0].actor_ref,
         FIXTURE_ACTOR_OID,
-        "plaintext actor_oid retained for dual-write period",
+        "plaintext actor_ref lives in the no-grant sidecar post-extraction",
       );
     } finally {
       await cleanupFixture(client, f);

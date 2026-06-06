@@ -47,6 +47,16 @@ jobs:
         env:
           DATABASE_URL: postgres://fieldpro:fieldpro_pass@localhost:5432/fieldpro_test
 
+      # Seed the minimal reference graph the canonical integration tests assume
+      # (route_pool TEST_POOL + stop 31150 -> location mapping). Migrations create
+      # schema only; without this the fixture setup fails (ISSUE-022 / ISSUE-009).
+      # Idempotent SQL under tests/, not migrations/ — see the file header.
+      - name: Seed test fixtures
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/fixtures/seed.sql
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://fieldpro:fieldpro_pass@localhost:5432/fieldpro_test
+
       - name: Run tests
         run: pnpm test
         working-directory: backend
