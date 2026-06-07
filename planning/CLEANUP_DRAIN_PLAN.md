@@ -84,14 +84,38 @@ The open-issue ledger after Phase 2: 019/020 Fixed, 001 Closed (not reproducible
 Sequential — these touch real code paths and benefit from individual
 focus.
 
-| Issue | Action | Effort |
-|-------|--------|--------|
-| ISSUE-018 | Route intelligence reads through `intelligence_reader` role. Closes the labor-safety binding gap from the sidecar extraction. | 1-2 days |
-| ISSUE-013 | `resolveNumericOrgId` fail-closed (currently fail-open to lowest-id org). Threads through auth resolution; small but careful. | half day |
-| ISSUE-014 | Add `IF NOT EXISTS` guards across migration set + CI replay gate. Makes migration set re-runnable end-to-end. | 1-2 days |
-| ISSUE-006 | Offline queue beforeunload flush or IndexedDB migration. Operational reliability for field use. | half day to day |
+**Restructured 2026-06-06 following the empirical adapter-layer audit
+(`docs/audit/2026-06-06-adapter-layer-information-content-audit.md`).** ISSUE-018's
+Phase 0 + that audit showed the v0001 dual-write scaffolding (the transit adapter
+layer) is **not operationally inert** — it carries a full parallel *identified* record
+of work performed, reconstructable to the named individual without any canonical
+access. The v0001 → canonical migration that was always planned but never finished must
+be **completed (the scaffolding removed)** before `intelligence_reader` credential
+isolation delivers the *system-wide* labor-safety guarantee. **ISSUE-031 completes the
+canonical migration that makes the architectural pitch true, and is now the head of
+Phase 3.** ISSUE-018 is paused beneath it; ISSUE-028/029/030 (the other Phase 0
+findings) depend on ISSUE-031 landing first.
 
-Phase 3 ships in ~1 week across 4 dispatches.
+| Issue | Action | Effort | Status |
+|-------|--------|--------|--------|
+| **ISSUE-031** | **Complete canonical migration — remove work-attribution tables/columns from the transit adapter layer (clip v0001 dual-write scaffolding).** Read-path discovery → UI surface verification → migration sequence → drop tables → view cleanup. | 3-4 weeks, multi-dispatch | **Head — Open** |
+| ISSUE-018 | Route intelligence reads through `intelligence_reader` role. **Paused** — blocked until ISSUE-031 makes the adapter genuinely inert; resumes after, likely restarted from a clean `main`. | 1-2 days (post-031) | Paused 2026-06-06 |
+| ISSUE-028 | `audit_reader` unwired; sidecar-reading audit/export paths run as `fieldpro` (blocks the 018 lockdown step). **Depends on ISSUE-031; revisit scope after canonical migration completes.** | TBD post-031 | Open |
+| ISSUE-029 | PG14 view-owner privilege bridge (intelligence reads execute as `fieldpro` through non-`security_invoker` views). **Depends on ISSUE-031; revisit scope after canonical migration completes** (views likely collapse post-clip). | TBD post-031 | Open |
+| ISSUE-030 | Transit-view identity exposure (`v_clean_logs_transit.user_id`) + inconsistent connection/org-context patterns. **Depends on ISSUE-031; revisit scope after canonical migration completes.** | TBD post-031 | Open |
+| ISSUE-013 | `resolveNumericOrgId` fail-closed (currently fail-open to lowest-id org). Threads through auth resolution; small but careful. | half day | Open |
+| ISSUE-014 | Add `IF NOT EXISTS` guards across migration set + CI replay gate. Makes migration set re-runnable end-to-end. | 1-2 days | Open |
+| ISSUE-006 | Offline queue beforeunload flush or IndexedDB migration. Operational reliability for field use. | half day to day | Open |
+
+> **ISSUE-027** (Azure Key Vault credential loading) is a post-Azure follow-on to
+> ISSUE-018's resume; tracked under Phase 3's role-wiring work but not blocking until the
+> Azure migration begins.
+
+Phase 3 timeline reset: dominated by ISSUE-031 (3-4 weeks, multi-dispatch); 013/014/006
+remain ~1 week of independent work that can run alongside.
+
+> **Full Phase 0 context** (the four D-decisions, the PG14 constraint, the connection-pattern
+> inventory, the `audit_reader` discovery): `planning/architecture/2026-06-06-issue-018-phase-0-context.md`.
 
 ## Phase 4 — Design decisions + their implementations
 

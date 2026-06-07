@@ -396,8 +396,8 @@ Independent of the two deferred §9 migrations (normalized-columns backfill; act
 ---
 
 ## ISSUE-018 — Intelligence reads not yet routed through the `intelligence_reader` role — sidecar boundary not yet binding on the running app
-**Status:** Open — follow-on to the 2026-06-01 sidecar-extraction migration
-**Discovered:** 2026-06-01 (sidecar extraction, `feat/sidecar-extraction`)
+**Status:** Paused 2026-06-06 — architectural reframe required. Phase 0 surfaced four findings (filed as ISSUE-027 audit_reader/Key-Vault follow-ons, ISSUE-028 audit_reader unwired, ISSUE-029 PG14 view-owner privilege bridge, ISSUE-030 transit-view identity exposure + mixed connection patterns); the empirical adapter-layer audit (`docs/audit/2026-06-06-adapter-layer-information-content-audit.md`) returned **HYPOTHESIS WRONG** — the transit adapter layer is **not** operationally inert: it carries a full parallel **identified** record of work performed. ISSUE-018's original scope (route intelligence reads through `intelligence_reader`) is **blocked by a prerequisite**: completion of the canonical migration to clip work-attribution writes (and tables) from the transit adapter layer. The credential-isolation boundary only delivers the *system-wide* labor-safety guarantee once the adapter is genuinely inert. **Resumes after ISSUE-031 lands** (at which point this branch is likely restarted from a clean `main`).
+**Discovered:** 2026-06-01 (sidecar extraction, `feat/sidecar-extraction`); reframed 2026-06-06 (ISSUE-018 Phase 0 + adapter audit)
 **Area:** backend — DB connection/role wiring (`backend/src/db.ts` pool, intelligence read paths: `riskMapService`, MVs, any future intelligence consumer)
 **Severity:** medium (latent — the structural boundary exists at the DB level but the app does not yet use it)
 
@@ -599,3 +599,82 @@ Gate the bypass code paths behind a `NODE_ENV === 'development'` check (or equiv
 **Fix shape:** Small. Likely 1–2 file changes (auth middleware + possibly the frontend dev-bypass initializer), plus a verification step that proves the bypass fails in production builds.
 
 **Relates to:** Replaces ISSUE-011's tracking (ISSUE-011 closed Won't-fix; the Bearer-token enhancement is not being pursued and dev bypass stays the localStorage/cookie mechanism for development). Distinct from ISSUE-018, which is about the `intelligence_reader` role wiring for legitimate in-app auth, not the dev bypass.
+
+---
+
+> **Filing note (2026-06-06):** ISSUE-027 through ISSUE-031 were filed at this session's
+> closeout, not during ISSUE-018 Phase 0 (Phase 0 was report-and-stop — it produced
+> findings in chat + the adapter audit doc, but no KNOWN_ISSUES entries). They formalize
+> the four Phase 0 findings + the canonical-migration head. Full Phase 0 context:
+> `planning/architecture/2026-06-06-issue-018-phase-0-context.md`. Adapter audit:
+> `docs/audit/2026-06-06-adapter-layer-information-content-audit.md`.
+
+---
+
+## ISSUE-027 — Migrate intelligence/audit DB credentials from env vars to Azure Key Vault (post-Azure migration)
+**Status:** Open — filed 2026-06-06 (ISSUE-018 Phase 0 follow-on)
+**Area:** backend — DB credential loading (`backend/src/db.ts`, future `getDbCredentials()`)
+**Severity:** low (deferred until Azure migration begins)
+
+**What:** The two/three-role connection architecture (`fieldpro` + `intelligence_reader` [+ `audit_reader`]) is env-var-loaded (`DATABASE_URL`, `INTELLIGENCE_DATABASE_URL`, …) per ISSUE-018 DECISION 3. For production on Azure, credentials should be fetched from Azure Key Vault using the App Service / Container App managed identity, with optional automated rotation.
+
+**Scope:** Replace credential loading to fetch from Key Vault in production; env vars remain for local dev/CI. Requires an Azure deployment to test — do not build untested Azure infra code before then.
+
+**Priority:** Pre-pilot production deployment; not blocking until the Azure migration starts.
+**Depends on:** ISSUE-018 resuming (which depends on ISSUE-031). The role set this wires is only finalized once the canonical migration + credential isolation land.
+
+---
+
+## ISSUE-028 — `audit_reader` role is unwired; sidecar-reading audit/export paths run as `fieldpro`
+**Status:** Open — filed 2026-06-06 (ISSUE-018 Phase 0 finding)
+**Area:** backend — `exportDeleteRoutes.ts`, `scripts/sftpExport.ts`, `oidCipher.ts`, DB role `audit_reader`
+**Severity:** medium (the structural audit-channel boundary is provisioned at the DB but not binding in-app)
+
+**What:** Phase 0 discovery found `audit_reader` exists but is **NOLOGIN and unwired** — the app never connects as it. The only paths that legitimately read the no-grant sidecars (`core.*_actor_audit`) — `exportDeleteRoutes.ts` and `sftpExport.ts` (both `LEFT JOIN` all four sidecars; `oidCipher.ts` decrypts) — currently run as **`fieldpro`**. This blocks the ISSUE-018 lockdown step (revoking `fieldpro`'s sidecar `SELECT`): doing so today would break export/delete. The audit channel must be routed through `audit_reader` (LOGIN + its own pool/helper) before `fieldpro` can be locked down. Note `exportDeleteRoutes` also needs sidecar **DELETE** (data-subject deletion), so the lockdown is "revoke SELECT, keep INSERT+DELETE for the right role," not a blanket revoke.
+
+**Depends on ISSUE-031 completion; revisit scope after canonical migration completes.** Post-clip, the export/delete surface and which tables carry identity will change materially — scope this only once the adapter is inert.
+
+---
+
+## ISSUE-029 — PG14 view-owner privilege bridge: intelligence reads execute as `fieldpro` through non-`security_invoker` views
+**Status:** Open — filed 2026-06-06 (ISSUE-018 Phase 0 finding)
+**Area:** backend/DB — `core.v_*_transit` views (owner `fieldpro`), intelligence read routing
+**Severity:** medium (weakens the credential-isolation defense-in-depth on the current DB)
+
+**What:** The DB is **PostgreSQL 14.18**; `security_invoker` views require PG15+. The `core.v_*_transit` adapter views are owned by `fieldpro` with `security_invoker` unset, so they execute underlying table access **as the owner (`fieldpro`)**, not as the querying role. An `intelligence_reader` reading these views therefore reaches underlying tables with `fieldpro`'s privileges — partially mooting ISSUE-018 DECISION 1's "separate credentials = separate grants" for view-routed reads. The labor-safety property still holds for the canonical sidecars (no view exposes them; intelligence_reader has no sidecar grant), but true per-role isolation on the views needs either PG15+ (`security_invoker=true` + direct base-table grants) or a view rewrite.
+
+**Depends on ISSUE-031 completion; revisit scope after canonical migration completes.** The `core.v_*_transit` views are expected to collapse or shrink dramatically post-clip; re-scope (and re-decide PG-upgrade vs. rewrite) against the post-migration view set.
+
+---
+
+## ISSUE-030 — Transit adapter intelligence-read hygiene: `v_clean_logs_transit.user_id` exposure + inconsistent connection/org-context patterns
+**Status:** Open — filed 2026-06-06 (ISSUE-018 Phase 0 findings, combined)
+**Area:** backend — `core.v_clean_logs_transit`, admin control-center endpoints (`adminRoutes.ts`)
+**Severity:** medium (latent labor-safety reach + RLS-correctness inconsistency)
+
+**What — two related findings:**
+1. **Identity exposure via adapter view:** `core.v_clean_logs_transit` exposes `user_id` (worker), and `intelligence_reader` already holds `SELECT` on it — so the role ISSUE-018 provisions as "labor-safe" can read worker-attributed work data through that view today. (`v_hazards_transit` similarly exposes `reported_by`.)
+2. **Inconsistent connection patterns:** the intelligence/control-center reads use three different patterns — `withOrgContext` (`/control-center/routes`, `/admin/dashboard`), bare `pool.connect()` + manual `set_config('app.current_org_id', …)` (`/control-center/exceptions`, `/control-center/difficulty`), and **bare connection with no org context at all** (`/control-center/overview`). `/overview` works only because the current connection is effectively single-org/elevated; under a non-superuser `intelligence_reader` with RLS enforced it would return zero rows. Any repoint must give every intelligence read explicit org context via the helper.
+
+**Depends on ISSUE-031 completion; revisit scope after canonical migration completes.** `v_clean_logs_transit` (and `clean_logs` itself) may not survive the clip; the connection-pattern normalization should land alongside the ISSUE-018 repoint, which resumes post-031.
+
+---
+
+## ISSUE-031 — Complete canonical migration: remove work-attribution tables from the transit adapter layer (clip v0001 dual-write scaffolding)
+**Status:** Open — filed 2026-06-06. **Head of cleanup Phase 3.**
+**Area:** backend + DB — `public.clean_logs`, `public.hazards`, `public.infrastructure_issues`, `public.level3_logs`, `public.stop_photos`, `public.route_runs`/`route_run_stops`, `core.v_*_transit` views, all dependent read paths + UI surfaces
+**Severity:** HIGH — the labor-safety architectural pitch depends on this completing
+
+**What:** The transit adapter layer (`public.clean_logs`, `public.hazards`, `public.infrastructure_issues`, `public.level3_logs`, `public.stop_photos`) contains a full **work-attribution** record — worker identity + timestamps + task outcomes + evidence — written via additive-discipline dual-write. These tables are v0001 scaffolding intended for removal once canonical (`core.observations`, `core.visits`, `core.evidence`) reads/writes were verified across the UI surface. **That verification never completed; the tables persist.** The empirical adapter audit (`docs/audit/2026-06-06-adapter-layer-information-content-audit.md`) proved an adapter-only analyst can reconstruct "Specialist X performed work W at time T on stop S" to the named individual (via plaintext OIDs + `identity_directory`).
+
+**Scope:**
+- Remove the work-attribution tables entirely (`clean_logs`, `hazards`, `infrastructure_issues`, `level3_logs`, `stop_photos`).
+- Strip work-attribution columns from tables that survive for routing/scheduling (`route_runs`, `route_run_stops` — e.g. `assigned_user_oid`, `created_by_oid`, `user_id`, completion timestamps that constitute attribution).
+- Verify **every UI surface read path** has a canonical equivalent before clipping.
+- Migrate or drop historical adapter data.
+- The `core.v_*_transit` adapter views are likely to collapse or shrink dramatically — handle per the dependent-code analysis.
+
+**Priority:** High — head of Phase 3.
+**Sequence-blocks:** ISSUE-018 (cannot proceed until the adapter is genuinely operationally inert), and ISSUE-028, ISSUE-029, ISSUE-030 (which reference structures that may not exist post-clip).
+**Fix shape:** 3–4 weeks across multiple sub-dispatches (read-path discovery → UI surface verification → migration sequence → drop tables → view cleanup). **Not single-dispatch scope.**
+**Filed:** 2026-06-06. Dispatch to be authored fresh and fired to a new agent on a clean branch cut from current `main`.
