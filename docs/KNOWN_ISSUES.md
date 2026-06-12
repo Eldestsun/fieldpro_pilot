@@ -599,3 +599,122 @@ Gate the bypass code paths behind a `NODE_ENV === 'development'` check (or equiv
 **Fix shape:** Small. Likely 1–2 file changes (auth middleware + possibly the frontend dev-bypass initializer), plus a verification step that proves the bypass fails in production builds.
 
 **Relates to:** Replaces ISSUE-011's tracking (ISSUE-011 closed Won't-fix; the Bearer-token enhancement is not being pursued and dev bypass stays the localStorage/cookie mechanism for development). Distinct from ISSUE-018, which is about the `intelligence_reader` role wiring for legitimate in-app auth, not the dev bypass.
+
+---
+
+## ISSUE-027 — Azure Key Vault credential loading / `AzureKeyVaultAdapter` is a stub
+**Status:** Open — filed 2026-06-11 (KNOWN_ISSUES 027–031 backfill; referenced across the codebase but never tracked)
+**Discovered:** 2026-06-11 (live repo audit §7g — code scan over `backend/src`)
+**Area:** backend — `backend/src/lib/oidCipher.ts` (`AzureKeyVaultAdapter`, lines ~138–146)
+**Severity:** medium (production blocker for Azure Enterprise deployment; dev/local uses the local adapter and is unaffected)
+
+**What:**
+`oidCipher.ts` selects its key-management adapter by environment: `NODE_ENV === 'production'` is meant to resolve to `AzureKeyVaultAdapter`, but that adapter is a **stub**. The code is explicit about it — `oidCipher.ts:39` (`* NODE_ENV === 'production' → AzureKeyVaultAdapter ← STUB (see below)`), `oidCipher.ts:138` (`// ── AzureKeyVaultAdapter (stub) ──`), and `oidCipher.ts:146` (`* 3. Replace stub methods with real SDK calls:`). There is also a standing `TODO (S3-1 — hosting decision)` at `oidCipher.ts:143`. The three stub methods need real Azure Key Vault SDK calls before the OID-encryption envelope can operate in production.
+
+**Why it matters:**
+This is the production half of **S1-13** (KMS-encrypted actor OID on the canonical identity path). The local adapter makes the encrypt/decrypt path work in dev and in tests (the OID-cipher integration test passes), but in an Azure-hosted production deploy the sidecar encryption envelope has no real KMS behind it. It is also the concrete dependency under ADR **Q-E** (make sidecar encryption **uniform across all four `*_actor_audit` sidecars**) — Q-E's "encrypt then" only becomes real once a working KMS adapter exists. S3-1 has been decided (hosting = Render for testing/demos, **Azure Enterprise** for the contracted pilot), so the adapter target is now known.
+
+**Fix shape (its own dispatch):**
+- Implement the three `AzureKeyVaultAdapter` methods against the Azure Key Vault SDK; wire credentials per the S3-1 Azure Enterprise environment.
+- Resolve the `S3-1` hosting `TODO` at `oidCipher.ts:143` now that hosting is decided.
+- Sequence relative to Q-E (ISSUE-031): if the sidecars are opened for uniform encryption, land the real adapter in the same touch.
+
+**Relates to:** S1-13 (OID encryption, done at the local-adapter level), ADR **Q-E** (uniform sidecar encryption — ISSUE-031 sub-item), S3-1 (hosting decision — Azure Enterprise). See `planning/architecture/2026-06-07-issue-031-redesign-adr.md` §3 Q-E.
+
+---
+
+## ISSUE-028 — `audit_reader` role is NOLOGIN / unwired; export channel still reads sidecars as `fieldpro`
+**Status:** Open — filed 2026-06-11 (KNOWN_ISSUES 027–031 backfill)
+**Discovered:** 2026-06-11 (live repo audit §9d — `pg_roles` shows `audit_reader.rolcanlogin = false`)
+**Area:** backend — DB role provisioning + export read paths (`exportDeleteRoutes`, `sftpExport`); DB connection/role wiring (`backend/src/db.ts`)
+**Severity:** medium (latent — the correct grant boundary exists at the DB level but the export channel does not use it)
+
+**Context:**
+The sidecar-extraction work provisioned an `audit_reader` group role that holds the **correct** SELECT grant on the four `core.*_actor_audit` sidecars (plus `core.assignments`/`core.evidence`/`core.observations`/`core.visits`) for legitimate audit/export use — verified live in the audit §9e grant matrix. This is the role the export-and-delete and SFTP-export channels are *supposed* to read identity through.
+
+**The gap:**
+`audit_reader` is **NOLOGIN** (`rolcanlogin = false`, audit §9d). It cannot open a connection, so today the export channel (`exportDeleteRoutes`, `sftpExport`) still reads the sidecars **as `fieldpro`** — the broad app role that retains access to everything. The legitimate-audit-access boundary therefore exists structurally but is not yet binding on the running export paths; identity isolation for exports still leans on which role the connection happens to use rather than on a grant-scoped audit role.
+
+**Fix shape (its own dispatch):**
+- Give `audit_reader` a `LOGIN` attribute + credentials (or adopt a `SET ROLE audit_reader` wrapper for export read transactions), and route the export/delete + SFTP-export reads of identity through it instead of `fieldpro`.
+- Keep RLS in mind (PATTERN-001): `audit_reader` is non-superuser/non-bypassrls, so its reads must still set `app.current_org_id` via `withOrgContext`.
+- Decide the connection-routing mechanism jointly with ISSUE-018 (`intelligence_reader` wiring) and ISSUE-025 (CI test role) — the three are the same "which role does this connection use" decision.
+
+**Relates to:** ADR **Q-F** ("export channel moves onto `audit_reader`") — ISSUE-031 sub-item, depends on this issue. Parallel in shape to ISSUE-018 (the `intelligence_reader` no-grant boundary not yet binding on the app). See `planning/architecture/2026-06-07-issue-031-redesign-adr.md` §3 Q-F.
+
+---
+
+## ISSUE-029 — PostgreSQL 14 blocks PG15+ `security_invoker` views and the PostGIS geometry path
+**Status:** Open — deferred post-pilot
+**Discovered:** 2026-06-11 (KNOWN_ISSUES 027–031 backfill; standing constraint surfaced in CLAUDE.md and ADR MV-2)
+**Area:** infra — Postgres major version (dev runs PG 14.18); `core.locations` geometry columns; all `core.*` views (view-owner privilege bridge)
+**Severity:** low (non-foreclosure only — nothing is broken today; this is about not deepening a constraint)
+
+**What:**
+The dev/local database is **PostgreSQL 14.18**. Two future-facing capabilities are gated on a PG15+ bump:
+- **`security_invoker` views.** PG14 cannot mark a view to execute underlying base-table access **as the querying role**; every `core.*` view today runs as its owner (`fieldpro`), the PG14 view-owner privilege bridge. PG15+ `security_invoker` is the clean fix so that, e.g., `intelligence_reader` reading a view is actually constrained to `intelligence_reader`'s grants. (This is the structural backdrop to ISSUE-018 / ISSUE-030.)
+- **PostGIS geometry.** `core.locations` stores `lon double precision, lat double precision` — point-only. The non-point verticals (polygon, linestring) want PostGIS `geography`/`geometry`, which the ADR (MV-2) wants to adopt on the same PG15+ bump.
+
+**Discipline now (the only live obligation):**
+**Non-foreclosure.** Per ADR MV-2, do **not** write new code that deepens lat/lon point assumptions — no new `lat`/`lon` float columns on canonical, no point-only distance math baked into canonical reads — so the geometry retrofit stays a contained "afternoon-plus-infra" job rather than a rewrite. Actual PostGIS adoption and the `security_invoker` conversion are **deferred to the post-pilot PG15+ bump**.
+
+**Relates to:** ADR **MV-2** (spatial geometry: defer, do not deepen lat/lon — ISSUE-031 §5 multi-vertical track); the view-owner privilege bridge referenced for ISSUE-018 and ISSUE-030. See `planning/architecture/2026-06-07-issue-031-redesign-adr.md` §5 MV-2 and CLAUDE.md.
+
+---
+
+## ISSUE-030 — Six `core.v_*_transit` log views are SELECT-granted to `intelligence_reader` (labor-safety surface widening)
+**Status:** Open — filed 2026-06-11 (KNOWN_ISSUES 027–031 backfill)
+**Discovered:** 2026-06-11 (live repo audit §12 Q2, §6 Q6 contrast; ADR CANON-1)
+**Area:** DB — the six `core.v_*_transit` log views + their grants to `intelligence_reader`
+**Severity:** medium (the views expose worker columns and are granted to the intelligence role; current live readers do not select those columns, so the live leak is latent rather than active)
+
+**What:**
+The six `core.v_*_transit` log views (`v_clean_logs_transit`, `v_hazards_transit`, `v_infra_transit`, `v_level3_logs_transit`, `v_stop_photos_transit`, `v_trash_volume_logs_transit`) each pass through their underlying `public.*` log table — **including that table's worker-attribution column** (`user_id` / `reported_by` / `created_by_oid`) — and **all six are SELECT-granted to `intelligence_reader`** (audit §9e). That grant widens the intelligence surface to objects that *can* expose worker identity, even though the no-grant sidecar boundary is otherwise intact for `intelligence_reader` (it has no grant on any `*_actor_audit` sidecar or `identity_directory`, audit §6/§9e).
+
+**Live exposure assessment (from the prior calibration, audit §12 Q2):**
+- **Four are read by nothing — pure dead liability:** `v_infra_transit`, `v_level3_logs_transit`, `v_stop_photos_transit`, `v_trash_volume_logs_transit`.
+- **Two are live but aggregate-only:** `v_clean_logs_transit` (Control Center `/overview` + `/difficulty`) and `v_hazards_transit` (Control Center `/overview`) — **never select `user_id` / `reported_by`**. So no worker column reaches a live surface today; the risk is the standing grant on views that *carry* the column.
+
+**Fix shape:**
+- **Evict** the six views from `core` per CANON-1 (they are transit-vertical translation objects filtering `location_type='transit_stop' AND source_system='metro_stop'`, misfiled in the canonical schema) into the adapter namespace (DQ-1: dedicated `transit.*` schema vs. tagged `public`).
+- **Revoke** the `intelligence_reader` SELECT grants on them; re-point the two live Control Center reads at the relocated adapter views (or at canonical aggregates).
+- Drop the four dead views outright if no consumer is reintroduced.
+
+**Relates to:** ADR **CANON-1** ("`core` contains zero vertical-specific names… translation views are adapter objects; evicted from `core`") — ISSUE-031 sub-item. Distinct from but adjacent to ISSUE-018 (intelligence role wiring) and the Q6 `mcp_readonly` exposure (which is worse — see ISSUE-031 Q-G). See `planning/architecture/2026-06-07-issue-031-redesign-adr.md` §2 CANON-1.
+
+---
+
+## ISSUE-031 — Complete the v0001 → canonical migration / clip work-attribution (umbrella issue)
+**Status:** Open — design-settled in the ADR; blocked on founder answers to DQ-1..DQ-5 and on authoring the migration-sequence artifact
+**Discovered:** 2026-06-11 (KNOWN_ISSUES 027–031 backfill; the issue the entire 2026-06-06/07 inventory + ADR lineage is named for)
+**Area:** cross-cutting — canonical core + transit adapter boundary, identity sidecars, DB roles/grants, RLS posture
+**Severity:** HIGH (load-bearing — it gates the capability build and the intelligence layer; it is the umbrella for the spine inversion, the clip, and the grant/permission finishing punch list)
+
+**What this is:**
+The umbrella issue for completing the canonical migration and clipping work-attribution out of the live read/intelligence paths. Its design is **settled** in `planning/architecture/2026-06-07-issue-031-redesign-adr.md` (the redesign ADR), standing on the two 2026-06-06 inventories and the 2026-06-07 boundary reconciliation. The ADR is the *target + principles*; the *migration sequence* (what moves first, what prep) is a **separate artifact not yet written**.
+
+**Settled decisions (ADR §3 / §2), with current execution state:**
+- **Q-A/B — spine inversion.** `core.asset_locations` (+ canonical location views) becomes the **live** asset↔location read path; `transit_stops` / `transit_stop_assets` demote to ingestion source + operational flags. **SETTLED, not executed** (live code still reads `transit_stop_assets`; spine is fully seeded at 14,916 rows but has zero live readers).
+- **Q-C — run↔visit linkage hardening.** Keep the string translation (`assignments.source_system='route_runs'` + `source_ref`); harden it: index `(source_system, source_ref)`, validate at write, add a 1:1 integrity regression test. Canonical must never FK into a vertical. **SETTLED, not executed.**
+- **Q-D — evidence write atomicity.** `stop_photos` + `core.evidence` + `core.evidence_actor_audit` become **one transaction** (today the evidence write is not atomic — orphan-identity risk). **SETTLED, not executed.**
+- **Q-E — uniform sidecar encryption.** Apply the cipher envelope **uniformly across all four `*_actor_audit` sidecars** (today only `visit_actor_audit` carries it). Sequenced separate; **ties to ISSUE-027** (the KMS adapter must be real). **SETTLED, separate sequence.**
+- **Q-F — export channel onto `audit_reader`.** Export/delete + SFTP-export read identity via `audit_reader`, not `fieldpro`. **SETTLED, depends ISSUE-028.**
+- **Q-G — `mcp_readonly` revoked to canonical-only.** No exemption. **SETTLED, not executed — exposure CONFIRMED live** (audit §6 Q6: `mcp_readonly` is LOGIN and reads all four sidecars + `identity_directory`). The most acute live labor-safety leak in the set.
+- **CANON-1 — evict six `core.v_*_transit` views from `core`** into the adapter namespace. **SETTLED, ties to ISSUE-030.**
+
+**Verified open-question state (carried from the live audit, §6 / §12):**
+- **Q1 — `route_run_audit` phantom.** Does not exist in any schema or code; `ADAPTER_BOUNDARY.md` is wrong on it. **Doc correction only, no migration step.**
+- **Q2 / Q3 — verified** (six log views read state per audit §12 Q2; intelligence reads canonical only — `rebuildStopRiskSnapshot()` reads only `core.observations` + `core.visits`; `rebuildStopRiskSnapshotLegacy()` is dead code, no caller).
+- **Q4 — CLOSED.** `transit_stop_assets` (14,916 rows) has **no TypeScript writer** — it is **seed/migration/trigger-only** (the trigger is the ISSUE-024 site). Demoting it needs no app-code writer migration.
+- **Q6 — CLOSED as finding.** `mcp_readonly` sidecar + `identity_directory` exposure is **real and unremediated** (drives Q-G).
+
+**Open gates remaining (block the execution dispatch):**
+1. **Founder answers to DQ-1..DQ-5** (ADR §7): DQ-1 adapter namespace (`transit.*` vs `public`); DQ-2 RLS fail-open→fail-closed (fold into ISSUE-031 or a separate tenancy-hardening issue — note: the 2026-05-30 `core.asset_locations`/`location_external_ids` policy harden already landed this audit cycle, see ISSUE-014/audit §11); DQ-3 spine write-back mechanism; DQ-4 clip vs MV-4 timing; DQ-5 issue-boundary confirmation (what is inside ISSUE-031 vs adjacent issues — e.g. ISSUE-027/028/013/MV-2).
+2. **Author the migration-sequence artifact** (ADR §8 — "the next artifact, written against this one, after DQ-1..DQ-5 are answered"). It does **not exist** on disk yet (audit §8c: `docs/audit/` has no `031` / `migration-sequence` file).
+
+**Sub-issue map (for dispatch):** Q-E → ISSUE-027 · Q-F → ISSUE-028 · CANON-1 → ISSUE-030 · spine-inversion write-back (DQ-3) interacts with the seed-only spine; identity-role wiring → ISSUE-018; CI test role → ISSUE-025; org-resolution fail-open → ISSUE-013 (MT-1); PostGIS/PG15 non-foreclosure → ISSUE-029 (MV-2).
+
+**Documentation gap to resolve (do NOT recreate):**
+The ADR and the boundary reconciliation both cite `docs/audit/2026-06-06-canonical-core-complete-inventory.md` as **CORE-INV** (the live-verified canonical-side companion to the transit adapter inventory), but **that file does not exist on disk** (live audit §0, §13 — only the transit inventory, the ADR, and the reconciliation are present). The founder holds a copy. **Action: restore the canonical-core inventory into `docs/audit/` from the founder's copy — do not regenerate it**, as it is one of the two live-verified pillars the ADR's settled decisions rest on. Until it is restored, any agent following the ADR's CORE-INV citations hits a dead reference.
+
+**Relates to:** `planning/architecture/2026-06-07-issue-031-redesign-adr.md` (the ADR), `docs/audit/2026-06-06-transit-adapter-complete-inventory.md`, `docs/audit/2026-06-07-adapter-boundary-reconciliation.md`, `2026-06-11-live-repo-audit.md` (the live audit). Sub-items: ISSUE-027 (Q-E), ISSUE-028 (Q-F), ISSUE-030 (CANON-1). Adjacent: ISSUE-018, ISSUE-024, ISSUE-025, ISSUE-013, ISSUE-029. See **PATTERN-001** for the RLS fail-open trap that DQ-2 addresses.
