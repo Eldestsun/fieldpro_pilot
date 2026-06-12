@@ -15,7 +15,7 @@ with live state.
 - `docs/audit/2026-06-06-transit-adapter-complete-inventory.md` ✅ read
 - `docs/audit/2026-06-07-adapter-boundary-reconciliation.md` ✅ read
 - `planning/architecture/2026-06-07-issue-031-redesign-adr.md` ✅ read (the prompt cited it under `docs/audit/`; it actually lives in `planning/architecture/`)
-- `docs/audit/2026-06-06-canonical-core-complete-inventory.md` ❌ **DOES NOT EXIST** anywhere in the repo. The ADR and the boundary-reconciliation both cite it as `CORE-INV`, a live-verified companion to the transit inventory, but no file by that (or any `canonical*inventory*`) name is on disk. **This is a gap — see §13.**
+- `docs/audit/2026-06-06-canonical-core-complete-inventory.md` — the ADR and the boundary-reconciliation both cite it as `CORE-INV`, a live-verified companion to the transit inventory. **[CORRECTED 2026-06-11]** This audit originally reported the file as "DOES NOT EXIST" because the audit branch was cut from history predating it and a `find` over the working tree returned nothing. **That was wrong.** The real 663-line file IS committed at `docs/audit/2026-06-06-canonical-core-complete-inventory.md` on branch `feat/issue-031-core-inventory` (commit `d4a6846`), since merged. It was simply absent from the working branch's tree, not missing from the repo. (A stray 0-byte placeholder by the same name briefly sat at `planning/architecture/`; ignore it — the real content is at the `docs/audit/` path above.) **Not a gap.**
 
 > ⚠️ **Audit-induced state change (full disclosure):** Section 11 ran `npm run migrate` (operator-approved). The runner was **not** a pure no-op — it found and applied one genuinely-pending migration, `20260530_rls_harden_core_location_org_isolation.sql`. This is an idempotent RLS-policy harden (defense-in-depth, fail-closed). Schema-migration count went 61 → 62. Details in §11 and §13. All other sections are read-only.
 
@@ -419,7 +419,7 @@ ADR open design questions (founder must answer before migration sequence is writ
 
 ### ISSUE-031 migration sequence artifact
 
-**MISSING.** (See §8c.) ISSUE-031 has: two inventories (one missing — the canonical-core inventory file does not exist on disk, §0/§13), an ADR with settled decisions and five open founder design questions (DQ-1…DQ-5), and a boundary-reconciliation. It does **not** yet have the migration-sequence artifact the ADR §8 says must come next. **ISSUE-031 is blocked on (a) founder answers to DQ-1…DQ-5 and (b) authoring that sequence artifact** before any execution dispatch.
+**MISSING.** (See §8c.) ISSUE-031 has: **both** inventories (the transit-adapter inventory, and the canonical-core inventory — `CORE-INV` — which **does exist**, committed at `docs/audit/` on `feat/issue-031-core-inventory` @ `d4a6846`, since merged; see the §0 correction), an ADR with settled decisions and five open founder design questions (DQ-1…DQ-5), and a boundary-reconciliation. It does **not** yet have the migration-sequence artifact the ADR §8 says must come next. **ISSUE-031 is blocked on (a) founder answers to DQ-1…DQ-5 and (b) authoring that sequence artifact** before any execution dispatch.
 
 ### Cross-cutting note for the Kanban
 
