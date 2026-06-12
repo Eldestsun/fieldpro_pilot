@@ -1,9 +1,9 @@
 # MSAL Silent Auth Fix Plan (local dev → stable silent tokens)
 
 Evidence reviewed
-- [frontend/src/msalConfig.ts](/Users/adamyu/Documents/Projects/fieldpro_pilot/frontend/src/msalConfig.ts)
-- [frontend/src/auth/AuthContext.tsx](/Users/adamyu/Documents/Projects/fieldpro_pilot/frontend/src/auth/AuthContext.tsx)
-- [frontend/src/main.tsx](/Users/adamyu/Documents/Projects/fieldpro_pilot/frontend/src/main.tsx)
+- [frontend/src/msalConfig.ts](/Users/adamyu/Desktop/Optimized_Life/baseline/fieldpro_pilot/frontend/src/msalConfig.ts)
+- [frontend/src/auth/AuthContext.tsx](/Users/adamyu/Desktop/Optimized_Life/baseline/fieldpro_pilot/frontend/src/auth/AuthContext.tsx)
+- [frontend/src/main.tsx](/Users/adamyu/Desktop/Optimized_Life/baseline/fieldpro_pilot/frontend/src/main.tsx)
 
 Current behavior
 - Interactive login uses `loginPopup` with scopes `openid profile email` + API scope.

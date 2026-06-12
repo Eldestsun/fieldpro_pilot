@@ -4,7 +4,7 @@
     {
       "name": "Frontend (Vite)",
       "runtimeExecutable": "/opt/homebrew/bin/node",
-      "runtimeArgs": ["/Users/adamyu/Documents/Projects/fieldpro_pilot/frontend/node_modules/vite/bin/vite.js", "/Users/adamyu/Documents/Projects/fieldpro_pilot/frontend"],
+      "runtimeArgs": ["/Users/adamyu/Desktop/Optimized_Life/baseline/fieldpro_pilot/frontend/node_modules/vite/bin/vite.js", "/Users/adamyu/Desktop/Optimized_Life/baseline/fieldpro_pilot/frontend"],
       "port": 5173
     },
     {

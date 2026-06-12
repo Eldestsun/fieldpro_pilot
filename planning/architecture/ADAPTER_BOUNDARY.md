@@ -1,17 +1,54 @@
 # Adapter Boundary Reference
 
-> **Purpose**: Document the exact boundary between the canonical layer and the transit adapter layer, map every join path that crosses it, state the contamination rule precisely, and track which tier closes which gap.
+> **Purpose**: State the contamination rule precisely, document the signal model, and map
+> the join paths that cross the canonical↔transit-adapter boundary as they exist in *live code today*.
 >
 > **Audience**: Any agent or developer writing a query or service that touches `core.*` tables.
 >
-> **Schema state**: Core column/path structure as of 2026-05-10 (post Tier 1–4,
-> R1–R2, R4). **Partially reconciled 2026-05-30** for the bridge layer: §2b
-> (`v_locations_transit`), the `core.location_external_ids` canonical table, the
-> FORCE-RLS posture on the bridge tables, and the `core.assignments` /
-> `assignment_id` write-path status. Population counts elsewhere are pre-reseed
-> point-in-time snapshots — treat them as illustrative, not current. A full
-> reconciliation against the 2026-05-25 state-layer ratification (registry,
-> normalized columns) is still outstanding.
+> **Scope discipline**: This document is the *query-level* boundary guide (what makes a query
+> contaminated). The *object-level* model — what makes a whole table/view adapter vs. canonical,
+> the identity-sidecar layer, the multi-tenant track, and the redesign's open decisions — lives in
+> `planning/architecture/2026-06-07-issue-031-redesign-adr.md`. Do not duplicate that material here;
+> consult the ADR for it. This keeps the two documents from drifting apart again.
+
+> ## ⚠️ STATUS BANNER — read before relying on any section
+>
+> Core column/path structure was written **2026-05-10**, partially reconciled 2026-05-30, and
+> **reconciled in full 2026-06-07** against the two live-verified inventories and the ISSUE-031
+> redesign ADR (audit: `docs/audit/2026-06-07-adapter-boundary-reconciliation.md`).
+>
+> **CURRENT and authoritative in this doc:** §4 Signal Model (observation absence is data) and
+> §5 Contamination Rule — neither is contradicted by the redesign; use them as-is. The live join
+> mechanics in §3 Path A / Path B and §7 R2 status describe *what the code does today* and remain
+> accurate for the as-built system.
+>
+> **SUPERSEDED — retained as history, do NOT build from these:**
+> - The **Tier-5 / Tier-8 gap-closure roadmap (§6)**, **Path E** (`core.visits.route_run_stop_id`
+>   bridge column), and **Path F via a new `core.assets` table** are replaced by the ISSUE-031
+>   redesign. Run↔visit linkage is now a **hardened string translation** (`core.assignments.source_system`
+>   + `source_ref`), **never a hard FK from canonical into the adapter** (ADR Q-C). There is **no
+>   `core.assets` table** and the redesign does not create one — `public.assets` *is* the canonical
+>   asset registry (ADR D1, §6). Sections marked 🪦 below are history.
+> - The **identity-on-canonical-rows model** (the `actor_oid` / `created_by_oid` / `captured_by_oid`
+>   columns shown in §1) is **gone**. Those columns were dropped on 2026-06-01 and relocated to the
+>   four `core.*_actor_audit` identity sidecars; `intelligence_reader` has **no grant** on them. The
+>   sidecar mechanism is the labor-safety moat (ADR §0, §3; `2026-06-06-canonical-core-complete-inventory.md` §2).
+> - **`transit_stops` / `transit_stop_assets` as the permanent live asset↔location system-of-record.**
+>   The redesign **inverts** this: the canonical spine (`core.asset_locations` / canonical location
+>   views) becomes load-bearing, and these adapter tables demote to *vertical ingestion source +
+>   operational flags* (ADR Q-A/Q-B). Path B below still matches live code *today*, but it is the
+>   state the inversion migrates *away from*, not a durable target.
+> - The **`v_*_transit` views are slated for eviction from `core`** (CANON-1, ADR §2). They are adapter
+>   translation objects misfiled in the canonical schema; `core` is to contain zero vertical-specific
+>   names. The §2b note that they "live legitimately in core" is superseded — but the underlying
+>   *table* claim (`core.location_external_ids` is genuinely canonical) is correct and retained.
+>
+> **Population counts** anywhere in this doc are pre-reseed point-in-time snapshots — illustrative,
+> not current. For live counts and column shapes, consult the two 2026-06-06 inventories. Live as of
+> the 2026-06-07 audit: `core.observations`=18, `core.visits`=9, `core.evidence`=9,
+> `core.assignments`=12 (**written live**, not empty), `core.asset_locations`=14,916 (**fully
+> populated**, but no live application reader). `public.route_run_audit` **does not exist** in any
+> schema.
 
 ---
 
@@ -21,74 +58,99 @@ The canonical layer is the schema under `core.*`. It is the system of record for
 
 ### `core.visits`
 
-| Column | Type | Nullable | Population today |
-|--------|------|----------|-----------------|
-| `id` | bigint | NOT NULL | ✅ Always |
-| `org_id` | bigint | NOT NULL | ✅ Always |
-| `location_id` | bigint | NULL | ✅ Always (14,916 locations seeded from transit stops) |
-| `primary_asset_id` | bigint | NULL | ✅ Always (17/17 visits have asset) |
-| `assignment_id` | bigint | NULL | ✅ Now written (2026-05-30 verified) — `ensureVisitForRouteRunStop` resolves it via `route_run_stops → route_runs → core.assignments`. `core.assignments` is no longer empty. The §5.1 "Tier 5 not yet" note below is stale. |
-| `actor_oid` | text | NOT NULL | ✅ Always — real Entra OID since R1 |
-| `started_at` | timestamptz | NOT NULL | ✅ Always — set at stop-start since Tier 1 |
-| `ended_at` | timestamptz | NULL | ✅ Always for closed visits |
-| `visit_type` | text | NOT NULL | ✅ Always (`'service'`) |
-| `outcome` | text | NULL | ✅ For Tier 1+ visits (`'completed'`/`'skipped'`); NULL for pre-Tier-1 rows |
-| `reason_code` | text | NULL | ✅ For skipped stops; NULL for completions |
-| `client_visit_id` | uuid | NULL (unique) | ✅ Always — UUIDv5 of `route-run-stop:{rrs.id}` |
-| `meta` | jsonb | NOT NULL | ✅ Always (empty `{}`) |
+> **Identity correction (2026-06-07):** `core.visits.actor_oid` was **dropped** (migration
+> `20260530_sidecar_extraction_b_drop.sql`, applied 2026-06-01). Worker identity now lives in
+> `core.visit_actor_audit.actor_ref` (plaintext + encrypted envelope), a grant-isolated sidecar that
+> `intelligence_reader` cannot read. **No worker column exists on `core.visits`.** This is the
+> labor-safety moat; see ADR §3 and `2026-06-06-canonical-core-complete-inventory.md` §2.
 
-**Notable absence**: `route_run_stop_id` — there is no FK from `core.visits` to `route_run_stops`. The only link is the derived `client_visit_id`. This is the §5.1 gap, closed by Tier 5.
+| Column | Type | Nullable | Notes (counts illustrative — see CORE-INV for live) |
+|--------|------|----------|-----------------|
+| `id` | bigint | NOT NULL | — |
+| `org_id` | bigint | NOT NULL | — |
+| `location_id` | bigint | NULL | resolved via `core.v_locations_transit` at write |
+| `primary_asset_id` | bigint | NULL | FK→`public.assets` (SET NULL) |
+| `assignment_id` | bigint | NULL | **Written live** — set from `core.assignments` via the visit-ensure path. `core.assignments` is populated (see below). |
+| `started_at` | timestamptz | NOT NULL | set at stop-start |
+| `ended_at` | timestamptz | NULL | set for closed visits |
+| `visit_type` | text | NOT NULL | `'service'` |
+| `outcome` | text | NULL | `'completed'`/`'skipped'` |
+| `reason_code` | text | NULL | for skipped stops |
+| `client_visit_id` | uuid | NULL (unique) | UUIDv5 of `route-run-stop:{rrs.id}` — the 1:1 link to a `route_run_stops` row |
+| `meta` | jsonb | NOT NULL | empty `{}` |
+
+**Notable absence**: there is no FK from `core.visits` to `route_run_stops`, and 🪦 the once-planned
+`route_run_stop_id` bridge column was **never added and will not be** (ADR Q-C forbids canonical→adapter
+FKs). The link to the originating run is the **string translation** `assignment_id → core.assignments.source_ref`
+(= route_run id), plus the derived `client_visit_id` for the per-stop 1:1. Per-stop completion timing is
+fully reconstructable from `started_at`/`ended_at` (ADR D2).
 
 ---
 
 ### `core.observations`
 
-| Column | Type | Nullable | Population today |
+> **Identity correction (2026-06-07):** `core.observations.created_by_oid` was **dropped** (2026-06-01)
+> and relocated to `core.observation_actor_audit.actor_ref`. **No worker column exists on
+> `core.observations`.**
+
+| Column | Type | Nullable | Notes (counts illustrative — see CORE-INV for live) |
 |--------|------|----------|-----------------|
-| `id` | bigint | NOT NULL | ✅ Always |
-| `org_id` | bigint | NOT NULL | ✅ Always |
-| `visit_id` | bigint | NOT NULL | ✅ Always |
-| `location_id` | bigint | NULL | ✅ Always (set from stop's location_id) |
-| `asset_id` | bigint | NULL | ✅ Always — 87/87 rows populated |
-| `observation_type` | text | NOT NULL | ✅ Always |
-| `severity` | text | NULL | ❌ Never written — not used yet |
-| `status` | text | NULL | ❌ Never written — not used yet |
-| `payload` | jsonb | NOT NULL | ✅ Always |
-| `created_by_oid` | text | NOT NULL | ✅ Always — real Entra OID since R1 |
+| `id` | bigint | NOT NULL | — |
+| `org_id` | bigint | NOT NULL | — |
+| `visit_id` | bigint | NOT NULL | FK→`core.visits` (CASCADE) |
+| `location_id` | bigint | NULL | set from stop's location_id |
+| `asset_id` | bigint | NULL | FK→`public.assets` (SET NULL). Populated on the live write path. (Earlier "87/87" was a pre-reseed snapshot; live total is ~18 rows — consult CORE-INV §1.2.) |
+| `observation_type` | text | NOT NULL | free text today — **not** yet registry-FK/CHECK validated (the normalized `obs_kind` shape is deferred; ADR MV-3) |
+| `severity` | text | NULL | sparsely written (~2/18 — e.g. biohazard, encampment); no longer strictly "never" |
+| `status` | text | NULL | still unwritten (0/18) |
+| `payload` | jsonb | NOT NULL | non-empty for measurement types (e.g. `trash_volume`) |
 
 ---
 
 ### `core.evidence`
 
-| Column | Type | Nullable | Population today |
+> **Identity correction (2026-06-07):** `core.evidence.captured_by_oid` was **dropped** (2026-06-01)
+> and relocated to `core.evidence_actor_audit.actor_ref`. **No worker column exists on `core.evidence`.**
+
+| Column | Type | Nullable | Notes |
 |--------|------|----------|-----------------|
-| `id` | bigint | NOT NULL | ✅ 9 rows (1 per photo upload since Tier 1) |
-| `org_id` | bigint | NOT NULL | ✅ Always |
-| `visit_id` | bigint | NOT NULL | ✅ Always |
-| `observation_id` | bigint | NULL | ❌ Never written — no code links evidence to a specific observation |
-| `kind` | text | NOT NULL | ✅ `'completion'`/`'safety'` etc. |
-| `storage_key` | text | NOT NULL | ✅ MinIO/S3 path |
-| `captured_by_oid` | text | NOT NULL | ✅ Always |
+| `id` | bigint | NOT NULL | ~9 rows (1 per photo upload) |
+| `org_id` | bigint | NOT NULL | — |
+| `visit_id` | bigint | NOT NULL | FK→`core.visits` (CASCADE) |
+| `observation_id` | bigint | NULL | always NULL on the live path — evidence anchors to the visit, not a specific observation |
+| `kind` | text | NOT NULL | `'completion'`/`'safety'` etc. |
+| `storage_key` | text | NOT NULL | MinIO/S3 path |
+
+> **⚠️ Write-atomicity gap (ADR Q-D):** the evidence write (`public.stop_photos` + `core.evidence` +
+> `core.evidence_actor_audit`) currently runs on a **bare pool, not one transaction** — unlike the
+> visit/observation/assignment paths, which are atomic with their sidecars. A partial failure can
+> orphan an identity sidecar row. The redesign makes this one transaction. Until then, treat the three
+> writes as non-atomic.
 
 ---
 
 ### `core.assignments`
 
-| Column | Type | Nullable | Population today |
-|--------|------|----------|-----------------|
-| `id` | bigint | NOT NULL | ✅ **No longer empty** (2026-05-30 verified) — assignment rows now exist and `core.visits.assignment_id` is populated from them |
-| `org_id` | bigint | NOT NULL | — |
-| `assignment_type` | text | NOT NULL | — |
-| `status` | text | NOT NULL | — |
-| `location_id` | bigint | NULL | — |
-| `primary_asset_id` | bigint | NULL | — |
-| `planned_for_date` | date | NULL | — |
-| `created_by_oid` | text | NOT NULL | — |
+> **Status (2026-06-07): populated and written live — 12 rows.** The original "Tier 5 wires the write
+> path / empty until then" framing is **false/superseded**. Assignments are written in the same
+> `BEGIN/COMMIT` as `route_runs`/`route_run_stops` on `POST /api/route-runs`
+> (`routeRunService.createRouteRun`), one per `route_run_stops` row, paired with the
+> `core.assignment_actor_audit` sidecar. `core.visits.assignment_id` is read back from this table.
+>
+> **Identity correction:** `core.assignments.created_by_oid` was **dropped** (2026-06-01) → relocated
+> to `core.assignment_actor_audit.actor_ref`. **No worker column exists on `core.assignments`.**
 
-**Update 2026-05-30:** this is no longer an empty placeholder. `core.assignments`
-holds rows and the visit-ensure path writes `core.visits.assignment_id` from them
-(verified live). The original "Tier 5 wires the write path / empty until then"
-statement is retained here only as history.
+| Column | Type | Nullable | Notes |
+|--------|------|----------|-----------------|
+| `id` | bigint | NOT NULL | 12 rows |
+| `org_id` | bigint | NOT NULL | derived from `public.assets.org_id` in the INSERT…SELECT |
+| `assignment_type` | text | NOT NULL | `'transit_stop_clean'` |
+| `status` | text | NOT NULL | `'planned'` |
+| `location_id` | bigint | NULL | — |
+| `primary_asset_id` | bigint | NULL | FK→`public.assets` |
+| `planned_for_date` | date | NULL | — |
+| `source_system` | text | NULL | `'route_runs'` — the vertical this assignment came from |
+| `source_ref` | text | NULL | route_run id — **the canonical↔vertical run linkage (string translation, ADR Q-C), not an FK** |
 
 ---
 
@@ -98,39 +160,70 @@ statement is retained here only as history.
 
 ### `core.asset_locations`
 
-Junction table mapping `assets` to `core.locations` with role and time range. Exists but currently sparse — reflects whatever the transit data migration seeded.
+Junction table mapping `public.assets` to `core.locations` with role and time range.
+**Fully populated — 14,916 rows** (one primary link per stop), **not** sparse as an earlier draft
+stated. Caveat: it has **zero live application readers today** — the live asset↔stop translation code
+actually uses the *adapter* `public.transit_stop_assets`, not this table. So it is
+fully-populated-but-inert. The ISSUE-031 redesign **inverts this** (ADR Q-A/Q-B): `core.asset_locations`
+becomes the load-bearing canonical asset↔location read path, and `transit_stop_assets` demotes to an
+ingestion-time translation seed. What *writes* the canonical spine on change is an open design question
+(ADR DQ-3).
 
 ---
 
 ## 2. The Transit Adapter Layer
 
-Tables in `public.*` that carry operational meaning for the transit vertical. These are **not** the system of record — they are workflow scaffolding and legacy state. All are expected to remain during the migration period.
+Tables in `public.*` that carry operational meaning for the transit vertical. These are **not** the system of record — they are workflow scaffolding and legacy state.
+
+> **Redesign note (ADR Q-A/Q-B):** `transit_stops` and `transit_stop_assets` are accurately described
+> below as today's live source-of-record for stop identity and asset↔stop mapping — but the ISSUE-031
+> redesign **demotes** them to a *vertical ingestion source* (and operational flags), inverting the live
+> asset↔location read path onto the canonical spine. They remain load-bearing *as-is today*; they are
+> not the durable target. Note also (multi-vertical model, ADR §1): future verticals do **not** share
+> `transit_stops` — each vertical gets its own ingestion surface, all feeding the same generic
+> `core.locations`/`public.assets`. `transit_stops` is *one* ingestion surface, not the universal one.
+>
+> **Operational flags vs. reference metadata (ADR §6):** on `transit_stops`, `compactor` (a truck
+> empties this can) and `has_trash` (the route spec must service it because no truck does) are
+> transit-cleaning-operational and stay vertical *permanently*. `is_hotspot` (chronically bad) is kept
+> vertical for now but is "almost canonical" — the generic "chronically degraded asset" signal is a
+> future canonical-intelligence candidate, not to be built now.
 
 | Table | Role |
 |-------|------|
 | `transit_stops` | Source of truth for transit stop metadata (stop_id text, coordinates, names). The transit stop identifier lives here. |
 | `transit_stop_assets` | Maps transit `stop_id` (text) → canonical `assets.id`. The translation table between vertical identity and canonical identity. |
-| `assets` | Shared table (public schema, canonical FK target). Transit stops are represented as asset rows. Also the source of `org_id` for canonical writes — `core.assignments` and `core.visits` both derive `org_id` by joining `route_run_stops → assets.org_id`. Schema: `id bigint PK`, `org_id bigint NOT NULL FK→organizations`, `asset_type_id bigint NOT NULL`, `seed_key text NOT NULL` (unique with org_id+type), `lon/lat float`, `display_name text`, `active bool`. |
+| `assets` | Shared table (public schema), and **itself canonical** — the canonical asset registry and FK target for four `core.*` columns (ADR D1). It lives in `public` but is *not* an adapter artifact; it is in the same "lives in public, is canonical" class as `organizations`. The `core.assignments` INSERT…SELECT derives `org_id` from `assets.org_id`; `core.visits` org-scoping flows through `withOrgContext` (RLS), not a literal join — the earlier "both derive org_id by joining to assets.org_id" was over-generalized. Schema: `id bigint PK`, `org_id bigint NOT NULL FK→organizations`, `asset_type_id bigint NOT NULL`, `seed_key text NOT NULL`, `lon/lat float`, `display_name text`, `active bool`, `attributes jsonb`, `external_id text`. |
 | `route_runs` | A planned or active route for a given date and pool. Transit workflow artifact. |
 | `route_run_stops` | One row per stop on a route run. The transit execution unit. Has `stop_id` (text FK → transit_stops), `asset_id` (FK → assets). Now has `org_id bigint NOT NULL` + RLS (Phase 2, 2026-05-18). |
-| `clean_logs` | Boolean action log: what a worker *did* at a stop. Has `route_run_stop_id`, `stop_id`, `visit_id`, `asset_id`. Transit adapter bridge into canonical visits. |
-| `stop_photos` | Photo record at the transit vertical level. Has `route_run_stop_id`, `visit_id`, `asset_id`. |
-| `hazards` | Safety hazard records. Has `route_run_stop_id`, `visit_id`. |
-| `infrastructure_issues` | Infrastructure issue records. Has `route_run_stop_id`, `visit_id`. |
-| `level3_logs` | Legacy intelligence input. Has `route_run_stop_id`, `visit_id`, `asset_id`. |
-| `stop_effort_history` | Replacement for dropped `workforce_metrics`. Stop-level effort data, no worker identity. |
-| `stop_condition_history` | Stop-level condition history. No worker identity. |
-| `stop_risk_snapshot` | Intelligence snapshot per stop. |
-| `trash_volume_logs` | Trash volume records. Has `route_run_stop_id`, `visit_id`. |
+| `clean_logs` | Boolean action log: what a worker *did* at a stop. Has `route_run_stop_id`, `stop_id`, `visit_id`, `asset_id`. 🪦 **Clip target** — canonical holds the truth; rebuilt UI reads it identity-free (ADR §6). |
+| `stop_photos` | Photo record at the transit vertical level. Has `route_run_stop_id`, `visit_id`, `asset_id`. 🪦 **Clip target.** |
+| `hazards` | Safety hazard records. Has `route_run_stop_id`, `visit_id`. 🪦 **Clip target.** |
+| `infrastructure_issues` | Infrastructure issue records. Has `route_run_stop_id`, `visit_id`. 🪦 **Clip target.** |
+| `level3_logs` | Legacy intelligence input. Has `route_run_stop_id`, `visit_id`, `asset_id`. 🪦 **Clip target.** |
+| `stop_effort_history` | Replacement for dropped `workforce_metrics`. Stop-level effort data, no worker identity. (De-identified; candidate for promotion to canonical condition-state, ADR MV-4.) |
+| `stop_condition_history` | Stop-level condition history. No worker identity. (De-identified; ADR MV-4 candidate.) |
+| `stop_risk_snapshot` | Intelligence snapshot per stop. (De-identified.) |
+| `trash_volume_logs` | Trash volume records. Has `route_run_stop_id`, `visit_id`. 🪦 **Clip target.** |
 | `lead_route_overrides` | Lead-driven stop reassignment overrides. |
-| `route_run_audit` | Audit log for route run mutations. |
 | `stop_pool_memberships` | Junction table for many-to-many stop-to-pool relationships (Phase 3, 2026-05-18). Schema: `stop_id text`, `pool_id text` (composite PK), `org_id bigint NOT NULL`, `shift_type text DEFAULT NULL` (day/night/all_day), `active boolean DEFAULT true`, `created_at timestamptz`. Authoritative stop-to-pool mapping — `transit_stops.pool_id` is retained only as a deprecated denormalized cache. |
 
 ---
 
 ## 2b. Bridge Views
 
-Views in the `core` schema that translate transit-vertical identifiers into canonical identifiers. These are one-hop translation surfaces — they are tolerated at the adapter boundary but must not be embedded as join hops inside canonical intelligence queries.
+Views in the `core` schema that translate transit-vertical identifiers into canonical identifiers.
+
+> **CANON-1 correction (ADR §2):** these `v_*_transit` views are **adapter translation objects
+> misfiled in the canonical schema** and are **slated for eviction from `core`**. They are named
+> `*_transit` and filter on `location_type='transit_stop'`/`source_system='metro_stop'` — vertical
+> vocabulary that must not live in `core` (the rule: `core` contains zero vertical-specific names).
+> The earlier framing of them as "tolerated bridge objects living legitimately in core" is superseded.
+> **However** — and this distinction matters — the *table* they read, `core.location_external_ids`, **is
+> genuinely canonical** (a generic external-id sidecar; `source_system` is a parameter, not a hardcoded
+> transit concept). The contamination is the **view placement/naming**, not the underlying table. Until
+> the eviction lands, these views are still the live translation surface; treat them as one-hop
+> translation, never as embedded join hops inside a canonical intelligence query.
 
 ### `core.v_locations_transit`
 
@@ -189,9 +282,10 @@ transit `stop_id`s.
 resolve `location_id`. Verified live 2026-05-30 — the four Developer Test Pool
 stops (79213/79234/50712/80580) resolve to locations 98/6951/14916/9349.
 
-**Classification**: Tolerated bridge — one adapter lookup, not an embedded join
-hop inside a canonical query. The same one-hop translation rule applies as for
-`transit_stop_assets`.
+**Classification**: Adapter translation object (per CANON-1, **eviction from `core` pending** — ADR
+§2). Functionally a one-hop translation today, governed by the same one-hop rule as
+`transit_stop_assets`; do not embed inside canonical queries. Its backing table
+`core.location_external_ids` stays canonical.
 
 ---
 
@@ -230,8 +324,8 @@ core.observations.asset_id      [canonical FK — always populated]
 ```
 
 **Hop count**: 1 canonical, 1 adapter lookup  
-**Availability**: Today — `transit_stop_assets` is seeded; `core.observations.asset_id` is always populated (87/87)  
-**Risk**: `transit_stop_assets` is a transit-vertical mapping table. Using it in a canonical query is a one-hop adapter touch. Cleaner than Path A but still vertical-dependent.
+**Availability**: Today — `transit_stop_assets` is seeded; `core.observations.asset_id` is populated on the live path (the earlier "87/87" was a pre-reseed snapshot)  
+**Risk**: `transit_stop_assets` is a transit-vertical mapping table. Using it in a canonical query is a one-hop adapter touch. Cleaner than Path A but still vertical-dependent. **This is the live state today, and it is exactly what the ISSUE-031 spine inversion removes** (ADR Q-A/Q-B): the redesign repoints asset↔location resolution onto the canonical `core.asset_locations` and demotes `transit_stop_assets` to ingestion. Path B is the *as-is*, not the target.
 
 ---
 
@@ -268,32 +362,46 @@ Namespace: `4c5e1b10-1f0a-4ce4-9a6b-3b9b6a0f8b9c`
 
 ---
 
-### Path E — via `route_run_stop_id` on `core.visits` *(Tier 5, not yet available)*
+### 🪦 Path E — `route_run_stop_id` on `core.visits` — SUPERSEDED, NEVER BUILT, FORBIDDEN
+
+> **Do not build this.** This path proposed a transit-vertical `route_run_stop_id` bridge column on
+> `core.visits`. The column was **never added**, and the ISSUE-031 redesign **forbids the pattern**:
+> ADR Q-C settles that canonical **never holds an FK into the adapter** — run↔visit linkage is a
+> hardened **string translation** via `core.assignments.source_system`/`source_ref`, not a bridge
+> column. The original block (citing `target_architecture.md §11` as accepting the column) is retained
+> below only as history so the decision trail is legible. The §11 endorsement, if it still exists,
+> is itself stale — see the audit's OQ-2.
+
+<details><summary>Historical text (superseded — for provenance only)</summary>
 
 ```
 core.observations.visit_id      [canonical FK]
-  → core.visits.route_run_stop_id [TRANSIT BRIDGE COLUMN — acceptable interim]
+  → core.visits.route_run_stop_id [TRANSIT BRIDGE COLUMN — was proposed interim]
   → route_run_stops.id          [ADAPTER]
   WHERE route_run_stops.stop_id = $1
 ```
 
-**Hop count**: 1 canonical, 1 transit bridge column, 1 adapter filter  
-**Availability**: After Tier 5 writes `route_run_stop_id` on `core.visits`  
-**Classification**: Accepted transitional pattern. The bridge column is transit-vertical-specific but lives on the canonical table as an acknowledged interim FK. Documented explicitly in `target_architecture.md §11`.
+Was classified "accepted transitional pattern… documented in `target_architecture.md §11`." This
+classification is repudiated by ADR Q-C ("canonical must never FK into a vertical").
+</details>
 
 ---
 
-### Path F — fully canonical *(Tier 8 target state)*
+### Path F — fully canonical *(the goal — but via `public.assets`, NOT a new `core.assets` table)*
 
 ```
 core.observations.asset_id = :canonicalAssetId   [canonical — no adapter touch]
 ```
 
-The caller holds the canonical `asset_id` directly. No transit table is consulted. `stop_id` as a text identifier is never referenced.
+The caller holds the canonical `asset_id` directly. No transit table is consulted. `stop_id` as a
+text identifier is never referenced. **Hop count: 0. This zero-hop end-state is still the goal.**
 
-**Hop count**: 0  
-**Availability**: After Tier 8 ensures all transit stops are proper canonical assets and callsites are updated to use canonical `asset_id` rather than transit `stop_id`  
-**This is the target state.**
+> **Mechanism correction (ADR D1):** the original Tier-8 framing said this required *"`core.assets`
+> fully seeded"* — a **new `core.assets` table**. 🪦 **That table does not exist and the redesign does
+> not create one.** `public.assets` *is* the canonical asset registry (a load-bearing FK target for
+> four `core.*` columns, in the "lives in public, is canonical" class with `organizations`). So Path F's
+> *goal* (callers pass a canonical `asset_id`, no transit table consulted) is correct and survives; its
+> stated *mechanism* (build `core.assets`) is superseded. The canonical id is `public.assets.id`.
 
 ---
 
@@ -312,11 +420,11 @@ Observation absence is a valid signal. A stop condition type not appearing in `c
 | Pattern | Verdict |
 |---------|---------|
 | `JOIN clean_logs ON cl.visit_id = v.id` inside a `core.*` query | ❌ Contaminated — transit action log is a join hop, not a translation |
-| `JOIN route_run_stops rrs ON rrs.id = v.route_run_stop_id` | ⚠️ Accepted interim (Tier 5 bridge column, acknowledged in architecture) |
-| `WHERE o.asset_id = (SELECT asset_id FROM transit_stop_assets WHERE stop_id = $1 LIMIT 1)` | ⚠️ Tolerated — one-hop translation, but vertical-dependent |
+| `JOIN route_run_stops rrs ON rrs.id = v.route_run_stop_id` | ❌ Forbidden — 🪦 the `route_run_stop_id` bridge column was never built and is repudiated (ADR Q-C: canonical never FKs into the adapter) |
+| `WHERE o.asset_id = (SELECT asset_id FROM transit_stop_assets WHERE stop_id = $1 LIMIT 1)` | ⚠️ Tolerated *today* — one-hop translation, but vertical-dependent; the spine inversion removes it (ADR Q-A/Q-B) |
 | `WHERE o.asset_id = $canonicalAssetId` (canonical ID resolved before query) | ✅ Clean |
 | `JOIN core.visits v ON v.id = o.visit_id` | ✅ Clean — canonical-to-canonical |
-| Reading `level3_logs` or `hazards` in a canonical intelligence query | ❌ Contaminated — Tier 2 closes this |
+| Reading `level3_logs` or `hazards` in a canonical intelligence query | ❌ Contaminated — and these are clip targets (the live risk job already reads `core.observations`/`core.visits`, not the log tables) |
 
 ### The key distinction
 
@@ -324,25 +432,31 @@ A translation lookup (e.g., resolving `stop_id → asset_id` once before the que
 
 ---
 
-## 6. Gap Closure Roadmap
+## 🪦 6. Gap Closure Roadmap — SUPERSEDED (retained as history)
 
-### Tier 5 — `route_run_stop_id` on `core.visits`
+> **This entire section is superseded by `2026-06-07-issue-031-redesign-adr.md`.** The Tier-5/Tier-8
+> sequencing below was the 2026-05-10 plan; the ISSUE-031 redesign replaced it. Specifically: Tier 5's
+> `route_run_stop_id` bridge column is **forbidden** (ADR Q-C — canonical never FKs into the adapter;
+> run↔visit linkage is the hardened `source_ref` string translation), and Tier 8's `core.assets` table
+> **is not created** (ADR D1 — `public.assets` is the canonical registry). The zero-hop *goal* (callers
+> pass a canonical `asset_id`) survives; the *mechanism* below does not. Kept only because it documents
+> why Path B exists and what the original migration intent was. **Do not plan work from this section —
+> use the ADR's migration sequence.**
 
-**Closes**: Path A dependency on `clean_logs` as a bridge  
-**What it adds**: A `route_run_stop_id bigint` column on `core.visits`, written at stop-start, linking each canonical visit back to its originating transit execution unit  
-**Classification**: Transit-vertical bridge column. Explicitly accepted as interim in `target_architecture.md §11`. Not the clean-path target state — Tier 5 makes the join shorter and safer, not canonical.  
-**Effect on R2**: Allows `arrivalObservations()` to use Path E instead of Path A, eliminating the `clean_logs` dependency while still retaining one adapter hop.  
-**Remaining contamination after Tier 5**: `core.visits.route_run_stop_id` references a transit-vertical table. Acceptable until Tier 8.
+### 🪦 Tier 5 — `route_run_stop_id` on `core.visits` (SUPERSEDED — column never built, pattern forbidden)
 
----
+**Was**: a `route_run_stop_id bigint` column on `core.visits` linking each visit to its transit
+execution unit, classified as an accepted interim transit-vertical bridge column.
+**Now**: forbidden by ADR Q-C. The linkage is `core.assignments.source_ref` (string translation), and
+per-stop linkage is the derived `client_visit_id`. No bridge column.
 
-### Tier 8 — `core.assets` fully seeded, `asset_id` as canonical stop identity
+### 🪦 Tier 8 — `core.assets` fully seeded, `asset_id` as canonical stop identity (SUPERSEDED — no such table)
 
-**Closes**: The remaining adapter dependency for all canonical queries targeting a specific stop  
-**What it adds**: Ensures every transit stop is a first-class canonical asset, with a stable canonical `asset_id` that can be passed to canonical queries directly — no transit identifier needed  
-**Effect on R2**: `arrivalObservations()` can accept `assetId: number` instead of `stopId: string`. The function body becomes `WHERE o.asset_id = $1`. Zero adapter hops.  
-**Effect on all canonical intelligence**: Any query that currently resolves `stop_id → asset_id` via `transit_stop_assets` can be simplified to `WHERE asset_id = :known_id`.  
-**This tier makes Path F the standard.**
+**Was**: ensure every transit stop is a first-class row in a new `core.assets` table with a stable
+canonical `asset_id`.
+**Now**: there is no `core.assets` table (ADR D1). `public.assets` already *is* the canonical registry;
+the goal (callers use `public.assets.id`, drop the `transit_stop_assets` join) is reached by the spine
+inversion (ADR Q-A/Q-B), not by building a new table.
 
 ---
 
@@ -356,8 +470,8 @@ History: migrated from Path A (`clean_logs` bridge, 3 adapter hops) to Path B in
 
 **Why it is dormant in some flows**: Live `emitObservationsForStop()` callers in `routeRunStopRoutes.ts` do not all pass `stopId` yet, so for those callsites the lookup branch never fires and the function falls back to pessimistic dirty defaults. The implementation is complete but partially unactivated.
 
-**Activation / cleanup path**:
-1. **Tier 5** — pass `stopId` through everywhere `emitObservationsForStop()` is called from the start-stop handler. (Optionally switch to Path E once `route_run_stop_id` is on `core.visits`, but Path B is acceptable until Tier 8.)
-2. **Tier 8** — refactor to Path F: replace `stopId: string` with `assetId: number`; drop the `transit_stop_assets` join entirely.
+**Activation / cleanup path** (superseding the old Tier 5/Tier 8 steps):
+1. Pass `stopId` through everywhere `emitObservationsForStop()` is called from the start-stop handler, so the Path B lookup fires instead of falling back to dirty defaults.
+2. 🪦 The old "switch to Path E / refactor to Path F via `core.assets`" steps are superseded. The clean end-state (caller passes canonical `public.assets.id`, drop the `transit_stop_assets` join) is reached by the **ISSUE-031 spine inversion** (ADR Q-A/Q-B), which repoints asset↔location resolution onto `core.asset_locations`. Plan this from the ADR's migration sequence, not from the retired tier roadmap.
 
 Until callers fully pass `stopId`, arrival observations fall back to dirty defaults for those stops. This is safe (pessimistic) but means the observation delta for those flows is always "worker improved everything from dirty" regardless of actual prior state.
