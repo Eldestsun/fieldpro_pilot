@@ -4,10 +4,10 @@ Problem statement
 Local login fails with browser console error: “Unsafe attempt to initiate navigation for frame with origin 'http://localhost:5173' … the frame attempting navigation of the top-level window is sandboxed, but the flag of 'allow-top-navigation' … is not set.”
 
 What the app does now (evidence)
-- MSAL is initialized with `PublicClientApplication(msalConfig)` in [frontend/src/main.tsx](/Users/adamyu/Documents/Projects/fieldpro_pilot/frontend/src/main.tsx).
-- Config uses redirect-based defaults with popup login: `instance.loginPopup({ scopes })` in [frontend/src/auth/AuthContext.tsx](/Users/adamyu/Documents/Projects/fieldpro_pilot/frontend/src/auth/AuthContext.tsx).
-- Tokens are fetched with `acquireTokenSilent` using the active account [frontend/src/auth/AuthContext.tsx](/Users/adamyu/Documents/Projects/fieldpro_pilot/frontend/src/auth/AuthContext.tsx).
-- MSAL config values come from env: tenant/client IDs and `redirectUri` default to `http://localhost:5173` [frontend/src/msalConfig.ts](/Users/adamyu/Documents/Projects/fieldpro_pilot/frontend/src/msalConfig.ts).
+- MSAL is initialized with `PublicClientApplication(msalConfig)` in [frontend/src/main.tsx](/Users/adamyu/Desktop/Optimized_Life/baseline/fieldpro_pilot/frontend/src/main.tsx).
+- Config uses redirect-based defaults with popup login: `instance.loginPopup({ scopes })` in [frontend/src/auth/AuthContext.tsx](/Users/adamyu/Desktop/Optimized_Life/baseline/fieldpro_pilot/frontend/src/auth/AuthContext.tsx).
+- Tokens are fetched with `acquireTokenSilent` using the active account [frontend/src/auth/AuthContext.tsx](/Users/adamyu/Desktop/Optimized_Life/baseline/fieldpro_pilot/frontend/src/auth/AuthContext.tsx).
+- MSAL config values come from env: tenant/client IDs and `redirectUri` default to `http://localhost:5173` [frontend/src/msalConfig.ts](/Users/adamyu/Desktop/Optimized_Life/baseline/fieldpro_pilot/frontend/src/msalConfig.ts).
 - No `handleRedirectPromise` or redirect flow is wired; popup is the only interactive path.
 
 Why the sandbox error appears
