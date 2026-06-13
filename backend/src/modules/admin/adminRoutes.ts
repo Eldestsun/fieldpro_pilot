@@ -695,7 +695,15 @@ adminRoutes.get("/admin/clean-logs", async (req: Request, res: Response) => {
     // Main Query
     const query = `
             SELECT
-                cl.*,
+                cl.id,
+                cl.route_run_stop_id,
+                cl.stop_id,
+                cl.cleaned_at,
+                cl.picked_up_litter,
+                cl.emptied_trash,
+                cl.washed_shelter,
+                cl.washed_pad,
+                cl.washed_can,
                 s.on_street_name, s.pool_id,
                 rr.run_date, rr.route_pool_id
             FROM clean_logs cl
