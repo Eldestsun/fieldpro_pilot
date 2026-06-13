@@ -1,5 +1,5 @@
 
-import { PoolClient } from "pg";
+import { Pool, PoolClient } from "pg";
 import { deriveClientVisitId } from "../../domains/visit/visitService";
 
 export interface StopPhoto {
@@ -13,7 +13,7 @@ export interface StopPhoto {
 }
 
 export async function createStopPhotos(
-    client: PoolClient | any,
+    clientOrPool: PoolClient | Pool | any,
     params: {
         routeRunStopId: number;
         userOid: string;
@@ -25,59 +25,98 @@ export async function createStopPhotos(
 
     if (s3Keys.length === 0) return;
 
-    // Fetch asset_id (needed for stop_photos consistency)
-    const lookupRes = await client.query(
-        `SELECT asset_id FROM route_run_stops WHERE id = $1`,
-        [routeRunStopId]
-    );
-    let assetId = null;
-    if (lookupRes.rows.length > 0) {
-        assetId = lookupRes.rows[0].asset_id;
-    }
+    // Q-D (ISSUE-031 §3) — the evidence write path must be one transaction.
+    // Across every key this function touches three tables: stop_photos (transit
+    // adapter), core.evidence (canonical), and core.evidence_actor_audit (the
+    // no-grant identity sidecar). Run on autocommit these are independent writes,
+    // so a mid-loop failure can leave canonical evidence with no identity audit —
+    // or, worse, an identity audit row whose evidence never landed. That orphan-
+    // identity state is the one inconsistency a labor-safe-by-structure system
+    // can never ship. We wrap the whole path so it is all-or-nothing.
+    //
+    // Transaction ownership: if handed a bare Pool (the production /photos route
+    // path), we check out a dedicated connection and own BEGIN/COMMIT/ROLLBACK.
+    // If handed a PoolClient, the caller owns the transaction (the convention in
+    // cleanLogService) and we only run statements — joining the caller's atomic
+    // unit rather than opening a nested one. A PoolClient is distinguished by its
+    // `.release()` method, which a Pool does not have.
+    const ownsTransaction = typeof (clientOrPool as any).release !== "function";
+    const client: PoolClient = ownsTransaction
+        ? await (clientOrPool as Pool).connect()
+        : (clientOrPool as PoolClient);
 
-    const clientVisitId = deriveClientVisitId(routeRunStopId);
+    try {
+        if (ownsTransaction) await client.query("BEGIN");
 
-    for (const key of s3Keys) {
-        // Existing transit write (additive discipline — do not remove)
-        const photoRes = await client.query(
-            `INSERT INTO stop_photos (visit_id, route_run_stop_id, asset_id, s3_key, kind, created_by_oid, captured_at, org_id)
-             SELECT id, $2, $3, $4, $5, $6, NOW(), org_id
-             FROM core.visits
-             WHERE client_visit_id = $1
-             LIMIT 1`,
-            [clientVisitId, routeRunStopId, assetId, key, kind, userOid]
+        // Fetch asset_id (needed for stop_photos consistency)
+        const lookupRes = await client.query(
+            `SELECT asset_id FROM route_run_stops WHERE id = $1`,
+            [routeRunStopId]
         );
-
-        if (photoRes.rowCount === 0) {
-            console.warn(
-                `[createStopPhotos] No visit found for routeRunStopId=${routeRunStopId} — stop_photos row skipped for key=${key}`
-            );
+        let assetId = null;
+        if (lookupRes.rows.length > 0) {
+            assetId = lookupRes.rows[0].asset_id;
         }
 
-        // Canonical evidence write — captured-by identity goes to the no-grant
-        // sidecar core.evidence_actor_audit (§3.2), never onto core.evidence.
-        const evidenceRes = await client.query(
-            `INSERT INTO core.evidence (org_id, visit_id, observation_id, kind, storage_key)
-             SELECT v.org_id, v.id, NULL, $1, $2
-             FROM core.visits v
-             WHERE v.client_visit_id = $3
-             LIMIT 1
-             RETURNING id, org_id`,
-            [kind, key, clientVisitId]
-        );
+        const clientVisitId = deriveClientVisitId(routeRunStopId);
 
-        if (evidenceRes.rowCount === 0) {
-            console.warn(
-                `[createStopPhotos] No visit found for routeRunStopId=${routeRunStopId} — evidence row skipped for key=${key}`
+        for (const key of s3Keys) {
+            // Existing transit write (additive discipline — do not remove)
+            const photoRes = await client.query(
+                `INSERT INTO stop_photos (visit_id, route_run_stop_id, asset_id, s3_key, kind, created_by_oid, captured_at, org_id)
+                 SELECT id, $2, $3, $4, $5, $6, NOW(), org_id
+                 FROM core.visits
+                 WHERE client_visit_id = $1
+                 LIMIT 1`,
+                [clientVisitId, routeRunStopId, assetId, key, kind, userOid]
             );
-        } else {
-            await client.query(
-                `INSERT INTO core.evidence_actor_audit (evidence_id, org_id, actor_ref)
-                 VALUES ($1, $2, $3)
-                 ON CONFLICT (evidence_id) DO NOTHING`,
-                [evidenceRes.rows[0].id, evidenceRes.rows[0].org_id, userOid]
+
+            if (photoRes.rowCount === 0) {
+                // Not an error — no visit yet means there is nothing to anchor
+                // evidence to. Skip this key; the rest of the unit still commits.
+                console.warn(
+                    `[createStopPhotos] No visit found for routeRunStopId=${routeRunStopId} — stop_photos row skipped for key=${key}`
+                );
+            }
+
+            // Canonical evidence write — captured-by identity goes to the no-grant
+            // sidecar core.evidence_actor_audit (§3.2), never onto core.evidence.
+            const evidenceRes = await client.query(
+                `INSERT INTO core.evidence (org_id, visit_id, observation_id, kind, storage_key)
+                 SELECT v.org_id, v.id, NULL, $1, $2
+                 FROM core.visits v
+                 WHERE v.client_visit_id = $3
+                 LIMIT 1
+                 RETURNING id, org_id`,
+                [kind, key, clientVisitId]
             );
+
+            if (evidenceRes.rowCount === 0) {
+                console.warn(
+                    `[createStopPhotos] No visit found for routeRunStopId=${routeRunStopId} — evidence row skipped for key=${key}`
+                );
+            } else {
+                await client.query(
+                    `INSERT INTO core.evidence_actor_audit (evidence_id, org_id, actor_ref)
+                     VALUES ($1, $2, $3)
+                     ON CONFLICT (evidence_id) DO NOTHING`,
+                    [evidenceRes.rows[0].id, evidenceRes.rows[0].org_id, userOid]
+                );
+            }
         }
+
+        if (ownsTransaction) await client.query("COMMIT");
+    } catch (err) {
+        if (ownsTransaction) {
+            try {
+                await client.query("ROLLBACK");
+            } catch {
+                // best-effort rollback; the connection is released regardless
+            }
+        }
+        throw err;
+    } finally {
+        if (ownsTransaction) client.release();
     }
 }
 
