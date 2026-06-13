@@ -81,6 +81,32 @@ Analysis-only tasks (no code or schema changes) do not require a changelog entry
 
 ---
 
+## Phase Discipline (hard rule)
+
+Work proceeds in phase order. These rules are not advisory — a violation is a
+process defect, not a judgment call. They exist because P1 cards have repeatedly
+been given dependencies on P2 work, which inverts the phase gate and makes P1
+appear blocked on P2.
+
+- **Phase order is absolute.** Never begin a P2+ card while any P1 card is open
+  (Backlog, Ready, or In Progress). P1 work clears before P2 work starts.
+- **Dependencies point downhill only.** A P1 card may depend only on P1-or-lower
+  work. If you find a P1 card whose `Depends On` references P2+ work, that is a
+  **BOARD BUG**: report it and do not follow it. Do **not** start the P2 work to
+  "unblock" the P1 card — the dependency itself is wrong and must be severed.
+- **Check the phase before following any edge.** Before following ANY `Depends On`
+  edge, check the phase of the dependency. If it is a higher phase than the card
+  you are working, stop and report.
+- **Two phase-correct changes beat one bundled change.** When P1 work and P2 work
+  touch the same file or surface, prefer two separate phase-correct changes over
+  one bundled change. Touching a file twice is cheap; inverting the phase gate is
+  expensive. Never bundle a P1 read/write change into a P2 relocation/rebuild to
+  "do it once."
+- **F-1 and T1-CC are P2, always.** F-1 (Entra Dispatch role) and all T1-CC work
+  are P2. They are never on the P1 critical path.
+
+---
+
 ## Core Rules
 
 - Do not skip required reads
