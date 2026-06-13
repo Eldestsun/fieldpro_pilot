@@ -57,11 +57,35 @@ jobs:
         env:
           DATABASE_URL: postgres://fieldpro:fieldpro_pass@localhost:5432/fieldpro_test
 
+      # ISSUE-025: the postgres:14 service image makes POSTGRES_USER=fieldpro a
+      # SUPERUSER, and superusers bypass RLS even on FORCE ROW LEVEL SECURITY
+      # tables. The app's runtime role is a NON-superuser, so RLS-enforcement
+      # tests (audit_log RLS x2, audit_log_delete policy x3, loadRouteRunById
+      # cross-tenant fail-closed x1) were green on CI only because RLS was being
+      # bypassed — the opposite of what they assert. Create a non-superuser,
+      # non-BYPASSRLS role that inherits fieldpro's grants via role membership
+      # (the faithful "same grants minus superuser"), and run the tests as it so
+      # RLS is actually enforced. Migrations + seed above stay on the superuser
+      # fieldpro by design (they need to create schema and seed across orgs).
+      # This is CI-only; it does not touch backend/src/db.ts, the app pool, or
+      # the intelligence_reader runtime-role decision (ISSUE-018).
+      - name: Create non-superuser test role (RLS enforcement — ISSUE-025)
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -c "DROP ROLE IF EXISTS fieldpro_test;" \
+            -c "CREATE ROLE fieldpro_test LOGIN PASSWORD 'fieldpro_test_pass' NOSUPERUSER NOBYPASSRLS INHERIT;" \
+            -c "GRANT fieldpro TO fieldpro_test;"
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://fieldpro:fieldpro_pass@localhost:5432/fieldpro_test
+
       - name: Run tests
         run: pnpm test
         working-directory: backend
         env:
-          DATABASE_URL: postgres://fieldpro:fieldpro_pass@localhost:5432/fieldpro_test
+          # Connect as the non-superuser fieldpro_test so FORCE RLS is enforced
+          # (see "Create non-superuser test role" above / ISSUE-025).
+          DATABASE_URL: postgres://fieldpro_test:fieldpro_test_pass@localhost:5432/fieldpro_test
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_API_AUDIENCE: ${{ secrets.AZURE_API_AUDIENCE }}
 
