@@ -302,14 +302,17 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
                 srs.cleanliness_score,
                 srs.safety_score,
                 srs.infrastructure_score,
-                tsa.asset_id,
+                al.asset_id,
                 v.org_id
             FROM stop_risk_snapshot srs
-            JOIN transit_stop_assets tsa
-              ON tsa.stop_id = srs.stop_id
-             AND tsa.active = TRUE
-             AND tsa.role = 'primary'
-            JOIN core.visits v ON v.primary_asset_id = tsa.asset_id
+            JOIN core.location_external_ids lei
+              ON lei.external_id = srs.stop_id
+             AND lei.source_system = 'metro_stop'
+            JOIN core.asset_locations al
+              ON al.location_id = lei.location_id
+             AND al.active = TRUE
+             AND al.role = 'primary'
+            JOIN core.visits v ON v.primary_asset_id = al.asset_id
             WHERE v.ended_at >= NOW() - INTERVAL '1 day'
             ON CONFLICT (stop_id, visit_id) DO NOTHING
         `);
