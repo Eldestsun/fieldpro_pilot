@@ -74,46 +74,55 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
             -- core.visits → transit_stop_assets (asset_id translation) → stop_id.
             l3 AS (
                 SELECT
-                    tsa.stop_id,
+                    lei.external_id AS stop_id,
                     DATE_PART('day', NOW() - MAX(v.ended_at))::int AS days_since_last_l3
                 FROM core.visits v
-                JOIN transit_stop_assets tsa
-                  ON tsa.asset_id = v.primary_asset_id
-                 AND tsa.active = TRUE
-                 AND tsa.role = 'primary'
+                JOIN core.asset_locations al
+                  ON al.asset_id = v.primary_asset_id
+                 AND al.active = TRUE
+                 AND al.role = 'primary'
+                JOIN core.location_external_ids lei
+                  ON lei.location_id = al.location_id
+                 AND lei.source_system = 'metro_stop'
                 WHERE v.outcome = 'completed'
                   AND v.ended_at IS NOT NULL
-                GROUP BY tsa.stop_id
+                GROUP BY lei.external_id
             ),
             -- Trash volume from canonical observations (replaces trash_volume_logs).
             -- Payload shape: { level: 0|1|2|3|4 }.
             trash AS (
                 SELECT
-                    tsa.stop_id,
+                    lei.external_id AS stop_id,
                     AVG((o.payload->>'level')::numeric)::numeric(4,2) AS recent_trash_volume_avg
                 FROM core.observations o
-                JOIN transit_stop_assets tsa
-                  ON tsa.asset_id = o.asset_id
-                 AND tsa.active = TRUE
-                 AND tsa.role = 'primary'
+                JOIN core.asset_locations al
+                  ON al.asset_id = o.asset_id
+                 AND al.active = TRUE
+                 AND al.role = 'primary'
+                JOIN core.location_external_ids lei
+                  ON lei.location_id = al.location_id
+                 AND lei.source_system = 'metro_stop'
                 WHERE o.observation_type = 'trash_volume'
                   AND o.observed_at >= NOW() - INTERVAL '7 days'
                   AND (o.payload ? 'level')
-                GROUP BY tsa.stop_id
+                GROUP BY lei.external_id
             ),
             -- Hazard signals from canonical observations (replaces hazards table).
             -- Severity is not stored canonically; presence-in-window = 1.0.
             haz AS (
                 SELECT
-                    tsa.stop_id,
+                    lei.external_id AS stop_id,
                     MAX(o.observed_at) AS last_hazard_at,
                     1.0::numeric(4,2)  AS last_hazard_severity,
                     DATE_PART('day', NOW() - MAX(o.observed_at))::int AS hazard_days_ago
                 FROM core.observations o
-                JOIN transit_stop_assets tsa
-                  ON tsa.asset_id = o.asset_id
-                 AND tsa.active = TRUE
-                 AND tsa.role = 'primary'
+                JOIN core.asset_locations al
+                  ON al.asset_id = o.asset_id
+                 AND al.active = TRUE
+                 AND al.role = 'primary'
+                JOIN core.location_external_ids lei
+                  ON lei.location_id = al.location_id
+                 AND lei.source_system = 'metro_stop'
                 WHERE o.observation_type IN (
                     'encampment_present',
                     'fire_present',
@@ -125,7 +134,7 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
                     'other_safety_concern_present'
                   )
                   AND o.observed_at >= NOW() - INTERVAL '${HAZARD_WINDOW_DAYS} days'
-                GROUP BY tsa.stop_id
+                GROUP BY lei.external_id
             ),
             -- Infrastructure scores from canonical observations (replaces infrastructure_issues).
             -- Severity not stored canonically; COUNT(*) capped at 5 stands in for AVG(severity).
@@ -134,13 +143,16 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
             -- the 8 specific infra *_present types.
             infra AS (
                 SELECT
-                    tsa.stop_id,
+                    lei.external_id AS stop_id,
                     LEAST(COUNT(*)::numeric, 5)::numeric(4,2) AS infra_issue_score
                 FROM core.observations o
-                JOIN transit_stop_assets tsa
-                  ON tsa.asset_id = o.asset_id
-                 AND tsa.active = TRUE
-                 AND tsa.role = 'primary'
+                JOIN core.asset_locations al
+                  ON al.asset_id = o.asset_id
+                 AND al.active = TRUE
+                 AND al.role = 'primary'
+                JOIN core.location_external_ids lei
+                  ON lei.location_id = al.location_id
+                 AND lei.source_system = 'metro_stop'
                 WHERE o.observation_type IN (
                     'glass_damage_present',
                     'graffiti_present',
@@ -152,7 +164,7 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
                     'other_infrastructure_issue_present'
                   )
                   AND o.observed_at >= NOW() - INTERVAL '30 days'
-                GROUP BY tsa.stop_id
+                GROUP BY lei.external_id
             ),
             scored AS (
                 SELECT
