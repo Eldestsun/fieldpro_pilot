@@ -161,6 +161,11 @@ At each session boundary, or before any new-phase dispatch: audit every P1 card'
 critical path is self-contained. Drift recurs when work spreads across tabs and
 sessions; this is the catch.
 
+Re-sync the parent `Optimized_Life/CLAUDE.md` mirror: diff it against this
+authoritative section. If they differ, update the parent mirror to match this file
+and bump its "Last synced" marker. The versioned file is always the source; the
+mirror follows.
+
 ---
 
 ## Core Rules
