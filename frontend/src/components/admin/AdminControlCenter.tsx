@@ -30,7 +30,7 @@ interface SummaryStats {
     clean_events: number;
     total_clean_minutes: number;
     hazards_reported: number;
-    high_severity_hazards: number;
+    // high_severity_hazards removed per ISSUE-031 DQ A2 (see "High Severity" tile note below).
 }
 
 interface RouteStatus {
@@ -281,11 +281,17 @@ export const AdminControlCenter: React.FC = () => {
                             value={summary?.hazards_reported ?? 0}
                             valueClassName="text-4xl font-bold text-green-700"
                         />
-                        <StatCard
-                            label="High Severity"
-                            value={summary?.high_severity_hazards ?? 0}
-                            valueClassName="text-4xl font-bold text-red-700"
-                        />
+                        {/*
+                          ISSUE-031/CC-REPOINT: the "High Severity" tile is intentionally not
+                          rendered. The /overview endpoint dropped high_severity_hazards per
+                          DQ A2 — canonical severity is a sparse text column with no
+                          text→numeric mapping, so a severity>=4 cut cannot be computed here.
+                          A permanently-zero tile would be indistinguishable from "no
+                          high-severity hazards" (misleading), so the tile is removed rather
+                          than shown as 0. Restore in the MV-4 / DQ-4 intelligence pass once
+                          canonical severity is populated. Tracked gap:
+                          docs/changelog/refactor/2026-06-13-issue-031-p1-cc-repoint.md.
+                        */}
                     </div>
                 </section>
 
