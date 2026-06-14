@@ -192,7 +192,7 @@ Tables in `public.*` that carry operational meaning for the transit vertical. Th
 | Table | Role |
 |-------|------|
 | `transit_stops` | Source of truth for transit stop metadata (stop_id text, coordinates, names). The transit stop identifier lives here. |
-| `transit_stop_assets` | Maps transit `stop_id` (text) → canonical `assets.id`. The translation table between vertical identity and canonical identity. |
+| `transit_stop_assets` | **Ingestion-only** (spine inversion complete, Q-A/B 2026-06-14). Maps transit `stop_id` (text) → canonical `assets.id` at ingestion time only — no live application readers. Canonical asset↔location resolution is now `core.asset_locations`. |
 | `assets` | Shared table (public schema), and **itself canonical** — the canonical asset registry and FK target for four `core.*` columns (ADR D1). It lives in `public` but is *not* an adapter artifact; it is in the same "lives in public, is canonical" class as `organizations`. The `core.assignments` INSERT…SELECT derives `org_id` from `assets.org_id`; `core.visits` org-scoping flows through `withOrgContext` (RLS), not a literal join — the earlier "both derive org_id by joining to assets.org_id" was over-generalized. Schema: `id bigint PK`, `org_id bigint NOT NULL FK→organizations`, `asset_type_id bigint NOT NULL`, `seed_key text NOT NULL`, `lon/lat float`, `display_name text`, `active bool`, `attributes jsonb`, `external_id text`. |
 | `route_runs` | A planned or active route for a given date and pool. Transit workflow artifact. |
 | `route_run_stops` | One row per stop on a route run. The transit execution unit. Has `stop_id` (text FK → transit_stops), `asset_id` (FK → assets). Now has `org_id bigint NOT NULL` + RLS (Phase 2, 2026-05-18). |
@@ -421,7 +421,7 @@ Observation absence is a valid signal. A stop condition type not appearing in `c
 |---------|---------|
 | `JOIN clean_logs ON cl.visit_id = v.id` inside a `core.*` query | ❌ Contaminated — transit action log is a join hop, not a translation |
 | `JOIN route_run_stops rrs ON rrs.id = v.route_run_stop_id` | ❌ Forbidden — 🪦 the `route_run_stop_id` bridge column was never built and is repudiated (ADR Q-C: canonical never FKs into the adapter) |
-| `WHERE o.asset_id = (SELECT asset_id FROM transit_stop_assets WHERE stop_id = $1 LIMIT 1)` | ⚠️ Tolerated *today* — one-hop translation, but vertical-dependent; the spine inversion removes it (ADR Q-A/Q-B) |
+| `WHERE o.asset_id = (SELECT asset_id FROM transit_stop_assets WHERE stop_id = $1 LIMIT 1)` | ✅ Removed — spine inversion complete (Q-A/B, 2026-06-14). No live application readers. `transit_stop_assets` is now ingestion-only. |
 | `WHERE o.asset_id = $canonicalAssetId` (canonical ID resolved before query) | ✅ Clean |
 | `JOIN core.visits v ON v.id = o.visit_id` | ✅ Clean — canonical-to-canonical |
 | Reading `level3_logs` or `hazards` in a canonical intelligence query | ❌ Contaminated — and these are clip targets (the live risk job already reads `core.observations`/`core.visits`, not the log tables) |
