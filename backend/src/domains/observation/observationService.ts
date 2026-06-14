@@ -1,5 +1,6 @@
 import { PoolClient } from "pg";
 import { withOrgContext } from "../../db";
+import { loadRegistryRules, normalizeObservation } from "./observationNormalizer";
 
 // Raw UI payload from UL
 export type StopUiPayload = {
@@ -259,7 +260,20 @@ async function insertObservations(
     context: { orgId: number; visitId: number; locationId: number; assetId: number; actorOid: string },
     observations: ObservationInsert[]
 ) {
+    // Write-time normalization (§4.2). One registry query for the whole batch
+    // (no per-observation N+1), then normalize each row before its INSERT.
+    const rules = await loadRegistryRules(
+        client,
+        context.orgId,
+        observations.map(o => o.observation_type)
+    );
+
     for (const o of observations) {
+        // Derive the normalized columns from the registry rule. A missing rule
+        // yields all-NULL normalized fields and a warning — never blocks the write
+        // (additive discipline, ISSUE-031). Intelligence reads these, never payload.
+        const norm = normalizeObservation(rules.get(o.observation_type), o.observation_type, o.payload);
+
         // Worker identity is NOT written to core.observations — it goes to the
         // no-grant sidecar core.observation_actor_audit (§3.2 structural boundary).
         const res = await client.query(
@@ -271,9 +285,14 @@ async function insertObservations(
         asset_id,
         observation_type,
         payload,
-        severity
+        severity,
+        obs_kind,
+        norm_status,
+        norm_severity,
+        intervention,
+        type_id
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       RETURNING id
       `,
             [
@@ -283,7 +302,12 @@ async function insertObservations(
                 context.assetId,
                 o.observation_type,
                 o.payload,
-                o.severity ?? null
+                o.severity ?? null,
+                norm.obs_kind,
+                norm.norm_status,
+                norm.norm_severity,
+                norm.intervention,
+                norm.type_id
             ]
         );
         await client.query(
@@ -306,6 +330,14 @@ export async function emitSpotCheckObservation(params: {
     actorOid: string;
 }) {
     const { client, visitId, orgId, locationId, assetId, actorOid } = params;
+
+    // Normalize the spot_check through the same §4.2 path. spot_check is a
+    // condition row whose payload is '{}' and whose ok_rule is NULL today, so
+    // norm_status stays NULL (its §3.5 'ok' anchor + refined payload shape is a
+    // tracked follow-up, §9 Q4) — but obs_kind and type_id are still populated.
+    const spotRules = await loadRegistryRules(client, orgId, ["spot_check"]);
+    const spotNorm = normalizeObservation(spotRules.get("spot_check"), "spot_check", {});
+
     // Worker identity goes to the no-grant sidecar, never on core.observations (§3.2).
     const res = await client.query(
         `
@@ -315,11 +347,26 @@ export async function emitSpotCheckObservation(params: {
       location_id,
       asset_id,
       observation_type,
-      payload
-    ) VALUES ($1, $2, $3, $4, 'spot_check', '{}'::jsonb)
+      payload,
+      obs_kind,
+      norm_status,
+      norm_severity,
+      intervention,
+      type_id
+    ) VALUES ($1, $2, $3, $4, 'spot_check', '{}'::jsonb, $5, $6, $7, $8, $9)
     RETURNING id
     `,
-        [orgId, visitId, locationId, assetId]
+        [
+            orgId,
+            visitId,
+            locationId,
+            assetId,
+            spotNorm.obs_kind,
+            spotNorm.norm_status,
+            spotNorm.norm_severity,
+            spotNorm.intervention,
+            spotNorm.type_id
+        ]
     );
     await client.query(
         `
