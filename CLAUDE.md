@@ -81,6 +81,93 @@ Analysis-only tasks (no code or schema changes) do not require a changelog entry
 
 ---
 
+## Work Tracking — Notion Board
+
+This section is the **single, authoritative source of truth** for BASELINE product
+governance: the board pick-protocol, the phase-discipline rule, and the
+pre-dispatch checklist. The parent `Optimized_Life/CLAUDE.md` is local and
+unversioned — it points here and must **not** carry a second copy of these rules.
+Governance that can drift lives here, where git catches the drift. Two full copies
+in two files is exactly the failure this consolidation eliminates.
+
+> Consolidation note: the standalone `## Phase Discipline (hard rule)` section
+> (added in commit 5dbba9f) has been absorbed into this section as the
+> **Phase Discipline (hard rule)** subsection below, so there is one authoritative
+> statement, not two.
+
+### The board
+
+Task selection and dispatch run off the **BASELINE Work Tracker** in Notion. It is
+the source of truth for what to work next. Each card carries:
+
+- **Phase** — P1, P2, P3 … (the phase gate; lower phases clear first)
+- **Status** — Backlog, Ready, In Progress, Done (Backlog / Ready / In Progress = **open**)
+- **Depends On** — the cards this card depends on
+- **Owner** — `Agent-Dispatchable` (agent work) or `Founder-Infra` (human only)
+- **Issue ID** — the tracking ID (e.g. ISSUE-XXX)
+- **Source File** — the spec / planning file to read before implementing
+
+### Pick-protocol — choosing the next card
+
+1. **Walk in phase order.** P1 before P2 before P3. Never pick a higher-phase card
+   while a lower-phase card is open.
+2. **Among eligible cards, pick Ready / unblocked cards** whose `Depends On`
+   dependencies are all satisfied (Done).
+3. **Only `Owner = Agent-Dispatchable` cards are agent work.** `Founder-Infra` cards
+   (e.g. F-1 Entra Dispatch role) are NOT agent-dispatchable — skip them.
+
+### Pre-dispatch checklist (required before starting any card)
+
+This is a required action, not a hope. The phase-discipline guardrail lives inline
+here so the pick-protocol and the phase rule cannot drift apart.
+
+1. **If this card is P2+, confirm NO open P1 card exists.** (Open = Backlog, Ready,
+   or In Progress.) If one does, stop — P1 comes first.
+2. **Read the card's `Depends On` and check the phase of every dependency.** Every
+   referenced dependency must be the SAME phase or lower. If any dependency is a
+   HIGHER phase, this is a **BOARD BUG**: report it, do not follow it, and do **not**
+   start the higher-phase work to "unblock" it. The dependency edge itself is wrong
+   and must be severed.
+3. **Read the card's Source File before implementing.**
+
+### Phase Discipline (hard rule)
+
+Work proceeds in phase order. These rules are not advisory — a violation is a
+process defect, not a judgment call. They exist because P1 cards have repeatedly
+been given dependencies on P2 work, which inverts the phase gate and makes P1
+appear blocked on P2.
+
+- **Phase order is absolute.** Never begin a P2+ card while any P1 card is open
+  (Backlog, Ready, or In Progress). P1 work clears before P2 work starts.
+- **Dependencies point downhill only.** A P1 card may depend only on P1-or-lower
+  work. If you find a P1 card whose `Depends On` references P2+ work, that is a
+  **BOARD BUG**: report it and do not follow it. Do **not** start the P2 work to
+  "unblock" the P1 card — the dependency itself is wrong and must be severed.
+- **Check the phase before following any edge.** Before following ANY `Depends On`
+  edge, check the phase of the dependency. If it is a higher phase than the card
+  you are working, stop and report.
+- **Two phase-correct changes beat one bundled change.** When P1 work and P2 work
+  touch the same file or surface, prefer two separate phase-correct changes over
+  one bundled change. Touching a file twice is cheap; inverting the phase gate is
+  expensive. Never bundle a P1 read/write change into a P2 relocation/rebuild to
+  "do it once."
+- **F-1 and T1-CC are P2, always.** F-1 (Entra Dispatch role) and all T1-CC work
+  are P2. They are never on the P1 critical path.
+
+### Recurring task — P1 dependency reconciliation
+
+At each session boundary, or before any new-phase dispatch: audit every P1 card's
+`Depends On`. Sever or report any edge pointing at a higher phase. Confirm the P1
+critical path is self-contained. Drift recurs when work spreads across tabs and
+sessions; this is the catch.
+
+Re-sync the parent `Optimized_Life/CLAUDE.md` mirror: diff it against this
+authoritative section. If they differ, update the parent mirror to match this file
+and bump its "Last synced" marker. The versioned file is always the source; the
+mirror follows.
+
+---
+
 ## Core Rules
 
 - Do not skip required reads
