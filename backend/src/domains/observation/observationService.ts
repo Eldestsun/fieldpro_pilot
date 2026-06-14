@@ -24,6 +24,11 @@ export type StopUiPayload = {
     // from this payload. Consumed by riskMapService hazard scoring.
     hazard_severity?: string | number;
 
+    // Optional free-text notes captured alongside the safety hazard. Threaded
+    // into core.observations.payload.notes additively (ISSUE-031 Step 5) so the
+    // observation record is not lossy relative to the hazards adapter table.
+    hazard_notes?: string;
+
     skipForSafety?: boolean;
 
     // Cleaning
@@ -55,6 +60,18 @@ export type StopUiPayload = {
         | "other"
         | "other_infra_issue" // New FE key
     )[];
+
+    // Full per-issue infrastructure detail. When present, one observation is
+    // emitted per entry and its cause/component/notes are threaded into
+    // core.observations.payload additively (ISSUE-031 Step 5). Falls back to the
+    // flat infrastructureIssues type list when absent. notes is string | null to
+    // match InfraIssueInput at the call site.
+    infraIssueDetails?: Array<{
+        issue_type: string;
+        cause?: string;
+        component?: string;
+        notes?: string | null;
+    }>;
 };
 
 export type ObservationInsert = {
@@ -120,7 +137,11 @@ function submitObservations(ui: StopUiPayload): ObservationInsert[] {
         ui.safetyHazards?.forEach(h => {
             obs.push({
                 observation_type: mapSafetyHazard(h),
-                payload: {},
+                // severity stays on the dedicated column (above); notes is
+                // threaded into payload additively (ISSUE-031 Step 5).
+                payload: {
+                    ...(ui.hazard_notes && { notes: ui.hazard_notes }),
+                },
                 severity: hazardSeverity,
             });
         });
@@ -171,12 +192,29 @@ function submitObservations(ui: StopUiPayload): ObservationInsert[] {
     // infra *_present types and invites double-counting. Only the specific
     // presences are written.
     if (ui.infrastructurePresent) {
-        ui.infrastructureIssues?.forEach(i => {
-            obs.push({
-                observation_type: mapInfraIssue(i),
-                payload: {}
+        if (ui.infraIssueDetails && ui.infraIssueDetails.length > 0) {
+            // Preferred path: one observation per detailed issue, with
+            // cause/component/notes threaded into payload additively (ISSUE-031
+            // Step 5). Infra has no severity at the source — none is invented.
+            ui.infraIssueDetails.forEach(issue => {
+                obs.push({
+                    observation_type: mapInfraIssue(issue.issue_type),
+                    payload: {
+                        ...(issue.cause && { cause: issue.cause }),
+                        ...(issue.component && { component: issue.component }),
+                        ...(issue.notes && { notes: issue.notes }),
+                    }
+                });
             });
-        });
+        } else {
+            // Fallback: flat type-name list (no per-issue detail available).
+            ui.infrastructureIssues?.forEach(i => {
+                obs.push({
+                    observation_type: mapInfraIssue(i),
+                    payload: {}
+                });
+            });
+        }
     }
 
     return obs;
