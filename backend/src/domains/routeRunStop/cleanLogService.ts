@@ -24,7 +24,7 @@ export async function completeStop(
         infraIssues?: InfraIssueInput[];
         trashVolume?: number;
         actorOid?: string;
-        safety?: { hazard_types: string[]; safetyConcern?: boolean; severity?: string | number };
+        safety?: { hazard_types: string[]; safetyConcern?: boolean; severity?: string | number; notes?: string };
         spotCheck?: boolean;
     }
 ): Promise<{ cleanLogId: number; routeRunId: number } | null> {
@@ -154,6 +154,10 @@ export async function completeStop(
         safetyConcern: (data.safety?.hazard_types?.length ?? 0) > 0,
         safetyHazards: data.safety?.hazard_types as StopUiPayload['safetyHazards'],
         hazard_severity: data.safety?.severity,
+        hazard_notes: data.safety?.notes,
+        // Full per-issue detail so cause/component/notes reach the observation
+        // payload, not just the infrastructure_issues adapter table (ISSUE-031 Step 5).
+        infraIssueDetails: infraIssues,
     };
 
     await emitObservationsForStop({

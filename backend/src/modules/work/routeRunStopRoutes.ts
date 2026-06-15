@@ -270,6 +270,7 @@ routeRunStopRoutes.post(
                 safetyConcern: true,
                 safetyHazards: hazard_types,
                 hazard_severity: severity,
+                hazard_notes: notes,
                 // No cleaning or infra actions on skip
             };
 
