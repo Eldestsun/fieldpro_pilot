@@ -2,6 +2,14 @@
 
 _Snapshot generated 2026-06-05 from `docs/KNOWN_ISSUES.md`. 15 open issues + 1 standing pattern. Fixed/closed entries (002, 003, 004, 005, 007, 012, 021) excluded._
 
+> **Update 2026-06-14 (reconciliation — see `docs/KNOWN_ISSUES.md` for authoritative detail):**
+> ISSUE-031 execution is underway: **CANON-NORM Steps 1–6** (normalized observation shape),
+> **Q-A/B steps 1–2** (spine inversion), **Q-D** (evidence atomicity), and **Q-G**
+> (`mcp_readonly` revoke) are merged to main. Consequently **ISSUE-008** is now *unblocked*
+> (the normalized `norm_status` foundation exists) though still open — the recompute itself
+> is not yet done. **ISSUE-018** (intelligence_reader app-wiring) and **ISSUE-025** (CI test
+> role) remain open. This 2026-06-05 snapshot below is otherwise unregenerated.
+
 ---
 
 ## 🔴 Active CI / build blockers — highest priority (surfaced 2026-06-04/05)

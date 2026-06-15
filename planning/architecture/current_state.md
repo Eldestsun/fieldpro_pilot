@@ -8,7 +8,7 @@ This document exists so agents and developers know what is broken, what is inten
 
 ## System Status: Transitional
 
-The system is in a controlled transitional state. The canonical domain model (`core.visits`, `core.observations`, `core.evidence`) is partially implemented. Transit-vertical tables (`public.*`) still carry operational meaning that the canonical layer does not yet fully cover. Both must coexist during migration.
+The system is in a controlled transitional state. The canonical domain model (`core.visits`, `core.observations`, `core.evidence`) is substantially implemented: as of **2026-06-14** the normalized observation shape landed (CANON-NORM Steps 1–6, merged) — `core.observations` carries the five normalized columns (`obs_kind`/`norm_status`/`norm_severity`/`intervention`/`type_id`), the write-time normalizer is active, the `core.v_observation_normalized` read seam exists, and the backfill is complete. The remaining canonical deltas are tracked open issues (e.g. ISSUE-018 intelligence_reader app-wiring, the `complexity_score`/ISSUE-008 recompute, CC-repoint pending merge), not missing columns. Transit-vertical tables (`public.*`) still carry operational meaning that the canonical layer does not yet fully cover. Both must coexist during migration.
 
 ---
 

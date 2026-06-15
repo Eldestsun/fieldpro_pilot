@@ -1,3 +1,14 @@
+> **⚠️ SUPERSEDED (2026-06-14, later same day).** This audit was a point-in-time
+> snapshot taken ~01:51 on 2026-06-14, before the build landed. Its "NOT STARTED"
+> bottom line was **correct at the moment it ran** but is **no longer true**: CANON-NORM
+> Steps 1–6 merged to `main` later that day. The live DB now has all five normalized
+> columns (18/18 rows backfilled with `obs_kind`, `norm_status` on the 4
+> condition/measurement rows), the registry is migrated to the §4.1 shape, the
+> write-time normalizer is wired, and `core.v_observation_normalized` exists. See the
+> CANON-NORM step changelogs under `docs/changelog/` and `CANONICAL_STATE_LAYER_DESIGN.md`
+> §9 items 4/5 (updated). This file is retained as a historical record of the pre-build
+> state; do not cite its "not started" conclusion as current.
+
 # 2026-06-14 — Normalized Observation Shape: Live Build-Status Verification
 
 > **Purpose.** Scope-check for the epic *"Finish Canonical State Layer — normalized
