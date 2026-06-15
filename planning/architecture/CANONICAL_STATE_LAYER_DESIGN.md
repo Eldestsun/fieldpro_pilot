@@ -1,20 +1,30 @@
 # BASELINE — Canonical State Layer Design
 
-> **STATUS: PARTIALLY VERIFIED — §9 verification pass 2026-05-30.** The four-noun
-> grammar and registry model are verified against the live schema at the logic
-> level; the DESIGN is sound. It is **not** fully ratified: two of its structural
-> guarantees are still target-state.
+> **STATUS: VERIFIED — normalized-shape build LANDED 2026-06-14 (CANON-NORM Steps 1–6).**
+> The four-noun grammar and registry model are verified against the live schema, and
+> the normalized observation shape (§3.3/§4) is now **built and live, not target-state**:
+> the five normalized columns, the §4.1 registry contract, the write-time normalizer,
+> the `core.v_observation_normalized` read seam, and the backfill all landed and are
+> verified against the live DB. One structural guarantee remains partial: identity
+> isolation is proven at the DB level (2026-06-01) but is **not yet bound to the running
+> app** (§9 item 6 / KNOWN_ISSUES ISSUE-018).
 >
 > - §9 items **1, 2 RESOLVED** (prior sprints).
 > - §9 item **3 ANSWERED with a documented gap** — server-side validation exists
 >   at reconcile but is hardcoded, not registry-driven; the §6 target (registry-
 >   schema validation + quarantine queue) is unimplemented. Safe today only
 >   because observation payloads are server-synthesized, not client-authored.
-> - §9 items **4, 5 DEFERRED** — the live `core.observations` carries **no**
->   normalized columns (`obs_kind`/`norm_status`/`norm_severity`/`intervention`).
->   §3.3's normalized shape is target-only. Backfill + complexity_score recompute
->   have nowhere to write until a migration lands. Migration shape (in-place vs.
->   shadow column) is its own dispatch.
+> - §9 item **4 LANDED 2026-06-14 (CANON-NORM Steps 1–6, merged to main).**
+>   `core.observations` now carries all five normalized columns
+>   (`obs_kind`/`norm_status`/`norm_severity`/`intervention`/`type_id`); the registry
+>   was extended to the §4.1 contract shape; the write-time normalizer is wired into
+>   the INSERT path; the `core.v_observation_normalized` read seam exists; and the
+>   backfill ran (18/18 rows classified into `obs_kind`, `norm_status` populated on the
+>   4 condition/measurement rows, NULL on presence/action by design). Migration was
+>   **in-place**.
+> - §9 item **5 UNBLOCKED, not yet executed.** With `norm_status` now live, the
+>   `complexity_score` / ISSUE-008 recompute is buildable — but it remains future
+>   P3-Intelligence work and has **not** been done; `complexity_score` is still NULL.
 > - §9 item **6 RESOLVED at the DB level (sidecar extraction, 2026-06-01).**
 >   Worker identity has been extracted from the four canonical tables into
 >   no-grant sidecars (`core.{visit,observation,evidence,assignment}_actor_audit`);
@@ -28,10 +38,12 @@
 >   (KNOWN_ISSUES ISSUE-018). The structural boundary now *exists*; wiring the app
 >   to *use* it is the remaining step. See §3.2 and §9 item 6.
 >
-> Do not treat the normalized-column DDL (§9 items 4/5) as deployed. The sidecar
-> DDL (§3.2) IS deployed on dev as of 2026-06-01. Reconcile remaining DDL against
-> the live schema before any migration. See §9 for per-item detail and the
-> live-schema reconciliation notes.
+> The normalized-column DDL (§9 item 4) **IS deployed and backfilled** as of
+> 2026-06-14; the sidecar DDL (§3.2) IS deployed on dev as of 2026-06-01. The
+> remaining target-state items are the §6 registry-driven payload validation +
+> quarantine queue (§9 item 3) and the app-wiring of the identity boundary
+> (item 6 / ISSUE-018). See §9 for per-item detail and the live-schema
+> reconciliation notes.
 
 > A portable state layer for any field-condition work that shares these invariants:
 > someone **visits** a **thing**, records **what they found or did**, optionally with **proof** —
@@ -767,7 +779,7 @@ alert.
    quarantine queue — is a documented gap, deferred to its own dispatch. It is
    not urgent today only because payloads are server-synthesized; it must be
    built before any client-authored or third-party adapter write path exists.
-4. **(DEFERRED 2026-05-30 — migration shape decision pending; its own dispatch.)**
+4. **(LANDED 2026-06-14 — CANON-NORM Steps 1–6, merged to main; migration was in-place.)**
    *Migration of existing rows.* Existing `core.observations` have heterogeneous
    payloads and no normalized columns. Backfill plan: run the normalizer over
    history once the registry rules exist. Decide whether backfill is in-place or
@@ -776,28 +788,29 @@ alert.
    today look like "arrival state" — if any — must be reconciled against
    invariant #5 (no stored arrival state) and either reclassified or marked legacy.
 
-   **Verified live state (2026-05-30):** `core.observations` carries **no
-   normalized columns** — live columns are `id, org_id, visit_id, location_id,
-   asset_id, observation_type (text), severity (text), status (text), payload
-   (jsonb), created_by_oid (text NOT NULL), observed_at`. There is no
-   `obs_kind`, `norm_status`, `norm_severity`, `intervention`, or `type_id` FK.
-   §3.3's normalized shape is **target-only.** The table currently holds **3
-   real-pipeline rows** (one completed service visit — `picked_up_litter`,
-   `emptied_trash`, `trash_volume {level:2}`); the table was wiped during
-   development and these are authentic post-state-layer-fix rows, not synthetic
-   fixtures. The backfill therefore has **nowhere to write** until a migration
-   adds the columns — and that migration (the **in-place vs. shadow-column**
-   decision named above) is deliberately **not authored in this pass.** It is its
-   own dispatch with its own deliberation. Backfill logic can only be verified
-   once the target columns exist.
-5. **(DEFERRED 2026-05-30 — downstream of item 4.)** *The `complexity_score` /
-   ISSUE-008 recompute* rides on this: once `norm_status` exists on condition +
-   measurement rows, "count of not_ok condition observations per asset over a
-   window" is trivial and the dead column can be re-derived. Keep it a
-   *consequence* of this work, specced separately. **Blocked until item 4's
-   normalized-column migration lands** — there is no `norm_status` to count
-   against today. (`stop_effort_history.complexity_score` is still written `NULL`
-   at `cleanLogService.ts:186`.) Verification staged behind item 4.
+   **LANDED 2026-06-14 (CANON-NORM Steps 1–6, merged to main).** `core.observations`
+   now carries all five normalized columns (`obs_kind` text, `norm_status` text,
+   `norm_severity` smallint, `intervention` text, `type_id` bigint); the registry was
+   extended to the §4.1 contract shape (`obs_kind`/`payload_schema`/`ok_rule`/
+   `severity_map`); the write-time normalizer is wired into the observation INSERT
+   path; and the `core.v_observation_normalized` read seam exists. The migration was
+   **in-place** (the in-place-vs-shadow decision named below resolved to in-place). The
+   backfill ran over the existing 18 real-pipeline rows: all 18 are classified into
+   `obs_kind`; `norm_status` is populated on the 4 condition/measurement rows and
+   correctly NULL on the 14 presence/action rows (existence is the signal — invariant #5).
+
+   **(Historical, superseded — verified live state 2026-05-30):** at the verification
+   pass the table carried no normalized columns and held 3 real-pipeline rows; §3.3's
+   shape was target-only and the migration shape (in-place vs. shadow) was deferred to
+   its own dispatch. That dispatch is the CANON-NORM step series above; it chose
+   in-place and has landed.
+5. **(UNBLOCKED 2026-06-14 — item 4 landed; recompute not yet executed.)** *The
+   `complexity_score` / ISSUE-008 recompute* rides on this: now that `norm_status`
+   exists on condition + measurement rows, "count of not_ok condition observations
+   per asset over a window" is buildable and the dead column can be re-derived. It
+   remains a *consequence* of this work, specced separately, and is **not yet done** —
+   it is future P3-Intelligence work (KNOWN_ISSUES ISSUE-008, still open).
+   `stop_effort_history.complexity_score` is still written `NULL` today.
 6. **(RESOLVED at the DB level 2026-06-01 — sidecar extraction; app-wiring is a
    tracked follow-on.)** *Identity sidecar grants.* Confirm the intelligence layer
    can run under a DB role with no grant on the actor-audit table without breaking
@@ -847,3 +860,14 @@ DDL:
 | registry "30 rows, 27 active" (§9 item 2) | 30 rows, **28 active** / 2 inactive | minor count drift; reconcile the tombstone accounting when the registry is next touched |
 | normalized observation columns (§3.3) | **absent** (see item 4) | backfill blocked until migration |
 | actor-audit sidecar (§3.2) | **absent** (see item 6) | no-grant boundary is target-state |
+
+> **Update — supersedes two rows above (the table is the 2026-05-30 snapshot):**
+> 1. **Actor-audit sidecars (§3.2)** were **deployed 2026-06-01** — they exist with the
+>    no-grant `intelligence_reader` / grant-bearing `audit_reader` split; only the
+>    app-connection wiring remains (ISSUE-018).
+> 2. **Normalized observation columns + `type_id` FK + the §4.1 registry shape** all
+>    **landed 2026-06-14** (CANON-NORM Steps 1–6): the normalizer and
+>    `core.v_observation_normalized` seam exist and the backfill is complete. The
+>    registry now carries `obs_kind`/`payload_schema`/`ok_rule`/`severity_map`.
+>
+> The `core.assets`-as-view row and the registry tombstone-count row remain accurate.

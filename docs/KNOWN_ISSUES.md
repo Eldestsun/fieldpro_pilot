@@ -153,6 +153,15 @@ payload shape, then rewrite the complexity subquery against it.
 Priority: post-pilot — complexity_score is not consumed by any 
 current surface.
 
+**Update 2026-06-14 — now UNBLOCKED (still open).** CANON-NORM Steps 1–6 landed the
+normalized observation shape: `core.observations.norm_status` is live and populated on
+condition/measurement rows, and `core.observation_type_registry.ok_rule` defines what
+counts as not_ok. The "canonical condition observation type with a consistent payload"
+prerequisite this issue called for now exists, so the recompute ("count of not_ok
+condition observations per asset over a window") is buildable. It is **not yet
+executed** — `complexity_score` is still written NULL. The remaining work is the
+recompute itself (P3-Intelligence), not the schema foundation.
+
 ---
 
 ## ISSUE-011 — Dev bypass Bearer token enhancement (deferred)
@@ -685,7 +694,7 @@ The six `core.v_*_transit` log views (`v_clean_logs_transit`, `v_hazards_transit
 ---
 
 ## ISSUE-031 — Complete the v0001 → canonical migration / clip work-attribution (umbrella issue)
-**Status:** Open — design-settled in the ADR; blocked on founder answers to DQ-1..DQ-5 and on authoring the migration-sequence artifact
+**Status:** Open — **execution underway as of 2026-06-14.** Both prior gates have cleared: the DQ-1..DQ-5 decisions are recorded (`planning/architecture/2026-06-11-issue-031-dq-decisions.md`) and the migration-sequence artifact was authored (`planning/architecture/2026-06-13-issue-031-migration-sequence.md`). Several sub-items are now merged to main — CANON-NORM Steps 1–6 (normalized observation shape), Q-A/B steps 1–2 (spine inversion), Q-D (evidence atomicity), Q-G (`mcp_readonly` revoke). Remaining: the work-attribution clip, CC-repoint (in review), and the sub-items still marked "not executed" below.
 **Discovered:** 2026-06-11 (KNOWN_ISSUES 027–031 backfill; the issue the entire 2026-06-06/07 inventory + ADR lineage is named for)
 **Area:** cross-cutting — canonical core + transit adapter boundary, identity sidecars, DB roles/grants, RLS posture
 **Severity:** HIGH (load-bearing — it gates the capability build and the intelligence layer; it is the umbrella for the spine inversion, the clip, and the grant/permission finishing punch list)
@@ -694,12 +703,12 @@ The six `core.v_*_transit` log views (`v_clean_logs_transit`, `v_hazards_transit
 The umbrella issue for completing the canonical migration and clipping work-attribution out of the live read/intelligence paths. Its design is **settled** in `planning/architecture/2026-06-07-issue-031-redesign-adr.md` (the redesign ADR), standing on the two 2026-06-06 inventories and the 2026-06-07 boundary reconciliation. The ADR is the *target + principles*; the *migration sequence* (what moves first, what prep) is a **separate artifact not yet written**.
 
 **Settled decisions (ADR §3 / §2), with current execution state:**
-- **Q-A/B — spine inversion.** `core.asset_locations` (+ canonical location views) becomes the **live** asset↔location read path; `transit_stops` / `transit_stop_assets` demote to ingestion source + operational flags. **SETTLED, not executed** (live code still reads `transit_stop_assets`; spine is fully seeded at 14,916 rows but has zero live readers).
+- **Q-A/B — spine inversion.** `core.asset_locations` (+ canonical location views) becomes the **live** asset↔location read path; `transit_stops` / `transit_stop_assets` demote to ingestion source + operational flags. **EXECUTED (steps 1–2 merged 2026-06-14)** — forward + reverse CTE repoints landed; CC-repoint (the Control Center read-path repoint that depends on this) is pushed and in review.
 - **Q-C — run↔visit linkage hardening.** Keep the string translation (`assignments.source_system='route_runs'` + `source_ref`); harden it: index `(source_system, source_ref)`, validate at write, add a 1:1 integrity regression test. Canonical must never FK into a vertical. **SETTLED, not executed.**
-- **Q-D — evidence write atomicity.** `stop_photos` + `core.evidence` + `core.evidence_actor_audit` become **one transaction** (today the evidence write is not atomic — orphan-identity risk). **SETTLED, not executed.**
+- **Q-D — evidence write atomicity.** `stop_photos` + `core.evidence` + `core.evidence_actor_audit` become **one transaction** (today the evidence write is not atomic — orphan-identity risk). **EXECUTED — merged to main** (commit `2ee1197`; evidence write path now atomic in `stopPhotosService.ts`).
 - **Q-E — uniform sidecar encryption.** Apply the cipher envelope **uniformly across all four `*_actor_audit` sidecars** (today only `visit_actor_audit` carries it). Sequenced separate; **ties to ISSUE-027** (the KMS adapter must be real). **SETTLED, separate sequence.**
 - **Q-F — export channel onto `audit_reader`.** Export/delete + SFTP-export read identity via `audit_reader`, not `fieldpro`. **SETTLED, depends ISSUE-028.**
-- **Q-G — `mcp_readonly` revoked to canonical-only.** No exemption. **SETTLED, not executed — exposure CONFIRMED live** (audit §6 Q6: `mcp_readonly` is LOGIN and reads all four sidecars + `identity_directory`). The most acute live labor-safety leak in the set.
+- **Q-G — `mcp_readonly` revoked to canonical-only.** No exemption. **EXECUTED — merged to main** (commit `17d5959`, merge `ca92bf6`; 13 objects revoked). The `mcp_readonly` SELECT grants on the four sidecars + `identity_directory` are removed; only canonical-table grants remain. The most acute live labor-safety leak in the set is now remediated.
 - **CANON-1 — evict six `core.v_*_transit` views from `core`** into the adapter namespace. **SETTLED, ties to ISSUE-030.**
 
 **Verified open-question state (carried from the live audit, §6 / §12):**
@@ -708,9 +717,9 @@ The umbrella issue for completing the canonical migration and clipping work-attr
 - **Q4 — CLOSED.** `transit_stop_assets` (14,916 rows) has **no TypeScript writer** — it is **seed/migration/trigger-only** (the trigger is the ISSUE-024 site). Demoting it needs no app-code writer migration.
 - **Q6 — CLOSED as finding.** `mcp_readonly` sidecar + `identity_directory` exposure is **real and unremediated** (drives Q-G).
 
-**Open gates remaining (block the execution dispatch):**
-1. **Founder answers to DQ-1..DQ-5** (ADR §7): DQ-1 adapter namespace (`transit.*` vs `public`); DQ-2 RLS fail-open→fail-closed (fold into ISSUE-031 or a separate tenancy-hardening issue — note: the 2026-05-30 `core.asset_locations`/`location_external_ids` policy harden already landed this audit cycle, see ISSUE-014/audit §11); DQ-3 spine write-back mechanism; DQ-4 clip vs MV-4 timing; DQ-5 issue-boundary confirmation (what is inside ISSUE-031 vs adjacent issues — e.g. ISSUE-027/028/013/MV-2).
-2. **Author the migration-sequence artifact** (ADR §8 — "the next artifact, written against this one, after DQ-1..DQ-5 are answered"). It does **not exist** on disk yet (audit §8c: `docs/audit/` has no `031` / `migration-sequence` file).
+**Gates (both CLEARED 2026-06-14 — were the blockers; execution is now in progress):**
+1. **Founder answers to DQ-1..DQ-5** (ADR §7) — **RESOLVED.** Decisions recorded in `planning/architecture/2026-06-11-issue-031-dq-decisions.md` (DQ-1 adapter namespace; DQ-2 RLS fail-open→fail-closed; DQ-3 spine write-back mechanism; DQ-4 clip vs MV-4 timing; DQ-5 issue-boundary confirmation).
+2. **Author the migration-sequence artifact** (ADR §8) — **DONE.** It exists at `planning/architecture/2026-06-13-issue-031-migration-sequence.md` (the audit §8c "missing from disk" note is superseded). CANON-NORM Steps 1–6, Q-A/B 1–2, Q-D, and Q-G executed against this sequence.
 
 **Sub-issue map (for dispatch):** Q-E → ISSUE-027 · Q-F → ISSUE-028 · CANON-1 → ISSUE-030 · spine-inversion write-back (DQ-3) interacts with the seed-only spine; identity-role wiring → ISSUE-018; CI test role → ISSUE-025; org-resolution fail-open → ISSUE-013 (MT-1); PostGIS/PG15 non-foreclosure → ISSUE-029 (MV-2).
 
