@@ -997,6 +997,21 @@ adminRoutes.post("/admin/intelligence/rebuild-risk-map", async (_req: Request, r
 
 /** ── Control Center (Phase B) ─────────────────────────────────────────── */
 // Strict Guardrails: Admin Only. No PII latency/performance metrics.
+
+// ISSUE-031/CC-REPOINT (DQ A3): the 8 pinned safety *_present observation types.
+// Canonical hazard reads filter to exactly these. Distinct from the infrastructure
+// *_present set — do not conflate. Includes other_safety_concern_present.
+const SAFETY_HAZARD_OBSERVATION_TYPES = [
+  'encampment_present',
+  'fire_present',
+  'dangerous_activity_present',
+  'drug_use_present',
+  'violence_present',
+  'biohazard_present',
+  'access_blocked_present',
+  'other_safety_concern_present',
+] as const;
+
 const ccRouter = Router();
 ccRouter.use(requireAuth, requireAdmin);
 
@@ -1005,7 +1020,12 @@ ccRouter.use(requireAuth, requireAdmin);
  * /admin/control-center/overview:
  *   get:
  *     summary: Control center — today's operational overview
- *     description: Aggregate clean events, total clean minutes, hazards reported, and high-severity hazards for today.
+ *     description: >
+ *       Aggregate clean events, total clean minutes, and hazards reported for today,
+ *       read from the identity-free canonical layer (core.visits + core.observations).
+ *       Per ISSUE-031 DQ A2 the high-severity hazard count is not surfaced — canonical
+ *       severity is a sparse text column; the high-severity cut is restored in the MV-4/DQ-4
+ *       intelligence pass.
  *     tags: [Admin]
  *     security:
  *       - AzureAD: []
@@ -1021,12 +1041,10 @@ ccRouter.use(requireAuth, requireAdmin);
  *                 clean_events: { type: integer }
  *                 total_clean_minutes: { type: number }
  *                 hazards_reported: { type: integer }
- *                 high_severity_hazards: { type: integer }
  *             example:
  *               clean_events: 38
  *               total_clean_minutes: 462.5
  *               hazards_reported: 4
- *               high_severity_hazards: 1
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  *       403:
@@ -1038,6 +1056,10 @@ ccRouter.use(requireAuth, requireAdmin);
 ccRouter.get("/overview", async (_req: Request, res: Response) => {
   const client = await pool.connect();
   try {
+    // ISSUE-031/CC-REPOINT: canonical reads — clean events/minutes from core.visits
+    // (completed visit = clean event; duration = ended_at - started_at), hazards from
+    // core.observations filtered to the 8 pinned safety *_present types (observed_at).
+    // No identity columns. High-severity hazard cut dropped per DQ A2.
     const query = `
             WITH today AS (
               SELECT current_date AS service_date
@@ -1046,44 +1068,43 @@ ccRouter.get("/overview", async (_req: Request, res: Response) => {
             clean_metrics AS (
               SELECT
                 COUNT(*) AS clean_events,
-                COALESCE(SUM(duration_minutes), 0) AS total_clean_minutes
-              FROM core.v_clean_logs_transit c
+                COALESCE(SUM(EXTRACT(EPOCH FROM (v.ended_at - v.started_at)) / 60.0), 0) AS total_clean_minutes
+              FROM core.visits v
               JOIN today t
-                ON c.cleaned_at::date = t.service_date
+                ON v.ended_at::date = t.service_date
+              WHERE v.outcome = 'completed'
+                AND v.ended_at IS NOT NULL
             ),
 
             hazard_metrics AS (
               SELECT
-                COUNT(*) AS hazards_reported,
-                COUNT(*) FILTER (WHERE severity >= 4) AS high_severity_hazards
-              FROM core.v_hazards_transit h
+                COUNT(*) AS hazards_reported
+              FROM core.observations o
               JOIN today t
-                ON h.reported_at::date = t.service_date
+                ON o.observed_at::date = t.service_date
+              WHERE o.observation_type = ANY($1::text[])
             )
 
             SELECT
               c.clean_events,
               c.total_clean_minutes,
-              h.hazards_reported,
-              h.high_severity_hazards
+              h.hazards_reported
             FROM clean_metrics c
             CROSS JOIN hazard_metrics h;
         `;
 
-    const result = await client.query(query);
+    const result = await client.query(query, [SAFETY_HAZARD_OBSERVATION_TYPES]);
     // Return row 0 as JSON, or default zeros if something goes strictly wrong (though aggregate always returns 1 row)
     const row = result.rows[0] || {
       clean_events: 0,
       total_clean_minutes: 0,
-      hazards_reported: 0,
-      high_severity_hazards: 0
+      hazards_reported: 0
     };
 
     res.json({
       clean_events: parseInt(row.clean_events, 10),
       total_clean_minutes: parseFloat(row.total_clean_minutes),
-      hazards_reported: parseInt(row.hazards_reported, 10),
-      high_severity_hazards: parseInt(row.high_severity_hazards, 10)
+      hazards_reported: parseInt(row.hazards_reported, 10)
     });
   } catch (err: any) {
     console.error("Error in /api/admin/control-center/overview:", err);
@@ -1383,6 +1404,12 @@ ccRouter.get("/difficulty", async (req: Request, res: Response) => {
   try {
     await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(numericOrgId)]);
     const queries = {
+      // ISSUE-031/CC-REPOINT: canonical reads. Clean events/minutes from core.visits
+      // (completed visit = clean event; duration = ended_at - started_at). Location label
+      // and stop_id from the canonical spine (core.locations + core.location_external_ids).
+      // Route/pool grouping from core.assignments via the visit.assignment_id link.
+      // No identity columns anywhere in these reads.
+
       // A. Heavy Stops (Location Difficulty)
       heavyStops: `
                 WITH today AS (
@@ -1390,12 +1417,14 @@ ccRouter.get("/difficulty", async (req: Request, res: Response) => {
                 ),
                 cleaned AS (
                   SELECT
-                    cl.location_id,
-                    AVG(cl.duration_minutes) AS avg_minutes
-                  FROM core.v_clean_logs_transit cl
+                    v.location_id,
+                    AVG(EXTRACT(EPOCH FROM (v.ended_at - v.started_at)) / 60.0) AS avg_minutes
+                  FROM core.visits v
                   JOIN today t
-                    ON cl.cleaned_at::date = t.service_date
-                  GROUP BY cl.location_id
+                    ON v.ended_at::date = t.service_date
+                  WHERE v.outcome = 'completed'
+                    AND v.ended_at IS NOT NULL
+                  GROUP BY v.location_id
                 ),
                 baseline AS (
                   SELECT
@@ -1405,8 +1434,8 @@ ccRouter.get("/difficulty", async (req: Request, res: Response) => {
                 )
                 SELECT
                   c.location_id,
-                  l.label,
-                  l.stop_id,
+                  loc.label,
+                  lei.external_id AS stop_id,
                   s.on_street_name,
                   s.intersection_loc,
                   CASE
@@ -1416,10 +1445,14 @@ ccRouter.get("/difficulty", async (req: Request, res: Response) => {
                   END AS difficulty_band
                 FROM cleaned c
                 CROSS JOIN baseline b
-                JOIN core.v_locations_transit l
-                  ON l.location_id = c.location_id
+                JOIN core.locations loc
+                  ON loc.id = c.location_id
+                  AND loc.location_type = 'transit_stop'
+                JOIN core.location_external_ids lei
+                  ON lei.location_id = loc.id
+                  AND lei.source_system = 'metro_stop'
                 LEFT JOIN public.stops s
-                  ON s.stop_id = l.stop_id
+                  ON s.stop_id = lei.external_id
                 WHERE c.avg_minutes >= b.median_minutes * 1.2
                 LIMIT 25;
             `,
@@ -1430,18 +1463,20 @@ ccRouter.get("/difficulty", async (req: Request, res: Response) => {
                 ),
                 route_work AS (
                   SELECT
-                    a.source_route_run_id AS route_id,
-                    a.assignment_type     AS pool_label,
-                    SUM(cl.duration_minutes) AS total_minutes,
-                    COUNT(*) FILTER (WHERE cl.duration_minutes IS NOT NULL) AS stop_count
-                  FROM core.v_clean_logs_transit cl
-                  JOIN core.v_assignments_transit a
-                    ON a.primary_asset_id = cl.asset_id
+                    asg.source_ref      AS route_id,
+                    asg.assignment_type AS pool_label,
+                    SUM(EXTRACT(EPOCH FROM (v.ended_at - v.started_at)) / 60.0) AS total_minutes,
+                    COUNT(*) AS stop_count
+                  FROM core.visits v
+                  JOIN core.assignments asg
+                    ON asg.id = v.assignment_id
                   JOIN today t
-                    ON cl.cleaned_at::date = t.service_date
+                    ON v.ended_at::date = t.service_date
+                  WHERE v.outcome = 'completed'
+                    AND v.ended_at IS NOT NULL
                   GROUP BY
-                    a.source_route_run_id,
-                    a.assignment_type
+                    asg.source_ref,
+                    asg.assignment_type
                 ),
                 density AS (
                   SELECT
@@ -1465,19 +1500,21 @@ ccRouter.get("/difficulty", async (req: Request, res: Response) => {
       hotspots: `
                 WITH heavy_stops AS (
                   SELECT
-                    location_id
-                  FROM core.v_clean_logs_transit
-                  WHERE cleaned_at::date = CURRENT_DATE
-                  GROUP BY location_id
-                  HAVING AVG(duration_minutes) >= 15
+                    v.location_id
+                  FROM core.visits v
+                  WHERE v.outcome = 'completed'
+                    AND v.ended_at IS NOT NULL
+                    AND v.ended_at::date = CURRENT_DATE
+                  GROUP BY v.location_id
+                  HAVING AVG(EXTRACT(EPOCH FROM (v.ended_at - v.started_at)) / 60.0) >= 15
                 )
                 SELECT
-                  a.assignment_type        AS pool_label,
+                  asg.assignment_type      AS pool_label,
                   COUNT(*)::int            AS heavy_stop_count
                 FROM heavy_stops hs
-                JOIN core.v_assignments_transit a
-                  ON a.location_id = hs.location_id
-                GROUP BY a.assignment_type
+                JOIN core.assignments asg
+                  ON asg.location_id = hs.location_id
+                GROUP BY asg.assignment_type
                 ORDER BY heavy_stop_count DESC;
             `
     };
