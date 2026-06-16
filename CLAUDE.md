@@ -1,12 +1,14 @@
 # BASELINE / FieldPro
 
-BASELINE is a Field Operations Intelligence System.
-It captures operational truth through field visits and derives intelligence from that truth.
-It coexists with EAM/EAMS systems — it does not compete with or duplicate them.
-Transit stop cleaning is the first vertical slice. It is not the platform center.
+BASELINE is a Field Operations Intelligence System — a state layer that captures operational
+truth through field visits and derives intelligence from it. It coexists with EAM/EAMS systems;
+it does not compete with or duplicate them. Transit stop cleaning is the first vertical slice,
+not the platform center. Field workers should not experience it as a form-filling system — it
+captures truth as a byproduct of work, not as the work itself. (Full background: `PROJECT_CONTEXT.md`.)
 
-Field workers should not experience BASELINE as a form-filling system.
-It captures truth as a byproduct of work, not as the work itself.
+> **This file is a thin rules-index + router.** Every hard constraint is stated completely
+> here; explanation, reference, and how-to live in the context `.md` each rule governs, reached
+> by the pointers below. If a rule and a pointer ever disagree, the rule here wins.
 
 ---
 
@@ -41,7 +43,9 @@ It captures truth as a byproduct of work, not as the work itself.
 
 ### Step 3 — Log It
 
-Every task that changes code, schema, architecture docs, or configuration must produce a changelog entry before the task is considered done.
+Every task that changes code, schema, architecture docs, or configuration must produce a
+changelog entry before the task is considered done. Analysis-only tasks (no code or schema
+changes) are exempt; everything else is not.
 
 Place the file in the appropriate subdirectory:
 
@@ -54,46 +58,25 @@ Place the file in the appropriate subdirectory:
 | Ops / infra / deployment | `docs/changelog/ops/YYYY-MM-DD-{slug}.md` |
 | Capability build (Tn-XX) | `docs/changelog/capability-build/YYYY-MM-DD-{slug}.md` |
 
-Format:
-```
-# YYYY-MM-DD — {short description}
-
-## What changed
-- bullet list of changes
-
-## Why
-- one line per motivation
-
-## Files touched
-- list of files
-```
-
-Analysis-only tasks (no code or schema changes) do not require a changelog entry. Everything else does.
+Entry format: see `docs/CONTEXT.md § Changelog Entry Format`.
 
 ### Step 4 — Required Reads for Code/Data Tasks
 
 - `PROJECT_CONTEXT.md` (repo root) — always, at session start alongside this file
 - `planning/architecture/target_architecture.md` — always
 - `planning/architecture/current_state.md` — always (marks broken state + must-not-regress list)
-- `pg_state.sql` — DB-related tasks only. **Note: this file becomes stale after any schema-changing tier or migration. If the task involves tables added or dropped after 2026-05-08 (Tiers 4, 5, R10), regenerate it first:** `PGPASSWORD=fieldpro_pass pg_dump -h localhost -U fieldpro -d fieldpro_db --schema-only > pg_state.sql`
+- `pg_state.sql` — DB-related tasks only. **This file becomes stale after any schema-changing tier or migration.** If the task involves tables added or dropped after 2026-05-08 (Tiers 4, 5, R10), regenerate it first: `PGPASSWORD=fieldpro_pass pg_dump -h localhost -U fieldpro -d fieldpro_db --schema-only > pg_state.sql`
 - `planning/architecture/ADAPTER_BOUNDARY.md` — required for any task touching `core.observations`, `core.visits`, `observationService.ts`, `visitService.ts`, or `riskMapService.ts`
-- `planning/architecture/CANONICAL_STATE_LAYER_DESIGN.md` — required for any task touching `core.observations`, `core.visits`, `core.assets`, `core.evidence`, `core.observation_type_registry`, the observation normalizer, or any intelligence/MV that reads observation condition. **STATUS: verified — normalized-shape build landed 2026-06-14.** §9 items 1, 2, 3 closed 2026-05-30. Item 6 (§3.2 identity sidecar) **verified at the DB level 2026-06-01** — worker identity is extracted into no-grant sidecars (`core.*_actor_audit`) and the plaintext columns are dropped; the no-grant `intelligence_reader` boundary is structural at the DB level, with app-connection wiring still tracked as a follow-on (KNOWN_ISSUES ISSUE-018). Item 4 (§4 normalized columns) **LANDED 2026-06-14** via CANON-NORM Steps 1–6 (merged): the five normalized columns, the §4.1 registry contract, the write-time normalizer, the `core.v_observation_normalized` read seam, and the backfill are all live and DB-verified. Item 5 (the `complexity_score` / ISSUE-008 recompute) is now **unblocked but not yet executed** (still open, P3-Intelligence). The four-kind taxonomy and no-manufactured-state rules are enforced in code. Conform new work to this doc; consult §9 for current-vs-target on a given guarantee before migrating against it.
+- `planning/architecture/CANONICAL_STATE_LAYER_DESIGN.md` — required for any task touching `core.observations`, `core.visits`, `core.assets`, `core.evidence`, `core.observation_type_registry`, the observation normalizer, or any intelligence/MV that reads observation condition. The four-kind taxonomy and no-manufactured-state rules are enforced in code; conform new work to this doc. Consult its §9 for current-vs-target on a given guarantee before migrating against it. (Build-state status — what landed when — lives in `current_state.md` and the design-doc §9, not here.)
 
 ---
 
 ## Work Tracking — Notion Board
 
-This section is the **single, authoritative source of truth** for BASELINE product
-governance: the board pick-protocol, the phase-discipline rule, and the
-pre-dispatch checklist. The parent `Optimized_Life/CLAUDE.md` is local and
-unversioned — it points here and must **not** carry a second copy of these rules.
-Governance that can drift lives here, where git catches the drift. Two full copies
-in two files is exactly the failure this consolidation eliminates.
-
-> Consolidation note: the standalone `## Phase Discipline (hard rule)` section
-> (added in commit 5dbba9f) has been absorbed into this section as the
-> **Phase Discipline (hard rule)** subsection below, so there is one authoritative
-> statement, not two.
+This section is the **single, authoritative source of truth** for BASELINE product governance:
+the board pick-protocol, the phase-discipline rule, and the pre-dispatch checklist. The parent
+`Optimized_Life/CLAUDE.md` mirrors it (marked not-authoritative) and must **not** carry a second
+copy — the versioned file here always wins, and git catches any drift.
 
 ### The board
 
@@ -118,9 +101,6 @@ the source of truth for what to work next. Each card carries:
 
 ### Pre-dispatch checklist (required before starting any card)
 
-This is a required action, not a hope. The phase-discipline guardrail lives inline
-here so the pick-protocol and the phase rule cannot drift apart.
-
 1. **If this card is P2+, confirm NO open P1 card exists.** (Open = Backlog, Ready,
    or In Progress.) If one does, stop — P1 comes first.
 2. **Read the card's `Depends On` and check the phase of every dependency.** Every
@@ -132,10 +112,9 @@ here so the pick-protocol and the phase rule cannot drift apart.
 
 ### Phase Discipline (hard rule)
 
-Work proceeds in phase order. These rules are not advisory — a violation is a
-process defect, not a judgment call. They exist because P1 cards have repeatedly
-been given dependencies on P2 work, which inverts the phase gate and makes P1
-appear blocked on P2.
+These are hard rules, not judgment calls — a violation is a process defect. They exist because
+P1 cards have repeatedly been given dependencies on P2 work, which inverts the phase gate and
+makes P1 appear blocked on P2.
 
 - **Phase order is absolute.** Never begin a P2+ card while any P1 card is open
   (Backlog, Ready, or In Progress). P1 work clears before P2 work starts.
@@ -153,6 +132,13 @@ appear blocked on P2.
   "do it once."
 - **F-1 and T1-CC are P2, always.** F-1 (Entra Dispatch role) and all T1-CC work
   are P2. They are never on the P1 critical path.
+
+### Adapter→Core First (hard rule)
+
+P1 = canonical complete + lossless + uncontaminated (a write/completeness property). "No
+surface reads the adapter" is **not** a P1 goal — readers are surface properties decided in
+Capability Build. Don't dispatch "repoint reader X" as P1 work; use readers only as a diagnostic
+for canonical-completeness gaps. Drop adapter tables last.
 
 ### Recurring task — P1 dependency reconciliation
 
@@ -175,18 +161,18 @@ mirror follows.
 - The DB is the source of truth — UI and API are adapters
 - Assignments are intent only — they are not truth
 - Do not reintroduce transit-first design patterns
-- **(Normalized columns LANDED 2026-06-14 — live in schema, not just code. Identity isolation is structural at the DB level (2026-06-01); its app-connection wiring is the one remaining target-state piece, tracked as ISSUE-018.)** Intelligence and dashboards read the normalized observation columns (`obs_kind` / `norm_status` / `norm_severity`), never observation `payload`. See `planning/architecture/CANONICAL_STATE_LAYER_DESIGN.md` §3.3, §4.3.
+- Intelligence and dashboards read the normalized observation columns (`obs_kind` / `norm_status` / `norm_severity`), never observation `payload`. See `planning/architecture/CANONICAL_STATE_LAYER_DESIGN.md` §3.3, §4.3. (Status: normalized columns landed in schema 2026-06-14; identity-isolation app-wiring is the one remaining target-state piece, tracked as ISSUE-018. Detail: `current_state.md`.)
 
 ### RLS Context Gotcha (recurring bug pattern)
 
-Any query or write against a `FORCE ROW LEVEL SECURITY` table silently affects zero rows if `app.current_org_id` is not set on the connection. This has caused multiple bugs (ISSUE-005, ISSUE-012, ISSUE-013, ISSUE-014, role-rename backfill migration). See `docs/KNOWN_ISSUES.md § PATTERN-001` for the systemic trap.
+Any query or write against a `FORCE ROW LEVEL SECURITY` table silently affects zero rows if `app.current_org_id` is not set on the connection. This has caused multiple bugs; see `docs/KNOWN_ISSUES.md § PATTERN-001` for the instances (ISSUE-005, 012, 013, 014, the role-rename backfill migration) and the systemic trap.
 
 **Hard rules:**
 - App code that queries RLS tables must use `withOrgContext(pool, orgId, ...)` — never bare `pool.query()`
 - Migrations and scripts that touch RLS tables must either set `app.current_org_id` explicitly or run as a superuser/bypassrls role
 - Bugs that silently return empty results on RLS tables are almost always a missing org context, not a data problem
 
-Affected tables include: `identity_directory`, and all 28+ tables with RLS policies. Check `pg_state.sql` or `\d+ <table>` for `Row Security: enabled (forced)` to confirm.
+Affected tables include `identity_directory` and all 28+ tables with RLS policies. Check `pg_state.sql` or `\d+ <table>` for `Row Security: enabled (forced)` to confirm.
 
 ## Labor Safety Guardrails (hard constraints)
 
@@ -202,104 +188,49 @@ See `planning/architecture/target_architecture.md` §8 for the intelligence cons
 
 ## Environment Requirements
 
-Tasks that produce code, schema, configuration, or any artifact that must be committed and pushed MUST run in Claude Code on desktop, not in browser-based Claude Code.
+Tasks that produce code, schema, configuration, or any artifact that must be committed and
+pushed MUST run in Claude Code on desktop, not browser-based Claude Code. The browser sandbox
+is ephemeral — when the session ends, the working directory and any local-only commits are
+destroyed, so code-producing work risks silent loss if push fails or the session ends before
+verification. If a session is opened in the wrong environment, stop and report rather than proceed.
 
-Browser Claude Code runs in an ephemeral sandbox. When the session ends, the working directory and any local-only commits are destroyed. Any code-producing task run in the browser environment is at risk of silent loss if push fails or if the session ends before verification.
-
-**Browser Claude Code is appropriate for:**
-- Reading and analyzing code
-- Planning and architecture discussion
-- Drafting specs that will be committed in a later session
-- Investigating bugs without changing code
-
-**Browser Claude Code is NOT appropriate for:**
-- Implementing tier or refinement or security sprint tasks
-- Schema migrations
-- Any task whose definition of done includes a commit + push
-
-If a session is opened in the wrong environment, the agent should stop and report rather than proceed.
+Which work is appropriate for the browser vs desktop: see `docs/dev/agent-runtime-environment.md`.
 
 ---
 
-## Dev Auth Bypass — Intended Use
+## Dev Auth Bypass
 
-The dev bypass (`localStorage.__dev_user__` / `dev-bypass-token`) exists exclusively for headless agent sessions running remotely in terminal via tools like Prompt 3. It allows a coding agent to interact with the application without a real Entra account.
-
-The founder uses real Azure Entra authentication (personal business tenant) with actual role assignments for all live browser testing. Do NOT suggest switching the founder to dev bypass when auth issues arise in the browser — the correct fix is always on the real MSAL/Entra path.
-
-Two auth paths, two separate contexts:
-- Agent in terminal → dev bypass
-- Founder in browser → real Entra, v2.0 tokens, role-based
+The dev bypass (`localStorage.__dev_user__` / `dev-bypass-token`) is for headless agent terminal
+sessions only — it lets a coding agent interact with the app without a real Entra account. Do NOT
+suggest switching the founder to dev bypass when browser auth issues arise: the founder uses real
+Azure Entra, and the correct fix is always on the real MSAL/Entra path. Rationale and the
+two-context detail: see `docs/dev/dev-auth-bypass.md § Intended Use`.
 
 ---
 
 ## Git Commit Convention
 
-`refactor/baseline` is retired — it was a long-lived integration branch that closed when the original refactor and refinement workstreams completed. All work now runs on typed, named branches that correspond to active workstreams.
+All work runs on typed, named branches that correspond to active workstreams (`feat/*`,
+`design/*`, `chore/*`). The active branch map, the PR-description structure, and retired-branch
+history live in `docs/dev/git-pr-workflow.md`.
 
-### Active branch map
-
-| Branch | Purpose | Status |
-|--------|---------|--------|
-| `feat/state-layer` | State layer build — ok-rules, normalizer, §9 verification, backfill | Active |
-| `design/capability` | Capability design artifacts — specs and architecture before the capability build begins | Next |
-| `feat/intelligence-layer` | Intelligence layer build — T1/T2/T3 tiers, MVs, pattern rules | Opens after state layer merges |
-| `chore/*` | Housekeeping — docs, planning artifacts, naming, config | Short-lived, merge and close |
-
-### Convention
-
-1. Work on the appropriate named branch for the workstream
-2. Commit on that branch
-3. Merge into `main` via `--no-ff`
-4. Push `main` to `origin/main`
-5. Verify push success:
-   ```
-   git fetch origin
-   git log origin/main --oneline | head -3
-   ```
-   The new commit must appear in the output. If it does not, the push silently failed — STOP, do not mark the task complete, and report the discrepancy to the operator. Do not retry without diagnosis.
+1. Work on the appropriate named branch for the workstream; commit there.
+2. Merge into `main` via `--no-ff`.
+3. Push `main` to `origin/main`.
+4. **Verify push success:** run `git fetch origin`, then `git log origin/main --oneline | head -3`. The new commit MUST appear. If it does not, the push silently failed — STOP, do not mark the task complete, report the discrepancy to the operator, and do not retry without diagnosis.
 
 Do not commit directly to `main`. Do not cherry-pick. When a workstream branch is complete, it is closed — do not reopen it.
 
-### Merge discipline — PRs from here forward
-
-Feature branches reach `main` via PR, not direct merge. Once work is reviewed and pushed, open a PR on the feature branch.
-
-**PR description structure:**
-- **SIGNIFICANCE:** one or two sentences on what this commit means — what it unlocks or closes, not just what it does.
-- **WHAT LANDED:** by phase or file group, brief — the changelog is the long-form record; the PR is the orientation.
-- **HONEST RESIDUAL:** if the work is partial, name what's still ahead and link the tracking issue.
-
-**Title convention:** if the work is partial, carry `(partial — ISSUE-XXX)` in the title so the partial state is visible at the PR-list level, not just in the description body.
-
-Agents may draft PR descriptions from the changelog. The human reviews before opening the PR for merge.
+Feature branches reach `main` via PR, not direct merge. Agents may draft PR descriptions from the changelog; the human reviews before opening the PR for merge. PR-description structure and the `(partial — ISSUE-XXX)` title convention: see `docs/dev/git-pr-workflow.md`.
 
 ---
 
 ## MCP Tools
 
-Three MCP servers are configured in `.mcp.json` and auto-approved in `.claude/settings.json`. Use them in preference to bash equivalents where applicable.
-
-### `postgres`
-Direct structured access to `fieldpro_db` as the `postgres` superuser (bypasses RLS — appropriate for diagnostics and migrations, not for testing app-level access).
-
-**Use for:** schema inspection, multi-step queries, DB debugging, verifying writes after API calls.
-**Prefer over:** `psql` bash commands for anything beyond a one-liner.
-**Connection:** `postgresql://postgres:postgres@localhost:5432/fieldpro_db`
-
-### `chrome-devtools-mcp`
-Attaches to a running Chrome tab via Chrome DevTools Protocol. Can inspect network requests, read console output, take screenshots, and interact with the page.
-
-**Use for:** inspecting API request/response payloads and status codes from live browser sessions, reading console errors, verifying frontend state.
-**Requires:** Chrome running with remote debugging enabled, or a tab already open at the target URL.
-**Not a replacement for:** the user's own browser session — attach to the user's tab, don't open a new one unless asked.
-
-### `github`
-Full GitHub API access via `@modelcontextprotocol/server-github`.
-
-**Use for:** creating PRs, reading/writing issues, checking CI status, reviewing PR comments, managing branches.
-**Requires:** `GITHUB_PERSONAL_ACCESS_TOKEN` set in the shell environment before starting Claude Code.
-**Prefer over:** `gh` CLI calls for multi-step GitHub workflows.
+Three MCP servers — `postgres`, `chrome-devtools-mcp`, and `github` — are configured in
+`.mcp.json` and auto-approved in `.claude/settings.json`. Prefer them over bash equivalents
+(`psql`, `gh`) where applicable. Per-server detail (connection string, what each is for, when
+to prefer it): see `docs/dev/mcp-tools.md`.
 
 ---
 

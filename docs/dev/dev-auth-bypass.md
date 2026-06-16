@@ -248,3 +248,24 @@ ORDER BY occurred_at DESC;
 
 The `detail` column records the three headers verbatim so there is always
 a verifiable record of which synthetic identity was used.
+
+---
+
+## Intended Use — Agent (terminal) vs Founder (browser)
+
+> The *rule* — "the dev bypass is for headless agent terminal sessions only; never switch
+> the founder off real MSAL/Entra; the Entra path is always the fix for in-browser auth
+> issues" — lives in `CLAUDE.md § Dev Auth Bypass`. This section holds the rationale moved
+> out of CLAUDE.md during the 2026-06-16 rules-index restructure.
+
+The dev bypass (`localStorage.__dev_user__` / `dev-bypass-token`) exists exclusively for
+headless agent sessions running remotely in terminal via tools like Prompt 3. It allows a
+coding agent to interact with the application without a real Entra account.
+
+The founder uses real Azure Entra authentication (personal business tenant) with actual role
+assignments for all live browser testing. Do NOT suggest switching the founder to dev bypass
+when auth issues arise in the browser — the correct fix is always on the real MSAL/Entra path.
+
+Two auth paths, two separate contexts:
+- Agent in terminal → dev bypass
+- Founder in browser → real Entra, v2.0 tokens, role-based
