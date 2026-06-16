@@ -16,6 +16,7 @@ import "./canonical/devAuthBypass.test";
 import "./canonical/loadRouteRunById.test";
 import "./canonical/roleRenamePhase1Audit.test";
 import "./canonical/cleanLogsIdentity.test";
+import "./canonical/cleanLogsCanonicalPivot.test";
 
 (async () => {
   console.log("canonical integration tests — real local DB, no mocking\n");

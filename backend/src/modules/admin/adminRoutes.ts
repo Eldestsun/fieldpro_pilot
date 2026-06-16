@@ -6,6 +6,7 @@ import * as stopService from "../../services/adminStopService";
 import { auditWrite, reqOrgId } from "../../middleware/auditWrite";
 import { AUDIT_KNOWN_ACTIONS } from "../../middleware/auditActions";
 import { resolveNumericOrgId } from "../../middleware/resolveOrgId";
+import { buildCleanLogsCanonicalQueries } from "../../domains/observation/cleanLogsCanonicalQuery";
 
 export const adminRoutes = Router();
 
@@ -618,6 +619,12 @@ adminRoutes.get("/admin/route-runs", async (req: Request, res: Response) => {
  * /admin/clean-logs:
  *   get:
  *     summary: List clean logs with filters (admin)
+ *     description: >
+ *       Paginated list of clean-log entries, read from the identity-free canonical
+ *       layer (core.visits + core.observations) — not public.clean_logs. The 5 action
+ *       booleans are pivoted from action observation rows (absence ⇒ false); cleaned_at
+ *       is the visit end and duration_minutes is the visit wall-clock. `id` is the
+ *       canonical visit id.
  *     tags: [Admin]
  *     security:
  *       - AzureAD: []
@@ -673,60 +680,13 @@ adminRoutes.get("/admin/clean-logs", async (req: Request, res: Response) => {
     const pageSize = Math.min(parseInt(req.query.pageSize as string) || 50, 200);
     const offset = (page - 1) * pageSize;
 
-    const conditions: string[] = [];
-    const values: any[] = [];
-    let idx = 1;
-
-    if (stop_id) {
-      conditions.push(`cl.stop_id = $${idx++}`);
-      values.push(stop_id);
-    }
-    if (run_date) {
-      conditions.push(`rr.run_date = $${idx++}`);
-      values.push(run_date);
-    }
-    if (pool_id) {
-      conditions.push(`s.pool_id = $${idx++}`);
-      values.push(pool_id);
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-
-    // Main Query
-    const query = `
-            SELECT
-                cl.id,
-                cl.route_run_stop_id,
-                cl.stop_id,
-                cl.cleaned_at,
-                cl.picked_up_litter,
-                cl.emptied_trash,
-                cl.washed_shelter,
-                cl.washed_pad,
-                cl.washed_can,
-                s.on_street_name, s.pool_id,
-                rr.run_date, rr.route_pool_id
-            FROM clean_logs cl
-            LEFT JOIN route_run_stops rrs ON cl.route_run_stop_id = rrs.id
-            LEFT JOIN route_runs rr ON rrs.route_run_id = rr.id
-            LEFT JOIN stops s ON cl.stop_id = s.stop_id
-            ${whereClause}
-            ORDER BY cl.cleaned_at DESC, cl.id DESC
-            LIMIT $${idx++} OFFSET $${idx++}
-        `;
-
-    // Count Query
-    const countQuery = `
-            SELECT COUNT(*) as total
-            FROM clean_logs cl
-            LEFT JOIN route_run_stops rrs ON cl.route_run_stop_id = rrs.id
-            LEFT JOIN route_runs rr ON rrs.route_run_id = rr.id
-            LEFT JOIN stops s ON cl.stop_id = s.stop_id
-            ${whereClause}
-        `;
-
-    const queryValues = [...values, pageSize, offset];
-    const countValues = [...values];
+    // ISSUE-031 P1 (clean-logs Layer 3): canonical reads. The 5 action booleans
+    // come from core.observations action rows (absence ⇒ false), cleaned_at from
+    // core.visits.ended_at, duration from the visit wall-clock. No public.clean_logs
+    // read remains. Shared with /api/ops/clean-logs via the single query builder.
+    const { query, countQuery, queryValues, countValues } = buildCleanLogsCanonicalQueries({
+      stop_id, run_date, pool_id, pageSize, offset,
+    });
 
     const numericOrgId = await resolveNumericOrgId(req);
     const { result, countResult } = await withOrgContext(numericOrgId, async (client) => {
