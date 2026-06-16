@@ -1151,15 +1151,32 @@ stop_counts AS (
 ),
 
 observed_minutes AS (
+  -- ISSUE-031 P1 — standalone reader repoint (CC-Repoint pattern).
+  -- Observed minutes is the wall-clock duration of the route's completed visits,
+  -- read from canonical core.visits instead of the soon-to-be-clipped
+  -- public.clean_logs. A completed, ended core.visit IS the clean event (the
+  -- CC-Repoint canonical definition). The join path mirrors CC-Repoint:
+  --   route_run → core.assignments (source_ref) → core.visits
+  -- Aggregated at the route_run level, so the stop-level spine that the clean-logs
+  -- list builder carries (location_external_ids / stops / route_run_stops) is not
+  -- needed here — one assignment maps to one route_run, and every visit under it
+  -- belongs to that run. Value is raw visit wall-clock; it differs from the legacy
+  -- SUM(clean_logs.duration_minutes) only by the documented stored-vs-wall-clock
+  -- delta (the legacy write stored GREATEST(1, ceil(min)) per stop). No
+  -- worker-identity column is introduced.
   SELECT
-    rrs.route_run_id,
-    COALESCE(SUM(cl.duration_minutes), 0) AS observed_minutes
-  FROM public.route_run_stops rrs
-  JOIN route_base rb
-    ON rb.route_run_id = rrs.route_run_id
-  LEFT JOIN public.clean_logs cl
-    ON cl.route_run_stop_id = rrs.id
-  GROUP BY rrs.route_run_id
+    rb.route_run_id,
+    COALESCE(EXTRACT(EPOCH FROM SUM(v.ended_at - v.started_at)) / 60.0, 0)
+      AS observed_minutes
+  FROM route_base rb
+  LEFT JOIN core.assignments a
+    ON a.source_system = 'route_runs'
+    AND a.source_ref::bigint = rb.route_run_id
+  LEFT JOIN core.visits v
+    ON v.assignment_id = a.id
+    AND v.outcome = 'completed'
+    AND v.ended_at IS NOT NULL
+  GROUP BY rb.route_run_id
 ),
 
 deviation_flags AS (
