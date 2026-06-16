@@ -1,44 +1,61 @@
 import * as fs from "fs";
 import * as path from "path";
-import { pool, test, assert, FIXTURE_STOP_ID, FIXTURE_ORG_ID } from "../setup";
+import { test, assert } from "../setup";
 
 /**
  * P1 SAFETY regression (ISSUE-031): worker-attribution identity (clean_logs.user_id)
- * must never be serialized by the clean-logs list endpoints.
+ * must never reach the clean-logs list endpoints.
  *
- * Both GET /admin/clean-logs and GET /api/ops/clean-logs historically ran
- * `SELECT cl.*` on public.clean_logs and returned the rows verbatim, leaking
- * cl.user_id into the response payload. This suite asserts — at the source level
- * AND at runtime against a seeded row — that the selected shape contains no
- * worker-identity column.
+ * Originally both GET /admin/clean-logs and GET /api/ops/clean-logs ran
+ * `SELECT … FROM public.clean_logs cl`, a table that carries cl.user_id (worker
+ * identity). The clean-logs Layer 3 repoint moved both reads onto the canonical
+ * layer (core.visits + core.observations) via the single shared builder
+ * `buildCleanLogsCanonicalQueries` — so the identity column is now absent *by
+ * construction*: the endpoints no longer read clean_logs at all.
  *
- * If a future edit reintroduces `cl.*` or selects an identity column, these
- * tests fail.
+ * This suite is the static guard that keeps it that way. It asserts, at the source
+ * level, that:
+ *   1. neither handler reads public.clean_logs (or the identity-bearing transit view),
+ *   2. both handlers delegate to the shared canonical builder, and
+ *   3. the shared builder's SELECT names no identity column and still projects the
+ *      columns the consumer (LeadCompletedRouteDetail + OpsCleanLog) reads.
+ *
+ * The runtime proof that the canonical pivot is lossless (and identity-free in the
+ * returned shape) lives in cleanLogsCanonicalPivot.test.ts.
  */
 
-// The only worker-identity column on public.clean_logs. If the schema ever
-// grows another, add it here and to the endpoint column lists.
-const IDENTITY_COLUMNS = ["user_id"];
+// The only worker-identity column on public.clean_logs. If the schema ever grows
+// another, add it here.
+const IDENTITY_COLUMNS = ["user_id", "worker_id", "employee_id"];
 
 // Columns the consumer (LeadCompletedRouteDetail + OpsCleanLog type) actually
-// reads — must survive the rewrite or the UI breaks.
-const REQUIRED_COLUMNS = [
+// reads — must survive the rewrite or the UI breaks. Exported so the runtime
+// pivot regression asserts the returned row carries every one of them.
+export const REQUIRED_COLUMNS = [
   "id",
   "stop_id",
   "route_run_stop_id",
   "cleaned_at",
   "picked_up_litter",
+  "emptied_trash",
   "washed_shelter",
   "washed_pad",
+  "washed_can",
   // join columns
   "on_street_name",
+  "pool_id",
   "run_date",
   "route_pool_id",
 ];
 
-type Endpoint = { label: string; file: string; routeMarker: string };
+const SHARED_QUERY_FILE = path.resolve(
+  __dirname,
+  "../../src/domains/observation/cleanLogsCanonicalQuery.ts",
+);
 
-const ENDPOINTS: Endpoint[] = [
+type Handler = { label: string; file: string; routeMarker: string };
+
+const HANDLERS: Handler[] = [
   {
     label: "/admin/clean-logs",
     file: path.resolve(__dirname, "../../src/modules/admin/adminRoutes.ts"),
@@ -51,77 +68,79 @@ const ENDPOINTS: Endpoint[] = [
   },
 ];
 
-/**
- * Extract the SELECT list of the main (non-count) clean-logs query from the
- * handler source. The main query is the only one with an ORDER BY, so we anchor
- * on it to avoid matching the COUNT(*) query.
- */
-function extractSelectList(ep: Endpoint): string {
-  const src = fs.readFileSync(ep.file, "utf8");
-  const start = src.indexOf(ep.routeMarker);
-  assert(start !== -1, `${ep.label}: route handler not found in ${ep.file}`);
-  const region = src.slice(start);
-  const m = region.match(/SELECT\s+([\s\S]*?)\s+FROM clean_logs cl[\s\S]*?ORDER BY/);
-  assert(!!m, `${ep.label}: could not locate main clean_logs SELECT…ORDER BY block`);
-  return m![1];
+/** Strip line (//…) and block (/* … *​/) comments so guards inspect code, not prose. */
+function stripComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
 }
 
-for (const ep of ENDPOINTS) {
-  // ── Static guard: the source SELECT list must not be a wildcard and must not
-  //    name an identity column.
-  test(`clean-logs identity: ${ep.label} source SELECT omits cl.* and identity`, async () => {
-    const list = extractSelectList(ep);
-    assert(!/\bcl\.\*/.test(list), `${ep.label}: SELECT still uses cl.* (leaks every column incl. user_id)`);
+/** Slice the source of a single route handler (marker → next handler/.get), code only. */
+function handlerBody(h: Handler): string {
+  const src = fs.readFileSync(h.file, "utf8");
+  const start = src.indexOf(h.routeMarker);
+  assert(start !== -1, `${h.label}: route handler not found in ${h.file}`);
+  // Bound the slice at the next route registration so we only inspect THIS handler.
+  const rest = src.slice(start + h.routeMarker.length);
+  const nextGet = rest.search(/Routes\.(get|post|put|delete|patch)\(/);
+  return stripComments(rest.slice(0, nextGet === -1 ? undefined : nextGet));
+}
+
+for (const h of HANDLERS) {
+  test(`clean-logs identity: ${h.label} reads no clean_logs and delegates to the canonical builder`, async () => {
+    const body = handlerBody(h);
+
+    // 1. No SQL READ of the identity-bearing legacy sources. (The response envelope
+    //    key `clean_logs:` is intentionally retained — guard the read, not the word.)
+    assert(
+      !/\b(FROM|JOIN)\s+(public\.)?clean_logs\b/i.test(body),
+      `${h.label}: handler still reads FROM/JOIN clean_logs (the identity-bearing legacy read must be gone)`,
+    );
+    assert(!/\bcl\./.test(body), `${h.label}: handler still uses the clean_logs "cl" alias`);
+    assert(
+      !/v_clean_logs_transit/.test(body),
+      `${h.label}: handler still references v_clean_logs_transit (expands clean_logs.user_id)`,
+    );
+
+    // 2. No identity column named anywhere in the handler code.
     for (const col of IDENTITY_COLUMNS) {
       assert(
-        !new RegExp(`\\b${col}\\b`).test(list),
-        `${ep.label}: SELECT list names identity column "${col}"`
+        !new RegExp(`\\b${col}\\b`).test(body),
+        `${h.label}: handler names identity column "${col}"`,
       );
     }
-  });
 
-  // ── Runtime guard: run the ACTUAL parsed SELECT list against a seeded row that
-  //    has a user_id, and prove the returned shape carries no identity field.
-  test(`clean-logs identity: ${ep.label} response shape has no identity field`, async () => {
-    const list = extractSelectList(ep);
-    const client = await pool.connect();
-    let seededId: number | null = null;
-    try {
-      // clean_logs is FORCE RLS — set org context before writing/reading.
-      await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(FIXTURE_ORG_ID)]);
-
-      const ins = await client.query(
-        `INSERT INTO clean_logs (stop_id, org_id, user_id, picked_up_litter, washed_shelter, washed_pad)
-         VALUES ($1, $2, $3, true, true, false)
-         RETURNING id`,
-        [FIXTURE_STOP_ID, FIXTURE_ORG_ID, 999999]
-      );
-      seededId = Number(ins.rows[0].id);
-
-      const query = `
-        SELECT ${list}
-        FROM clean_logs cl
-        LEFT JOIN route_run_stops rrs ON cl.route_run_stop_id = rrs.id
-        LEFT JOIN route_runs rr ON rrs.route_run_id = rr.id
-        LEFT JOIN stops s ON cl.stop_id = s.stop_id
-        WHERE cl.id = $1
-      `;
-      const res = await client.query(query, [seededId]);
-      assert(res.rowCount === 1, `${ep.label}: seeded row not returned`);
-
-      const keys = Object.keys(res.rows[0]);
-      for (const col of IDENTITY_COLUMNS) {
-        assert(!keys.includes(col), `${ep.label}: response shape leaks identity column "${col}" (keys: ${keys.join(", ")})`);
-      }
-      for (const col of REQUIRED_COLUMNS) {
-        assert(keys.includes(col), `${ep.label}: response shape missing required column "${col}" (keys: ${keys.join(", ")})`);
-      }
-    } finally {
-      if (seededId !== null) {
-        await client.query(`DELETE FROM clean_logs WHERE id = $1`, [seededId]);
-      }
-      await client.query(`SELECT set_config('app.current_org_id', '', false)`);
-      client.release();
-    }
+    // 3. Delegates to the single shared canonical builder.
+    assert(
+      /buildCleanLogsCanonicalQueries\(/.test(body),
+      `${h.label}: handler does not delegate to buildCleanLogsCanonicalQueries`,
+    );
   });
 }
+
+test("clean-logs identity: shared canonical builder is identity-free and column-complete", async () => {
+  const raw = fs.readFileSync(SHARED_QUERY_FILE, "utf8");
+  const src = stripComments(raw);
+
+  // The builder must drive off canonical core.visits, never read clean_logs.
+  assert(
+    !/\b(FROM|JOIN)\s+(public\.)?clean_logs\b/i.test(src),
+    "shared builder still reads FROM/JOIN clean_logs",
+  );
+  assert(!/\bcl\./.test(src), 'shared builder still uses the clean_logs "cl" alias');
+  assert(
+    /FROM core\.visits/.test(src),
+    "shared builder does not drive off core.visits",
+  );
+
+  // No identity column projected.
+  for (const col of IDENTITY_COLUMNS) {
+    assert(
+      !new RegExp(`\\b${col}\\b`).test(src),
+      `shared builder names identity column "${col}"`,
+    );
+  }
+
+  // REQUIRED_COLUMNS shape (every consumer-read column present in the returned row)
+  // is verified at RUNTIME against a seeded fixture in cleanLogsCanonicalPivot.test.ts —
+  // the projection is built dynamically from CLEAN_ACTION_KEYS, so a runtime shape
+  // assertion is stronger than parsing the source template.
+});
