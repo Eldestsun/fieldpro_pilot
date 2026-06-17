@@ -3,6 +3,7 @@ import { pool, runAll } from "./setup";
 // Importing each test file registers its tests into the shared registry in setup.ts.
 import "./canonical/visits.test";
 import "./canonical/observations.test";
+import "./canonical/presenceSeverityReceiver.test";
 import "./canonical/evidence.test";
 import "./canonical/assignments.test";
 import "./canonical/auditLog.test";
