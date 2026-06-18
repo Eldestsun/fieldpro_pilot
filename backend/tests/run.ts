@@ -4,6 +4,7 @@ import { pool, runAll } from "./setup";
 import "./canonical/visits.test";
 import "./canonical/observations.test";
 import "./canonical/presenceSeverityReceiver.test";
+import "./canonical/hazardSeverityCarry.test";
 import "./canonical/evidence.test";
 import "./canonical/assignments.test";
 import "./canonical/auditLog.test";

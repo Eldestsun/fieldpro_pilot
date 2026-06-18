@@ -1,7 +1,13 @@
 import { PoolClient } from "pg";
 import { ensureVisitForRouteRunStop } from "../../domains/visit/visitService";
 
-function toNumericSeverity(s: string | number | undefined | null): number {
+// The single source of the hazard severity label->number scale. Exported so the
+// canonical write path (observationService) carries the SAME numeric magnitude
+// into core.observations.norm_severity that this adapter stores in
+// public.hazards.severity — keeping canonical lossless w.r.t. the adapter without
+// re-authoring the scale (CANON-NORM-2). The scale itself is pre-existing, not
+// authored here.
+export function toNumericSeverity(s: string | number | undefined | null): number {
     if (typeof s === "number") return s;
     if (s === "low") return 1;
     if (s === "medium") return 2;
