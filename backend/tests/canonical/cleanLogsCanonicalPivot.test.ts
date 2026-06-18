@@ -20,13 +20,19 @@ import { REQUIRED_COLUMNS } from "./cleanLogsIdentity.test";
 /**
  * ISSUE-031 P1 — clean-logs Layer 3 read repoint: LOSSLESS regression.
  *
- * The clean-logs list endpoints now read the 5 action booleans from canonical
- * core.observations action rows (absence ⇒ false) instead of public.clean_logs.
+ * The clean-logs list endpoints read the 5 action booleans from canonical
+ * core.observations action rows (absence ⇒ false), not public.clean_logs.
  * This is the named regression that the pivot is LOSSLESS: it drives the live
- * write path (completeStop, which still dual-writes clean_logs AND canonical
- * observations — the write clip is a separate later card), then asserts the
- * canonical pivot reproduces the clean_logs booleans EXACTLY for the same visit,
- * including the `false` ones produced by ABSENCE of an action row.
+ * write path (completeStop) and asserts the canonical pivot reproduces the 5
+ * action booleans EXACTLY for the same visit, including the `false` ones
+ * produced by ABSENCE of an action row.
+ *
+ * Stage-2 update (clean_logs write-clip landed 2026-06-18): completeStop no
+ * longer dual-writes public.clean_logs — a stop completion writes ONLY canonical.
+ * The pivot's reference truth is therefore the WRITTEN action values (the ACTIONS
+ * constant below), not a mirror clean_logs row (there no longer is one). The
+ * completed visit is the anchor that makes a `false`-by-absence distinguishable
+ * from a never-recorded stop.
  *
  * The boolean set under test is deliberately mixed (3 true, 2 false) so the
  * not-done actions (washed_shelter, washed_can) exercise the absence ⇒ false path
@@ -69,7 +75,7 @@ async function planAssignment(client: PoolClient, routeRunId: number): Promise<v
   );
 }
 
-test("clean-logs canonical pivot: 5 booleans match clean_logs exactly (incl. false-by-absence), row count matches", async () => {
+test("clean-logs canonical pivot: 5 booleans match written actions exactly (incl. false-by-absence), row count matches; clean_logs is no longer written", async () => {
   const client = await pool.connect();
   const f = await createRouteRunFixture(client); // sets app.current_org_id, run_date = CURRENT_DATE
   try {
@@ -98,14 +104,14 @@ test("clean-logs canonical pivot: 5 booleans match clean_logs exactly (incl. fal
 
     const today = (await client.query(`SELECT CURRENT_DATE::text AS d`)).rows[0].d as string;
 
-    // ── BEFORE: the legacy source of truth — public.clean_logs booleans.
-    const before = await client.query(
-      `SELECT picked_up_litter, emptied_trash, washed_shelter, washed_pad, washed_can
-       FROM clean_logs WHERE visit_id = $1`,
+    // ── WRITE-CLIP PROOF (ISSUE-031 Stage 2): completeStop no longer dual-writes
+    //    public.clean_logs. The completed visit exists, but NO mirror row was
+    //    created for it — canonical is now the sole source of truth.
+    const mirror = await client.query(
+      `SELECT 1 FROM clean_logs WHERE visit_id = $1`,
       [visitId],
     );
-    assertEqual(before.rowCount, 1, "exactly one clean_logs row for the visit");
-    const cl = before.rows[0];
+    assertEqual(mirror.rowCount, 0, "completeStop must NOT write a clean_logs mirror row (Stage-2 clip)");
 
     // ── AFTER: the repointed canonical read (the real builder both endpoints use),
     //    scoped to this stop + today so it isolates the fixture visit.
@@ -136,7 +142,7 @@ test("clean-logs canonical pivot: 5 booleans match clean_logs exactly (incl. fal
     }
 
     // The one correctness requirement: every one of the 5 KNOWN keys matches the
-    // clean_logs boolean EXACTLY — including the two false ones synthesized from
+    // WRITTEN action value EXACTLY — including the two false ones synthesized from
     // absence. A null/undefined here is the pivot bug the task warns about.
     for (const key of CLEAN_ACTION_KEYS) {
       const got = row[key];
@@ -144,7 +150,6 @@ test("clean-logs canonical pivot: 5 booleans match clean_logs exactly (incl. fal
         typeof got === "boolean",
         `pivot key "${key}" is not an explicit boolean (got ${JSON.stringify(got)}) — absence must yield false, not null/missing`,
       );
-      assertEqual(got, cl[key], `pivot boolean "${key}" must equal clean_logs.${key}`);
       assertEqual(got, ACTIONS[key], `pivot boolean "${key}" must equal the written action value`);
     }
 
@@ -167,9 +172,10 @@ test("clean-logs canonical pivot: 5 booleans match clean_logs exactly (incl. fal
       assert(!keys.includes(idCol), `canonical read leaked identity column "${idCol}" (keys: ${keys.join(", ")})`);
     }
   } finally {
-    // completeStop's clean_logs / trash_volume_logs rows are SET NULL (not cascaded)
-    // on visit delete — remove them explicitly by route_run_stop_id before the
-    // fixture teardown so no orphaned row pollutes the DB.
+    // Defensive cleanup. Post Stage-2 write-clip completeStop writes neither a
+    // clean_logs nor a trash_volume_logs mirror row, so these DELETEs are normally
+    // no-ops; they remain to scrub any legacy/orphan row (visit_id FK is SET NULL,
+    // not cascaded, on visit delete) so nothing pollutes the DB.
     await client.query(`DELETE FROM clean_logs WHERE route_run_stop_id = $1`, [f.routeRunStopId]);
     await client.query(`DELETE FROM trash_volume_logs WHERE route_run_stop_id = $1`, [f.routeRunStopId]);
     await cleanupFixture(client, f); // cascades visit → observations / effort_history
