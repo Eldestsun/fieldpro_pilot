@@ -1,104 +1,18 @@
-import { PoolClient } from "pg";
-import { ensureVisitForRouteRunStop } from "../../domains/visit/visitService";
-
 // The single source of the hazard severity label->number scale. Exported so the
-// canonical write path (observationService) carries the SAME numeric magnitude
-// into core.observations.norm_severity that this adapter stores in
-// public.hazards.severity — keeping canonical lossless w.r.t. the adapter without
-// re-authoring the scale (CANON-NORM-2). The scale itself is pre-existing, not
-// authored here.
+// canonical write path (observationService) carries the correct numeric magnitude
+// into core.observations.norm_severity (CANON-NORM-2). The scale itself is
+// pre-existing, not authored here.
+//
+// ISSUE-031 Stage 2 (2026-06-18): the public.hazards dual-write mirror that this
+// module used to perform was clipped. Hazard submissions now write ONLY canonical
+// (core.observations / core.visits / core.evidence + the grant-walled
+// core.observation_actor_audit) via emitObservationsForStop. public.hazards is
+// frozen (no longer receives new rows); its dormant readers and the table itself
+// stay in place pending Capability Build (reader repoint) and Stage 3 (table drop).
 export function toNumericSeverity(s: string | number | undefined | null): number {
     if (typeof s === "number") return s;
     if (s === "low") return 1;
     if (s === "medium") return 2;
     if (s === "high") return 3;
     return 1; // default
-}
-
-export async function createHazardForRouteRunStop(
-    client: PoolClient,
-    params: {
-        routeRunStopId: number | string;
-        userId: number;
-        hazardTypes: string[];
-        severity?: string | number;
-        notes?: string;
-        photoKey?: string; // Singular column for primary photo
-        photoKeys?: string[]; // Kept for backward compatibility or extra photos in details
-        source?: string;
-        actorOid?: string;
-    }
-) {
-    const { routeRunStopId, userId, hazardTypes, severity, notes, photoKey, photoKeys, actorOid } = params;
-
-    // 1. Look up stop_id and org_id from route_run_stops
-    const lookupQuery = `
-        SELECT rrs.stop_id, rrs.asset_id, rr.org_id
-        FROM route_run_stops rrs
-        JOIN route_runs rr ON rr.id = rrs.route_run_id
-        WHERE rrs.id = $1
-    `;
-    const lookupRes = await client.query(lookupQuery, [routeRunStopId]);
-
-    if (lookupRes.rows.length === 0) {
-        throw new Error(`Route run stop ${routeRunStopId} not found`);
-    }
-
-    const { stop_id: stopId, asset_id: assetId, org_id: orgId } = lookupRes.rows[0];
-
-    // Determine primary hazard type (old string column)
-    let hazardType = "other";
-    if (hazardTypes.length === 1) {
-        hazardType = hazardTypes[0];
-    } else if (hazardTypes.length > 1) {
-        hazardType = "multiple";
-    }
-
-    // Ensure visit exists for this hazard
-    const visitId = await ensureVisitForRouteRunStop(client, {
-        routeRunStopId: Number(routeRunStopId),
-        actorOid: actorOid || "unknown",
-        visitType: "service",
-    });
-
-    // 2. Insert hazard
-    const insertQuery = `
-        INSERT INTO hazards (
-            visit_id,
-            stop_id,
-            asset_id,
-            route_run_stop_id,
-            reported_by,
-            hazard_type,
-            photo_key,
-            severity,
-            notes,
-            details,
-            reported_at,
-            org_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11)
-        RETURNING *
-    `;
-
-    const details = {
-        hazard_types: hazardTypes,
-        ...(photoKeys && photoKeys.length > 0 ? { photo_keys: photoKeys } : {}),
-        source: params.source || "ul_safety_flow",
-    };
-
-    const insertRes = await client.query(insertQuery, [
-        visitId,
-        stopId,
-        assetId,
-        routeRunStopId,
-        userId,
-        hazardType,
-        photoKey || null,
-        toNumericSeverity(severity), // Convert string label to smallint
-        notes || null, // Store UL notes in notes column
-        details,
-        orgId,
-    ]);
-
-    return insertRes.rows[0];
 }

@@ -2,7 +2,6 @@
 import { Router, Request, Response } from "express";
 import { requireAuth, requireAnyRole } from "../../authz";
 import { completeStop } from "../../domains/routeRunStop/cleanLogService";
-import { createHazardForRouteRunStop } from "../../domains/routeRunStop/hazardService";
 import { pool } from "../../db";
 import { emitObservationsForStop, StopUiPayload } from "../../domains/observation/observationService";
 import {
@@ -221,31 +220,21 @@ routeRunStopRoutes.post(
                 return res.status(400).json({ error: `Cannot skip stop in status '${status}'` });
             }
 
-            // 3. Transaction: Insert Hazard + Update Status
+            // 3. Transaction: Update Status (canonical hazard observation is emitted
+            //    post-commit via emitObservationsForStop below). ISSUE-031 Stage 2:
+            //    the public.hazards mirror write (and its route_run_stops.hazard_id
+            //    FK pointer) was clipped — the hazard now lives only in canonical.
             await client.query("BEGIN");
-
-            const hazard = await createHazardForRouteRunStop(client, {
-                routeRunStopId: id,
-                userId: user_id,
-                hazardTypes: hazard_types || [], // Ensure array
-                severity,
-                notes,
-                photoKey: safety_photo_key,
-                photoKeys: photo_keys,
-                source: "ul_skip_flow",
-                actorOid: req.user?.oid || "unknown",
-            });
 
             const updateQuery = `
                 UPDATE route_run_stops
                 SET status = 'skipped',
-                hazard_id = $1,
                 completed_at = NOW(),
                 updated_at = NOW()
-                WHERE id = $2
+                WHERE id = $1
                 RETURNING *
             `;
-            const updateRes = await client.query(updateQuery, [hazard.id, id]);
+            const updateRes = await client.query(updateQuery, [id]);
 
             // Ensure visit exists (idempotent — no-op if already created at stop-start)
             const visitId = await ensureVisitForRouteRunStop(client, {
@@ -498,25 +487,11 @@ routeRunStopRoutes.post(
                 await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(numericOrgId)]);
                 await client.query("BEGIN");
 
-                // 1. If hazard present in safety object, create it (Safety step)
-                if (safety && Array.isArray(safety.hazard_types) && safety.hazard_types.length > 0) {
-                    const hazard = await createHazardForRouteRunStop(client, {
-                        routeRunStopId: route_run_stop_id,
-                        userId: user_id,
-                        hazardTypes: safety.hazard_types,
-                        severity: safety.severity,
-                        notes: safety.notes,
-                        photoKey: safety.safety_photo_key,
-                        source: "ul_safety_flow",
-                        actorOid: req.user?.oid || "unknown",
-                    });
-
-                    await client.query(
-                        `UPDATE route_run_stops SET hazard_id = $1, updated_at = NOW() WHERE id = $2`,
-                        [hazard.id, route_run_stop_id]
-                    );
-                }
-
+                // ISSUE-031 Stage 2: the public.hazards mirror write (and its
+                // route_run_stops.hazard_id FK pointer) was clipped here. The hazard
+                // in `safety` still reaches canonical: completeStop() forwards it into
+                // emitObservationsForStop (safetyHazards / hazard_severity / hazard_notes),
+                // writing core.observations + evidence + the grant-walled actor sidecar.
                 if (req.body.hazards) {
                     console.warn(
                         "Ignoring `hazards` payload on complete-stop; hazards must come from `safety` step only.",
