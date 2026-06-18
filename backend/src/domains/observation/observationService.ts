@@ -1,6 +1,7 @@
 import { PoolClient } from "pg";
 import { withOrgContext } from "../../db";
 import { loadRegistryRules, normalizeObservation } from "./observationNormalizer";
+import { toNumericSeverity } from "../routeRunStop/hazardService";
 
 // Raw UI payload from UL
 export type StopUiPayload = {
@@ -132,15 +133,28 @@ function submitObservations(ui: StopUiPayload): ObservationInsert[] {
     // which is written elsewhere on the skip path.
     // Specific presences are written REGARDLESS of whether the stop was
     // skipped — serviced-anyway hazards still count.
+    // Severity lands in TWO places, both additive:
+    //   - legacy `severity` text column (unchanged) — e.g. "high"
+    //   - payload.severity as a NUMBER — the §4.2 normalizer reads this via the
+    //     presence severity_map {"field":"severity"} (CANON-NORM-1) and carries it
+    //     into core.observations.norm_severity (CANON-NORM-2). It is the SAME numeric
+    //     value the hazards adapter stores in public.hazards.severity, via the shared
+    //     toNumericSeverity scale — a mechanical passthrough of what the adapter
+    //     already records, NOT an authored magnitude.
+    // When the worker reported NO severity, nothing is threaded into payload and
+    // norm_severity stays NULL: canonical does not manufacture a magnitude (§4.4 /
+    // invariant #5). It deliberately does not replicate the adapter's synthetic
+    // default-of-1 (toNumericSeverity(undefined)=1) — that default is an adapter
+    // artifact, not a worker-asserted fact.
     const hazardSeverity = ui.hazard_severity != null ? String(ui.hazard_severity) : null;
+    const hazardSeverityNum = ui.hazard_severity != null ? toNumericSeverity(ui.hazard_severity) : null;
     if (ui.safetyConcern) {
         ui.safetyHazards?.forEach(h => {
             obs.push({
                 observation_type: mapSafetyHazard(h),
-                // severity stays on the dedicated column (above); notes is
-                // threaded into payload additively (ISSUE-031 Step 5).
                 payload: {
                     ...(ui.hazard_notes && { notes: ui.hazard_notes }),
+                    ...(hazardSeverityNum != null && { severity: hazardSeverityNum }),
                 },
                 severity: hazardSeverity,
             });
