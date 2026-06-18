@@ -727,3 +727,22 @@ The umbrella issue for completing the canonical migration and clipping work-attr
 The ADR and the boundary reconciliation both cite `docs/audit/2026-06-06-canonical-core-complete-inventory.md` as **CORE-INV** (the live-verified canonical-side companion to the transit adapter inventory). The 2026-06-11 live audit originally flagged this file as "missing from disk," but that was an artifact of the audit branch being cut from history predating it. **CORRECTED:** the real 663-line CORE-INV is committed at `docs/audit/2026-06-06-canonical-core-complete-inventory.md` on branch `feat/issue-031-core-inventory` (commit `d4a6846`), since merged — so the ADR's CORE-INV citations resolve correctly once that line of work is on the branch you're reading from. No restore/recreate is needed. (Disregard any stray 0-byte placeholder of the same name under `planning/architecture/` — it is not the content.)
 
 **Relates to:** `planning/architecture/2026-06-07-issue-031-redesign-adr.md` (the ADR), `docs/audit/2026-06-06-transit-adapter-complete-inventory.md`, `docs/audit/2026-06-07-adapter-boundary-reconciliation.md`, `2026-06-11-live-repo-audit.md` (the live audit). Sub-items: ISSUE-027 (Q-E), ISSUE-028 (Q-F), ISSUE-030 (CANON-1). Adjacent: ISSUE-018, ISSUE-024, ISSUE-025, ISSUE-013, ISSUE-029. See **PATTERN-001** for the RLS fail-open trap that DQ-2 addresses.
+
+
+---
+
+## ISSUE-032 — `actor_ref` sentinel-string fallback on non-Entra writes
+**Status:** Open (deferred — security/hardening pass)
+**Discovered:** 2026-06-18 (actor-audit labor-safety wall verification, `docs/audit/2026-06-18-actor-audit-wall-verify.md` Q2)
+**Area:** DB / write path — `core.observation_actor_audit.actor_ref`; `observationService.ts` sidecar INSERT; `routeRunStopRoutes.ts` actor source
+**Severity:** low (data-integrity smell; not a labor-safety or security issue)
+
+**What:**
+The actor-audit write path uses `req.user?.oid || "unknown"` (sourced at `routeRunStopRoutes.ts` lines 236, 253, 283, 511, 539; written via `observationService.ts` lines 367–371). On the pilot surface all submissions are Entra-authenticated, so the `|| "unknown"` fallback is currently unreachable. But if any non-Entra path ever reaches that write — a script, a future ingestion route, a misconfigured test harness — `core.observation_actor_audit.actor_ref` receives the literal string `"unknown"` instead of a UUID or null. A UUID-typed audit column silently degrading to a sentinel string is an integrity smell: a future reader expecting a UUID would receive `"unknown"` instead, with no constraint violation.
+
+Not a clip blocker. Not urgent. Not a labor-safety or security issue (the column is walled from `intelligence_reader` and `mcp_readonly`).
+
+**Fix shape (when hardening, not now):**
+`actor_ref` should be null-or-real-OID, not a string sentinel. Fail closed: reject the write (raise an error) or write `null` when `req.user?.oid` is absent. Do not fabricate `"unknown"`. Applies to all four `*_actor_audit` sidecar write paths that use the same `|| "unknown"` guard.
+
+**Relates to:** `docs/audit/2026-06-18-actor-audit-wall-verify.md` Q2 (actor value trace); ISSUE-027 (Q-E uniform sidecar encryption — same hardening pass); ISSUE-031 (umbrella).
