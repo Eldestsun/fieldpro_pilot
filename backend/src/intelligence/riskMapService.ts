@@ -45,6 +45,8 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
         //
         // Tier 2 migration: source CTEs now read from core.observations and core.visits
         // instead of level3_logs / trash_volume_logs / hazards / infrastructure_issues.
+        // CANON-NORM-3: the hazard CTE additionally reads severity from the normalized
+        // read seam core.v_observation_normalized (its first real reader).
         //
         // Stop-identity translation uses Path B/C from planning/architecture/ADAPTER_BOUNDARY.md:
         //   asset_id (canonical) → transit_stop_assets (one-hop adapter lookup) → stop_id
@@ -58,8 +60,21 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
         //     retirements 2026-05-25). Hazard signal is the OR over the 8
         //     specific safety *_present types; infra signal is the OR over the
         //     8 specific infra *_present types.
-        //   - severity is not written to core.observations.severity. Presence is used as the
-        //     proxy: hazard severity = 1.0; infra severity = COUNT(*) capped at 5.
+        //   - CANON-NORM-3 (this change): hazard severity is now READ from the real
+        //     normalized magnitude core.v_observation_normalized.norm_severity (this
+        //     view's first reader), replacing the synthesized 1.0. norm_severity is an
+        //     OPAQUE 0..N magnitude whose encoding (range, spacing, category mapping)
+        //     is owned by INTEL-SEVERITY-WEIGHTING; this reader makes NO assumption
+        //     about the scale — it multiplies the existing HAZARD_BASE_WEIGHT by
+        //     whatever magnitude the column holds, so any future re-encoding is
+        //     inherited automatically. There is deliberately no low/medium/high logic
+        //     and no 1/2/3 literal here.
+        //   - Infra severity has NO canonical magnitude source today (every infra
+        //     presence row has norm_severity NULL). Swapping its COUNT(*)-capped
+        //     presence proxy for a magnitude read would collapse the infra signal to
+        //     zero — a scoring/weighting decision that is NOT state's to make. Per
+        //     CANON-NORM-3's stop condition the COUNT(*)-capped-at-5 proxy is PRESERVED
+        //     here and the magnitude swap is flagged for INTEL-SEVERITY-WEIGHTING.
         const query = `
             WITH base AS (
                 SELECT
@@ -108,14 +123,39 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
                 GROUP BY lei.external_id
             ),
             -- Hazard signals from canonical observations (replaces hazards table).
-            -- Severity is not stored canonically; presence-in-window = 1.0.
+            -- CANON-NORM-3 repoint: severity is the REAL normalized magnitude
+            -- core.v_observation_normalized.norm_severity (this view's first reader),
+            -- NOT a synthesized 1.0. norm_severity is an opaque 0..N magnitude owned by
+            -- INTEL-SEVERITY-WEIGHTING; this reader makes no assumption about its range
+            -- or spacing — safety_score just multiplies HAZARD_BASE_WEIGHT by it, so a
+            -- future re-encoding is inherited automatically.
+            --
+            -- The seam exposes type_id (not observation_type), so the 8 pinned safety
+            -- presence types are resolved via the registry observation_key — same hazard
+            -- definition as before, sourced canonically.
+            --
+            -- DISTINCT ON keeps last_hazard_at / hazard_days_ago = the MOST RECENT hazard
+            -- (matching the old MAX(observed_at)) and pairs THAT row's magnitude as
+            -- last_hazard_severity (matches the column name and the recency-decay applied
+            -- in safety_score).
+            --
+            -- NULL handling: every row produced here IS a present hazard (the type filter
+            -- + window guarantee it), so COALESCE(norm_severity, 1) floors a present-but-
+            -- unmagnituded hazard to the MULTIPLICATIVE IDENTITY 1 — i.e. "still counts as
+            -- a hazard, no magnitude multiplier." The 1 is the identity element of the
+            -- BASE * severity product, NOT a severity-scale literal; it is encoding-
+            -- independent (real magnitudes pass straight through). The "no hazard at all"
+            -- case is the LEFT JOIN miss handled downstream (COALESCE(..., 0) → 0), so a
+            -- NULL-magnitude hazard is never silently dropped or zeroed.
             haz AS (
-                SELECT
+                SELECT DISTINCT ON (lei.external_id)
                     lei.external_id AS stop_id,
-                    MAX(o.observed_at) AS last_hazard_at,
-                    1.0::numeric(4,2)  AS last_hazard_severity,
-                    DATE_PART('day', NOW() - MAX(o.observed_at))::int AS hazard_days_ago
-                FROM core.observations o
+                    o.observed_at AS last_hazard_at,
+                    COALESCE(o.norm_severity, 1)::numeric(4,2) AS last_hazard_severity,
+                    DATE_PART('day', NOW() - o.observed_at)::int AS hazard_days_ago
+                FROM core.v_observation_normalized o
+                JOIN core.observation_type_registry r
+                  ON r.id = o.type_id
                 JOIN core.asset_locations al
                   ON al.asset_id = o.asset_id
                  AND al.active = TRUE
@@ -123,7 +163,7 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
                 JOIN core.location_external_ids lei
                   ON lei.location_id = al.location_id
                  AND lei.source_system = 'metro_stop'
-                WHERE o.observation_type IN (
+                WHERE r.observation_key IN (
                     'encampment_present',
                     'fire_present',
                     'dangerous_activity_present',
@@ -134,10 +174,16 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
                     'other_safety_concern_present'
                   )
                   AND o.observed_at >= NOW() - INTERVAL '${HAZARD_WINDOW_DAYS} days'
-                GROUP BY lei.external_id
+                ORDER BY lei.external_id, o.observed_at DESC
             ),
             -- Infrastructure scores from canonical observations (replaces infrastructure_issues).
-            -- Severity not stored canonically; COUNT(*) capped at 5 stands in for AVG(severity).
+            -- CANON-NORM-3: infra has NO canonical severity magnitude today — every infra
+            -- presence row has norm_severity NULL (the capture path carries no severity at
+            -- the source; see CANON-NORM-2). Repointing this to a norm_severity read would
+            -- zero the infra signal, a scoring/weighting change that is an INTELLIGENCE
+            -- decision, not state's. Per CANON-NORM-3's stop condition the existing
+            -- COUNT(*)-capped-at-5 presence proxy (stands in for AVG(severity)) is PRESERVED
+            -- unchanged here; the magnitude swap is FLAGGED for INTEL-SEVERITY-WEIGHTING.
             -- The generic 'infrastructure_issue_present' umbrella was retired
             -- (canonical state layer §2.1, 2026-05-25); presence is now the OR over
             -- the 8 specific infra *_present types.
