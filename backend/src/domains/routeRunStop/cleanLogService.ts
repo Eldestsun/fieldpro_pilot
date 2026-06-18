@@ -124,11 +124,12 @@ export async function completeStop(
             `UPDATE route_run_stops SET trash_volume = $1 WHERE id = $2`,
             [trashVolume, routeRunStopId]
         );
-        await client.query(
-            `INSERT INTO trash_volume_logs (visit_id, route_run_stop_id, stop_id, asset_id, volume, org_id)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
-            [visitId, routeRunStopId, stop_id, asset_id, trashVolume, ctx.orgId]
-        );
+        // ISSUE-031 Stage 2 — trash_volume_logs write-clip. The public.trash_volume_logs
+        // dual-write mirror is stopped here; trash volume now writes ONLY canonical
+        // (core.observations observation_type='trash_volume', payload.level), emitted by
+        // emitObservationsForStop() below via uiPayload.trash_volume. Losslessness re-confirmed
+        // in docs/audit/2026-06-18-issue-031-losslessness-reverify.md (volume → payload.level,
+        // exact). The table is NOT dropped (Stage 3); it stops receiving new rows.
     }
 
     await client.query(
