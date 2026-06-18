@@ -92,22 +92,25 @@ export async function completeStop(
         });
     }
 
-    const photoKeysVal = Array.isArray(photo_keys) ? photo_keys : null;
-
-    const logRes = await client.query(
-        `INSERT INTO clean_logs (
-            visit_id, route_run_stop_id, stop_id, asset_id, user_id,
-            duration_minutes, picked_up_litter, emptied_trash,
-            washed_shelter, washed_pad, washed_can, photo_keys, cleaned_at, org_id
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-         RETURNING id`,
-        [
-            visitId, routeRunStopId, stop_id, asset_id, user_id,
-            computedDuration, picked_up_litter, emptied_trash,
-            washed_shelter, washed_pad, washed_can, photoKeysVal, now, ctx.orgId,
-        ]
-    );
-    const cleanLogId = logRes.rows[0].id;
+    // ISSUE-031 Stage 2 — clean_logs write-clip. The public.clean_logs dual-write
+    // mirror is stopped here; a stop completion now writes ONLY canonical:
+    //   - the 5 cleaning-action booleans → core.observations action rows (absence ⇒
+    //     false), emitted by emitObservationsForStop() below from uiPayload.
+    //   - duration / cleaned_at → core.visits (wall-clock; ended_at set by
+    //     closeVisitForRouteRunStop()).
+    //   - photos → core.evidence.
+    // Losslessness (incl. the absence=false fan-out and false-vs-unrecorded
+    // distinguishability — the completed visit is the anchor) re-verified in
+    // docs/audit/2026-06-18-issue-031-losslessness-reverify.md. The table is NOT
+    // dropped (Stage 3); it stops receiving new rows.
+    //
+    // The legacy clean_logs.id that the response's clean_log_id once carried is
+    // succeeded by the canonical visit id — the same id the canonical clean-logs
+    // read projects (cleanLogsCanonicalQuery.ts: "id is the canonical visit id
+    // (was clean_logs.id)"). No FK pointer or clean_log% column references it.
+    // clean_logs.user_id was a constant 0 transit-adapter field (no canonical
+    // significance); clipping it carries no worker identity.
+    const cleanLogId = visitId;
 
     if (infraIssues && infraIssues.length > 0) {
         await createInfrastructureIssuesForRouteRunStop(client, {
