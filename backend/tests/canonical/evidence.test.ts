@@ -49,28 +49,48 @@ test("evidence: createStopPhotos writes one core.evidence row per photo", async 
   }
 });
 
-test("evidence: createStopPhotos still writes stop_photos rows (no regression)", async () => {
+test("evidence (ISSUE-031 Stage 2): createStopPhotos no longer writes the stop_photos mirror, but the OID still lands in the grant-walled sidecar", async () => {
+  // The public.stop_photos mirror INSERT was clipped. A photo capture must now
+  // write ONLY canonical: zero stop_photos rows, one core.evidence row, and the
+  // capture OID into core.evidence_actor_audit (never the adapter column).
   const client = await pool.connect();
   const f = await createRouteRunFixture(client);
   try {
-    await ensureVisitForRouteRunStop(client, {
+    const visitId = await ensureVisitForRouteRunStop(client, {
       routeRunStopId: f.routeRunStopId,
       actorOid: FIXTURE_ACTOR_OID,
       visitType: "service",
     });
+    const key = `tests/canonical/${f.routeRunStopId}-c.jpg`;
     await createStopPhotos(client, {
       routeRunStopId: f.routeRunStopId,
       userOid: FIXTURE_ACTOR_OID,
-      s3Keys: [`tests/canonical/${f.routeRunStopId}-c.jpg`],
+      s3Keys: [key],
       kind: "completion",
     });
 
     const sp = await client.query(
-      `SELECT s3_key, kind FROM stop_photos WHERE route_run_stop_id = $1`,
+      `SELECT id FROM stop_photos WHERE route_run_stop_id = $1`,
       [f.routeRunStopId]
     );
-    assertEqual(sp.rowCount, 1, "stop_photos row created");
-    assertEqual(sp.rows[0].kind, "completion", "stop_photos kind preserved");
+    assertEqual(sp.rowCount, 0, "stop_photos mirror NOT written (clipped)");
+
+    const ev = await client.query(
+      `SELECT id FROM core.evidence WHERE visit_id = $1 AND storage_key = $2`,
+      [visitId, key]
+    );
+    assertEqual(ev.rowCount, 1, "canonical core.evidence row written");
+
+    const aud = await client.query(
+      `SELECT actor_ref FROM core.evidence_actor_audit WHERE evidence_id = $1`,
+      [ev.rows[0].id]
+    );
+    assertEqual(aud.rowCount, 1, "capture OID written to the grant-walled sidecar");
+    assertEqual(
+      aud.rows[0].actor_ref,
+      FIXTURE_ACTOR_OID,
+      "sidecar carries the real capture OID"
+    );
   } finally {
     await cleanupFixture(client, f);
     client.release();
@@ -95,7 +115,7 @@ test("evidence: createStopPhotos does NOT create a visit row when called before 
     );
     assertEqual(v.rowCount, 0, "no visit row created by photo upload");
 
-    // And evidence/stop_photos writes are skipped (logged warning), not errored.
+    // And the evidence write is skipped (logged warning), not errored.
     const ev = await client.query(
       `SELECT id FROM core.evidence
        WHERE storage_key = $1`,
@@ -110,9 +130,11 @@ test("evidence: createStopPhotos does NOT create a visit row when called before 
 
 // Q-D (ISSUE-031 §3) — the evidence write path is one transaction.
 
-test("evidence (Q-D): pool-handed path commits stop_photos + evidence + sidecar atomically", async () => {
+test("evidence (Q-D): pool-handed path commits evidence + sidecar atomically (no stop_photos mirror)", async () => {
   // Passing the bare pool (the production /photos route path) exercises the
-  // BEGIN/COMMIT ownership branch. All three tables must land together.
+  // BEGIN/COMMIT ownership branch. Post-Stage-2 clip, the two canonical tables
+  // (core.evidence + the sidecar) must land together; the stop_photos mirror is
+  // no longer written.
   const setup = await pool.connect();
   const f = await createRouteRunFixture(setup);
   try {
@@ -137,7 +159,7 @@ test("evidence (Q-D): pool-handed path commits stop_photos + evidence + sidecar 
         `SELECT id FROM stop_photos WHERE s3_key = $1`,
         [key]
       );
-      assertEqual(sp.rowCount, 1, "stop_photos committed via pool path");
+      assertEqual(sp.rowCount, 0, "stop_photos mirror NOT written (clipped)");
 
       const ev = await verify.query(
         `SELECT id FROM core.evidence WHERE storage_key = $1`,
@@ -164,10 +186,12 @@ test("evidence (Q-D): pool-handed path commits stop_photos + evidence + sidecar 
 });
 
 test("evidence (Q-D): a mid-write failure rolls the whole unit back — no orphan rows", async () => {
-  // Inject a failure on the 2nd stop_photos insert. The 1st key's stop_photos,
-  // evidence, and sidecar rows are written inside the transaction but uncommitted;
+  // Inject a failure on the 2nd key's core.evidence insert. The 1st key's
+  // evidence and sidecar rows are written inside the transaction but uncommitted;
   // a labor-safe-by-structure system must not leave any of them — least of all an
-  // orphan identity-audit row — once the unit fails.
+  // orphan identity-audit row — once the unit fails. (Pre-Stage-2 this injected on
+  // the stop_photos mirror insert, which no longer exists; the evidence insert is
+  // now the first canonical write per key.)
   const setup = await pool.connect();
   const f = await createRouteRunFixture(setup);
   await ensureVisitForRouteRunStop(setup, {
@@ -181,15 +205,17 @@ test("evidence (Q-D): a mid-write failure rolls the whole unit back — no orpha
   const key2 = `tests/canonical/${f.routeRunStopId}-qd-rollback-2.jpg`;
 
   // A fake "pool": no .release() method → createStopPhotos owns the transaction.
-  // Its checked-out client throws on the 2nd stop_photos INSERT.
+  // Its checked-out client throws on the 2nd core.evidence INSERT. The
+  // "core.evidence (" match (open paren) excludes the sidecar insert into
+  // core.evidence_actor_audit, which shares the "core.evidence" prefix.
   const realClient = await pool.connect();
-  let photoInserts = 0;
+  let evidenceInserts = 0;
   const fakePool = {
     connect: async () => ({
       query: (text: any, params?: any) => {
-        if (typeof text === "string" && text.includes("INSERT INTO stop_photos")) {
-          photoInserts++;
-          if (photoInserts === 2) {
+        if (typeof text === "string" && text.includes("INSERT INTO core.evidence (")) {
+          evidenceInserts++;
+          if (evidenceInserts === 2) {
             throw new Error("injected mid-transaction failure");
           }
         }
@@ -244,7 +270,7 @@ test("evidence: empty s3Keys list is a no-op", async () => {
   const client = await pool.connect();
   const f = await createRouteRunFixture(client);
   try {
-    await ensureVisitForRouteRunStop(client, {
+    const visitId = await ensureVisitForRouteRunStop(client, {
       routeRunStopId: f.routeRunStopId,
       actorOid: FIXTURE_ACTOR_OID,
       visitType: "service",
@@ -254,11 +280,11 @@ test("evidence: empty s3Keys list is a no-op", async () => {
       userOid: FIXTURE_ACTOR_OID,
       s3Keys: [],
     });
-    const sp = await client.query(
-      `SELECT COUNT(*)::int AS n FROM stop_photos WHERE route_run_stop_id = $1`,
-      [f.routeRunStopId]
+    const ev = await client.query(
+      `SELECT COUNT(*)::int AS n FROM core.evidence WHERE visit_id = $1`,
+      [visitId]
     );
-    assertEqual(sp.rows[0].n, 0, "no rows written for empty list");
+    assertEqual(ev.rows[0].n, 0, "no canonical evidence rows written for empty list");
   } finally {
     await cleanupFixture(client, f);
     client.release();

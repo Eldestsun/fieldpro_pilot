@@ -26,13 +26,23 @@ export async function createStopPhotos(
     if (s3Keys.length === 0) return;
 
     // Q-D (ISSUE-031 §3) — the evidence write path must be one transaction.
-    // Across every key this function touches three tables: stop_photos (transit
-    // adapter), core.evidence (canonical), and core.evidence_actor_audit (the
-    // no-grant identity sidecar). Run on autocommit these are independent writes,
-    // so a mid-loop failure can leave canonical evidence with no identity audit —
-    // or, worse, an identity audit row whose evidence never landed. That orphan-
-    // identity state is the one inconsistency a labor-safe-by-structure system
-    // can never ship. We wrap the whole path so it is all-or-nothing.
+    // Across every key this function writes two canonical tables: core.evidence
+    // and core.evidence_actor_audit (the no-grant identity sidecar). Run on
+    // autocommit these are independent writes, so a mid-loop failure can leave
+    // canonical evidence with no identity audit — or, worse, an identity audit
+    // row whose evidence never landed. That orphan-identity state is the one
+    // inconsistency a labor-safe-by-structure system can never ship. We wrap the
+    // whole path so it is all-or-nothing.
+    //
+    // ISSUE-031 Stage 2 (2026-06-18): the public.stop_photos mirror INSERT (photo
+    // data + created_by_oid) was clipped. Evidence data now lands ONLY in
+    // core.evidence and the capture OID ONLY in the grant-walled
+    // core.evidence_actor_audit sidecar — never again into the adapter column. The
+    // OID was already dual-written to the sidecar before the clip (gate recon:
+    // live-verified 9/9 match), so no capture attribution is lost.
+    // listStopPhotosByRouteRunStop still reads the now-frozen public.stop_photos —
+    // a scheduled Capability-Build repoint (and a labor-safety read-surface
+    // improvement, since that reader currently serves the real OID).
     //
     // Transaction ownership: if handed a bare Pool (the production /photos route
     // path), we check out a dedicated connection and own BEGIN/COMMIT/ROLLBACK.
@@ -48,37 +58,9 @@ export async function createStopPhotos(
     try {
         if (ownsTransaction) await client.query("BEGIN");
 
-        // Fetch asset_id (needed for stop_photos consistency)
-        const lookupRes = await client.query(
-            `SELECT asset_id FROM route_run_stops WHERE id = $1`,
-            [routeRunStopId]
-        );
-        let assetId = null;
-        if (lookupRes.rows.length > 0) {
-            assetId = lookupRes.rows[0].asset_id;
-        }
-
         const clientVisitId = deriveClientVisitId(routeRunStopId);
 
         for (const key of s3Keys) {
-            // Existing transit write (additive discipline — do not remove)
-            const photoRes = await client.query(
-                `INSERT INTO stop_photos (visit_id, route_run_stop_id, asset_id, s3_key, kind, created_by_oid, captured_at, org_id)
-                 SELECT id, $2, $3, $4, $5, $6, NOW(), org_id
-                 FROM core.visits
-                 WHERE client_visit_id = $1
-                 LIMIT 1`,
-                [clientVisitId, routeRunStopId, assetId, key, kind, userOid]
-            );
-
-            if (photoRes.rowCount === 0) {
-                // Not an error — no visit yet means there is nothing to anchor
-                // evidence to. Skip this key; the rest of the unit still commits.
-                console.warn(
-                    `[createStopPhotos] No visit found for routeRunStopId=${routeRunStopId} — stop_photos row skipped for key=${key}`
-                );
-            }
-
             // Canonical evidence write — captured-by identity goes to the no-grant
             // sidecar core.evidence_actor_audit (§3.2), never onto core.evidence.
             const evidenceRes = await client.query(
