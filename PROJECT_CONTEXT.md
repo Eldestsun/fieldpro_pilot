@@ -107,8 +107,12 @@ model that the only honest organizational answer is yes.
 
 ## Current Build State
 
-As of 2026-05-08, all Tiers and Refinement items are either Not Started or
-Blocked. Nothing has shipped yet. The full execution roadmap lives in:
+Build state: P1 state-migration — the work-attribution clip (ISSUE-031) — is
+complete. Canonical (`core.*`) is the system of record; the transit adapter
+(`public.*`) is demoted to ingestion/legacy and is no longer the write target.
+Live issue and queue status lives in the **Notion BASELINE Work Tracker**, not in
+this file (a versioned doc goes stale the moment the queue moves). Historical
+execution roadmap:
 
 - `planning/REFACTOR_INDEX.md` — Tiers 1–6, canonical model migration
 - `planning/REFINEMENT_INDEX.md` — R1–R10, production-grade + pitch-ready
