@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import { checkAndCompleteRouteRun } from "../../domains/routeRun/routeRunService";
-import { createInfrastructureIssuesForRouteRunStop, InfraIssueInput } from "./infrastructureIssueService";
+import { InfraIssueInput } from "./infrastructureIssueService";
 import { ensureVisitForRouteRunStop, closeVisitForRouteRunStop, getVisitContext } from "../../domains/visit/visitService";
 import { emitObservationsForStop, StopUiPayload, emitSpotCheckObservation } from "../../domains/observation/observationService";
 
@@ -112,15 +112,17 @@ export async function completeStop(
     // significance); clipping it carries no worker identity.
     const cleanLogId = visitId;
 
-    if (infraIssues && infraIssues.length > 0) {
-        await createInfrastructureIssuesForRouteRunStop(client, {
-            routeRunStopId,
-            stopId: stop_id,
-            assetId: asset_id,
-            reportedBy: user_id,
-            issues: infraIssues,
-        });
-    }
+    // ISSUE-031 Stage 2 — infrastructure_issues write-clip (the LAST of the five
+    // living-table clips). The public.infrastructure_issues dual-write mirror is
+    // stopped here; an infra-issue stop completion now writes ONLY canonical: the 8
+    // specific infra *_present observation types → core.observations (emitted by
+    // emitObservationsForStop() below from uiPayload.infraIssueDetails /
+    // infrastructureIssues), plus the visit (already ensured at :76). needs_facilities
+    // is DROPPED, not carried (ISSUE-034 founder decision — always-true-when-row-
+    // exists, zero information). reported_by was a constant 0 transit-adapter field,
+    // carrying no worker identity. The table is NOT dropped (Stage 3); it stops
+    // receiving new rows. Field-mapping + FK/reader detail: infrastructureIssueService.ts
+    // header. Scheduled reader repoints → ISSUE-035 punch-list.
 
     if (trashVolume !== undefined) {
         await client.query(
