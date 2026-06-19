@@ -76,3 +76,16 @@ canonical `core.observations ↔ core.visits` link; it was never the sole link.
 ## Files touched
 - `backend/src/domains/routeRunStop/hazardService.ts`
 - `backend/src/modules/work/routeRunStopRoutes.ts`
+
+## CORRECTION (appended 2026-06-18, discovered during infra Stage-2 clip)
+- The interim note in this changelog incorrectly stated that the infra half of
+  `is_exception` (`infra_issue_id IS NOT NULL`) would continue counting until Capability
+  Build.
+- Subsequent investigation during the infra Stage-2 clip (2026-06-18) established that
+  `route_run_stops.infra_issue_id` was **never written** by any code path in any commit —
+  always NULL, always false, independent of any clip.
+- See `docs/changelog/refactor/2026-06-18-issue-031-infra-issues-stage2-write-clip.md` for
+  the full correction.
+- The ISSUE-035 Capability-Build repoint for `populateEamBridge` must rebuild the **full**
+  `is_exception` derivation from canonical EXISTS (both hazard safety-presence types and
+  infra `*_present` types), not restore one adapter half.
