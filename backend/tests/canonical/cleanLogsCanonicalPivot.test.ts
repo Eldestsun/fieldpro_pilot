@@ -172,12 +172,12 @@ test("clean-logs canonical pivot: 5 booleans match written actions exactly (incl
       assert(!keys.includes(idCol), `canonical read leaked identity column "${idCol}" (keys: ${keys.join(", ")})`);
     }
   } finally {
-    // Defensive cleanup. Post Stage-2 write-clip completeStop writes neither a
-    // clean_logs nor a trash_volume_logs mirror row, so these DELETEs are normally
-    // no-ops; they remain to scrub any legacy/orphan row (visit_id FK is SET NULL,
-    // not cascaded, on visit delete) so nothing pollutes the DB.
+    // Defensive cleanup. Post Stage-2 write-clip completeStop writes no clean_logs
+    // mirror row, so this DELETE is normally a no-op; it remains to scrub any
+    // legacy/orphan row (visit_id FK is SET NULL, not cascaded, on visit delete) so
+    // nothing pollutes the DB. The sibling trash_volume_logs DELETE was removed when
+    // that table was physically dropped in 20260620_issue037_drop_trash_volume_logs.sql.
     await client.query(`DELETE FROM clean_logs WHERE route_run_stop_id = $1`, [f.routeRunStopId]);
-    await client.query(`DELETE FROM trash_volume_logs WHERE route_run_stop_id = $1`, [f.routeRunStopId]);
     await cleanupFixture(client, f); // cascades visit → observations / effort_history
     client.release();
   }

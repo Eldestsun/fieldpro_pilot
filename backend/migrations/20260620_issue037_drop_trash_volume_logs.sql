@@ -1,0 +1,34 @@
+-- ISSUE-037 (partial): physically DROP public.trash_volume_logs — the FIRST of the
+-- five frozen adapter tables to drop. The other four (hazards, clean_logs, stop_photos,
+-- infrastructure_issues) stay; they still have readers tracked in ISSUE-035 / ISSUE-036.
+--
+-- Parent: ISSUE-031 (Stage-2 write-clip COMPLETE + merged, PRs #41–#46). This table's
+-- dual-write mirror was clipped in feat/issue-031-trash-volume-stage2-write-clip; since
+-- then public.trash_volume_logs is FROZEN — written by nothing, canonical is sole source.
+--
+-- Gate cleared (Phase-1 confirmation, 2026-06-20, against fieldpro_db + live grep):
+--   1. ZERO live readers — the 4 backend/src hits are all comments / canonical-replacement
+--      notes; zero INSERT/UPDATE/SELECT against the table in live code. The only historical
+--      reader, rebuildStopRiskSnapshotLegacy(), was deleted in the ISSUE-031 capstone (PR #46).
+--   2. Write is clipped — cleanLogService.ts keeps only `UPDATE route_run_stops SET trash_volume`;
+--      the `INSERT INTO trash_volume_logs (…)` is gone. No live writer remains.
+--   3. NO FK pointer — no table's FK points AT trash_volume_logs (pg_constraint: 0 incoming).
+--      route_run_stops.trash_volume is a smallint VALUE column, not a pointer to this table.
+--      (Unlike hazards, there is no route_run_stops.trash_volume_id.)
+--   4. Canonical serves the data — riskMapService.ts reads trash volume from core.observations
+--      (observation_type='trash_volume', payload.level). Losslessness re-confirmed:
+--      docs/audit/2026-06-18-issue-031-losslessness-reverify.md (volume → payload.level, exact).
+--   5. NO dependent objects — core.v_trash_volume_logs_transit was already dropped
+--      (20260613_p1_drop_dead_transit_views.sql); pg_depend shows 0 dependent views/rules,
+--      0 triggers; grants are owner-only (mcp_readonly was revoked in 20260612). stop_status_mv
+--      does NOT reference this table (trash avg comes from stop_risk_snapshot).
+--
+-- See: ISSUE-037 card; planning/architecture/2026-06-13-issue-031-migration-sequence.md §P1;
+--      precedent pattern 20260613_p1_2_redefine_stop_status_mv_drop_level3logs.sql (level3_logs drop).
+--
+-- DROP without CASCADE: Phase-1 proved no dependents, so a plain DROP succeeds. We deliberately
+-- avoid CASCADE so that any unexpected dependency fails loudly rather than being silently removed.
+-- The owned sequence (trash_volume_logs_id_seq), indexes, and the org_isolation RLS policy are
+-- dropped automatically with the table. Runs as fieldpro (table owner); ownership suffices for DROP.
+
+DROP TABLE public.trash_volume_logs;
