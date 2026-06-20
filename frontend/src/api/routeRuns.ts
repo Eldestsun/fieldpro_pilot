@@ -747,7 +747,7 @@ export async function bulkUpdateAdminStops(token: string, body: any): Promise<{ 
 
 export interface PhotoDto {
     id: string;
-    s3_key: string;
+    storage_key: string;
     kind: string;
     captured_at: string;
     url: string;

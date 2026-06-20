@@ -32,8 +32,9 @@ ORDER BY e.captured_at ASC, e.id ASC
 - The optional `kind` filter and the existing `ORDER BY captured_at ASC, id ASC` are
   preserved.
 - The per-row presign is preserved; the source column is `storage_key` (core.evidence),
-  not `s3_key`. The returned envelope still exposes the value under the `s3_key` key so
-  the response shape is unchanged.
+  not `s3_key`. **(Superseded by the follow-up commit below — the response field is now
+  `storage_key`, matching the source column; the temporary `storage_key → s3_key` alias
+  was removed.)**
 - `deriveClientVisitId` reuses the same import already present for the write path
   (`createStopPhotos`): `../../domains/visit/visitService`.
 
@@ -107,3 +108,32 @@ change.
 
 - `docs/audit/2026-06-18-issue-031-stop-photos-oid-gate-recon.md` — the gate recon that
   flagged this reader and scheduled the repoint.
+
+---
+
+## Follow-up commit (additive, same branch) — field name aligned to source
+
+The initial commit (`2b9b384`) aliased the canonical `core.evidence.storage_key` source
+column back onto a `s3_key` response field, leaving a name mismatch between the query
+source and the `StopPhoto` interface. This follow-up renames the field to `storage_key`
+end-to-end so the read path's field name matches the column it comes from.
+
+### Changed
+- `StopPhoto` interface + return mapping (`stopPhotosService.ts`): `s3_key` → `storage_key`;
+  the temporary aliasing dropped.
+- `PhotoDto` (`frontend/src/api/routeRuns.ts`): `s3_key` → `storage_key`.
+- Read-path consumers retargeted: `useTodayRoute.ts` (`p.storage_key`),
+  `StopDetail.tsx` (optimistic placeholder + two `photos[0]?.storage_key` reads),
+  `StopWizard.test.tsx` fixtures.
+- OpenAPI response examples in `ulRoutes.ts` (doc comments only — not handler logic, not
+  the `{ ok, photos }` envelope): `s3_key` → `storage_key` for doc accuracy.
+
+### Out of scope (left intentionally)
+- `loadRouteRunById.ts:92-93` — `sp.s3_key` is the `public.stop_photos` adapter SQL column
+  on the separate DATA-only route-detail join, not the `StopPhoto`/`PhotoDto` read path.
+
+### Verification
+- `npx tsc --noEmit` — backend exit 0; frontend exit 0.
+- tests — backend `npm test`: 119 passed, 0 failed; frontend `npm test`: 27 passed (5 files).
+- `grep -rn "s3_key" backend/src frontend/src` on the photo read path → zero remaining; the
+  only surviving hits are the out-of-scope adapter column above and an explanatory comment.

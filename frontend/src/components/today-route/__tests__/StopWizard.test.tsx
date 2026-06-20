@@ -118,7 +118,7 @@ function buildProps(overrides: Partial<Parameters<typeof StopDetail>[0]> = {}) {
     uploadPhotos: vi.fn(
       (): Promise<{ photos: PhotoDto[]; queued: boolean }> =>
         Promise.resolve({
-          photos: [{ id: '1', url: 'http://test/photo.jpg', s3_key: 'key-1', kind: 'stop', captured_at: '2026-01-01T00:00:00Z', created_by_oid: 'test-oid' } as PhotoDto],
+          photos: [{ id: '1', url: 'http://test/photo.jpg', storage_key: 'key-1', kind: 'stop', captured_at: '2026-01-01T00:00:00Z', created_by_oid: 'test-oid' } as PhotoDto],
           queued: false,
         })
     ),
@@ -199,7 +199,7 @@ describe('StopWizard (StopDetail)', () => {
     const uploadPhotos = vi.fn(
       (): Promise<{ photos: PhotoDto[]; queued: boolean }> =>
         Promise.resolve({
-          photos: [{ id: '1', url: 'http://test/photo.jpg', s3_key: 'key-1', kind: 'stop', captured_at: '2026-01-01T00:00:00Z', created_by_oid: 'test-oid' } as PhotoDto],
+          photos: [{ id: '1', url: 'http://test/photo.jpg', storage_key: 'key-1', kind: 'stop', captured_at: '2026-01-01T00:00:00Z', created_by_oid: 'test-oid' } as PhotoDto],
           queued: false,
         })
     )

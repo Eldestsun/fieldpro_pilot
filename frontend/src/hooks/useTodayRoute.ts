@@ -613,7 +613,7 @@ export function useTodayRoute() {
             const photos = await apiUploadStopPhotos(token, routeRun.id, stopId, files, kind);
 
             // Sync with photoKeysMap so handleCompleteStop can find them
-            const newKeys = photos.map(p => p.s3_key);
+            const newKeys = photos.map(p => p.storage_key);
             setPhotoKeysMap(prev => {
                 const existing = prev[stopId] || [];
                 // Avoid duplicates

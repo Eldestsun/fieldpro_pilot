@@ -5,7 +5,7 @@ import { deriveClientVisitId } from "../../domains/visit/visitService";
 export interface StopPhoto {
     id: string;
     route_run_stop_id: string;
-    s3_key: string;
+    storage_key: string;
     kind: string;
     captured_at: Date;
     url: string;
@@ -165,7 +165,7 @@ export async function listStopPhotosByRouteRunStop(
             return {
                 id: String(row.id),
                 route_run_stop_id: String(routeRunStopId),
-                s3_key: row.storage_key,
+                storage_key: row.storage_key,
                 kind: row.kind,
                 captured_at: row.captured_at,
                 url,
