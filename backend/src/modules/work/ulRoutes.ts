@@ -202,7 +202,7 @@ ulRoutes.get(
  *                   items: { type: object }
  *             example:
  *               ok: true
- *               photos: [{ id: 1, s3_key: "runs/42/stops/7/uuid.jpg", kind: "completion" }]
+ *               photos: [{ id: 1, storage_key: "runs/42/stops/7/uuid.jpg", kind: "completion" }]
  *       400:
  *         $ref: '#/components/responses/BadRequest'
  *       401:
@@ -342,7 +342,7 @@ ulRoutes.post(
  *                   items: { type: object }
  *             example:
  *               ok: true
- *               photos: [{ id: 1, s3_key: "runs/42/stops/7/uuid.jpg", kind: "completion" }]
+ *               photos: [{ id: 1, storage_key: "runs/42/stops/7/uuid.jpg", kind: "completion" }]
  *       400:
  *         $ref: '#/components/responses/BadRequest'
  *       401:

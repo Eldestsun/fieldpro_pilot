@@ -387,10 +387,9 @@ export function StopDetail({
                         // PhotoDto.id is string (bigint PK serialized as string by pg);
                         // optimistic placeholders use a non-colliding string id (ISSUE-019).
                         id: `optimistic-${Date.now() + i}`,
-                        s3_key: "",
+                        storage_key: "",
                         kind: "completion",
                         captured_at: new Date().toISOString(),
-                        created_by_oid: "",
                         url: URL.createObjectURL(f),
                     }));
                     setExistingPhotos(prev => [...prev, ...optimistic]);
@@ -946,7 +945,7 @@ export function StopDetail({
                                         if (e.target.files && e.target.files[0]) {
                                             try {
                                                 const { photos, queued } = await uploadPhotos(stop.route_run_stop_id, [e.target.files[0]], "safety");
-                                                const key = queued ? `queued-safety-${Date.now()}` : photos[0]?.s3_key;
+                                                const key = queued ? `queued-safety-${Date.now()}` : photos[0]?.storage_key;
                                                 if (key) setLocalSafety(prev => ({ ...prev, safetyPhotoKey: key }));
                                             } catch (e) { console.error(e); alert("Upload failed"); }
                                         }
@@ -1106,7 +1105,7 @@ export function StopDetail({
                                         if (e.target.files && e.target.files[0]) {
                                             try {
                                                 const { photos, queued } = await uploadPhotos(stop.route_run_stop_id, [e.target.files[0]], "infra");
-                                                const key = queued ? `queued-infra-${Date.now()}` : photos[0]?.s3_key;
+                                                const key = queued ? `queued-infra-${Date.now()}` : photos[0]?.storage_key;
                                                 if (key) setLocalInfraPhotoKey(key);
                                             } catch (e) { console.error(e); alert("Upload failed"); }
                                         }
