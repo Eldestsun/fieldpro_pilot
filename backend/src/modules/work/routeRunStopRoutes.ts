@@ -2,7 +2,7 @@
 import { Router, Request, Response } from "express";
 import { requireAuth, requireAnyRole } from "../../authz";
 import { completeStop } from "../../domains/routeRunStop/cleanLogService";
-import { pool } from "../../db";
+import { pool, withOrgContext } from "../../db";
 import { emitObservationsForStop, StopUiPayload } from "../../domains/observation/observationService";
 import {
     ensureVisitForRouteRunStop,
@@ -187,9 +187,13 @@ routeRunStopRoutes.post(
             const LEGACY_TRANSIT_USER_ID = 0;
             const user_id = LEGACY_TRANSIT_USER_ID;
 
-            // 1. Validate safety photo in DB (Mandatory for skip)
+            // 1. Validate safety photo in DB (Mandatory for skip).
+            //    Use the org-scoped `client` (org context set above), NOT bare `pool`:
+            //    countStopPhotosByRouteRunStop now reads core.evidence (FORCE RLS), so a
+            //    connection without app.current_org_id would silently count 0 and wrongly
+            //    reject every safety-skip (RLS context gotcha — see CLAUDE.md PATTERN-001).
             const { countStopPhotosByRouteRunStop } = await import("../../domains/routeRunStop/stopPhotosService");
-            const photoCount = await countStopPhotosByRouteRunStop(pool, Number(id), 'safety');
+            const photoCount = await countStopPhotosByRouteRunStop(client, Number(id), 'safety');
 
             if (photoCount === 0) {
                 return res.status(400).json({ error: "A safety photo is required to skip a stop" });
@@ -445,7 +449,14 @@ routeRunStopRoutes.post(
             let hasNewPhotos = false;
             if (!hasLegacyPhotos) {
                 const { countStopPhotosByRouteRunStop } = await import("../../domains/routeRunStop/stopPhotosService");
-                const count = await countStopPhotosByRouteRunStop(pool, Number(route_run_stop_id));
+                // countStopPhotosByRouteRunStop reads core.evidence (FORCE RLS). The
+                // org-scoped client isn't created until the transaction below, so run
+                // this pre-transaction count inside withOrgContext or RLS silently
+                // counts 0 (RLS context gotcha — see CLAUDE.md PATTERN-001).
+                const orgIdForCount = await resolveNumericOrgId(req);
+                const count = await withOrgContext(orgIdForCount, (c) =>
+                    countStopPhotosByRouteRunStop(c, Number(route_run_stop_id))
+                );
                 hasNewPhotos = count > 0;
             }
 
