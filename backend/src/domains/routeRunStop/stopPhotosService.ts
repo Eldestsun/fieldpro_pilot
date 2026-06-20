@@ -108,11 +108,28 @@ export async function countStopPhotosByRouteRunStop(
     routeRunStopId: number,
     kind?: string
 ): Promise<number> {
-    let query = `SELECT COUNT(*) as count FROM stop_photos WHERE route_run_stop_id = $1`;
-    const params: any[] = [routeRunStopId];
+    // ISSUE-031 Stage 2 clipped the public.stop_photos write (photos now land ONLY
+    // in core.evidence); ISSUE-036 repointed listStopPhotosByRouteRunStop onto
+    // core.evidence. This counter was the MISSED sibling — it still read the now
+    // frozen-empty public.stop_photos, so it returned 0 for every stop. That broke
+    // the skip-with-hazard safety-photo gate (always 400 "safety photo required",
+    // so a safety-skip never persisted and the stop stayed in_progress) and the
+    // completion after-photo gate (masked only by the legacy inline photo_keys path).
+    // Repointed here to the same source/join as listStopPhotosByRouteRunStop:
+    //   route_run_stop_id → deriveClientVisitId → core.visits.client_visit_id
+    //   → core.visits.id = core.evidence.visit_id, filtered by e.kind.
+    const clientVisitId = deriveClientVisitId(routeRunStopId);
+
+    let query = `
+        SELECT COUNT(*) AS count
+        FROM core.evidence e
+        JOIN core.visits v ON v.id = e.visit_id
+        WHERE v.client_visit_id = $1
+    `;
+    const params: any[] = [clientVisitId];
 
     if (kind) {
-        query += ` AND kind = $2`;
+        query += ` AND e.kind = $2`;
         params.push(kind);
     }
 
