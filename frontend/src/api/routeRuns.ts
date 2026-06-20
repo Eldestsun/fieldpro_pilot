@@ -750,7 +750,6 @@ export interface PhotoDto {
     s3_key: string;
     kind: string;
     captured_at: string;
-    created_by_oid: string;
     url: string;
 }
 

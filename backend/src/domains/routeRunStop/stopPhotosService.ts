@@ -8,7 +8,6 @@ export interface StopPhoto {
     s3_key: string;
     kind: string;
     captured_at: Date;
-    created_by_oid: string;
     url: string;
 }
 
@@ -126,34 +125,49 @@ export async function listStopPhotosByRouteRunStop(
     routeRunStopId: number,
     kind?: string
 ): Promise<StopPhoto[]> {
+    // ISSUE-036 (PILOT-GATE, labor-safety): this reader now sources from
+    // core.evidence, NOT the frozen public.stop_photos adapter. core.evidence has
+    // no OID column, so the capture OID leaves this live API read path BY SOURCE —
+    // its absence is structural, not an omitted SELECT. The capture OID still lives
+    // only in the grant-walled core.evidence_actor_audit sidecar, untouched here.
+    // Join: route_run_stop_id → deriveClientVisitId → core.visits.client_visit_id
+    //       → core.visits.id = core.evidence.visit_id.
+    const clientVisitId = deriveClientVisitId(routeRunStopId);
+
     let query = `
-    SELECT id, route_run_stop_id, s3_key, kind, captured_at, created_by_oid
-    FROM stop_photos
-    WHERE route_run_stop_id = $1
+    SELECT e.id, e.storage_key, e.kind, e.captured_at
+    FROM core.evidence e
+    JOIN core.visits v ON v.id = e.visit_id
+    WHERE v.client_visit_id = $1
   `;
-    const params: any[] = [routeRunStopId];
+    const params: any[] = [clientVisitId];
 
     if (kind) {
-        query += ` AND kind = $2`;
+        query += ` AND e.kind = $2`;
         params.push(kind);
     }
 
-    query += ` ORDER BY captured_at ASC, id ASC`;
+    query += ` ORDER BY e.captured_at ASC, e.id ASC`;
 
     const res = await client.query(query, params);
 
     const photos: StopPhoto[] = await Promise.all(
         res.rows.map(async (row: any) => {
+            // Column is storage_key here (core.evidence), not s3_key.
             let url = "";
-            if (row.s3_key) {
+            if (row.storage_key) {
                 try {
-                    url = await getPresignedReadUrl(row.s3_key);
+                    url = await getPresignedReadUrl(row.storage_key);
                 } catch (err) {
-                    console.error(`Failed to sign URL for key ${row.s3_key}`, err);
+                    console.error(`Failed to sign URL for key ${row.storage_key}`, err);
                 }
             }
             return {
-                ...row,
+                id: String(row.id),
+                route_run_stop_id: String(routeRunStopId),
+                s3_key: row.storage_key,
+                kind: row.kind,
+                captured_at: row.captured_at,
                 url,
             };
         })

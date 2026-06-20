@@ -390,7 +390,6 @@ export function StopDetail({
                         s3_key: "",
                         kind: "completion",
                         captured_at: new Date().toISOString(),
-                        created_by_oid: "",
                         url: URL.createObjectURL(f),
                     }));
                     setExistingPhotos(prev => [...prev, ...optimistic]);
