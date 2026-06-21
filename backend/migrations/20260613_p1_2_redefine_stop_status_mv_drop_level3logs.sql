@@ -10,6 +10,20 @@
 --   bypassrls. Populating as postgres materializes the all-org row set (14,916), matching the
 --   pre-migration count. Ownership and grants are restored to fieldpro below — DROP+CREATE does
 --   NOT preserve them.
+--
+-- ── ISSUE-038 — MUST BE SKIPPED ON AN ALREADY-POPULATED DB, NOT RE-RUN ───────
+-- The runner (`npm run migrate`) connects as the app role `fieldpro`, which is
+-- NOT bypassrls. If this migration is RE-RUN through the runner against a DB that
+-- already holds data, the `CREATE MATERIALIZED VIEW ... AS SELECT` reads the
+-- FORCE-RLS source tables with NO `app.current_org_id` set, so it materializes
+-- ZERO rows — silently replacing a 14,916-row MV with an empty one. That is data
+-- corruption, not a harmless collision. Therefore on a populated DB this file is
+-- RECORDED-AS-APPLIED and SKIPPED by the reconcile migration
+-- (`00000001_reconcile_issue038_record_canon_drift.sql`), which gates on
+-- `to_regclass('public.level3_logs') IS NULL` (this migration's distinctive,
+-- already-applied effect). The IF NOT EXISTS / IF EXISTS guards added below are
+-- for the FRESH-DB path only, where the source tables are empty and a 0-row MV is
+-- correct. See ISSUE-038 card §6/§7.
 
 BEGIN;
 
@@ -115,8 +129,10 @@ CREATE MATERIALIZED VIEW public.stop_status_mv AS
      LEFT JOIN clean_visits cv ON cv.stop_id = s."STOP_ID";
 
 -- Step 4: Recreate indexes on stop_status_mv (verbatim from pre-migration)
-CREATE UNIQUE INDEX stop_status_mv_stop_id_uniq ON public.stop_status_mv USING btree (stop_id);
-CREATE INDEX stop_status_mv_pool_idx ON public.stop_status_mv USING btree (pool_id);
+--   IF NOT EXISTS (ISSUE-038 idempotency guard) — harmless on the fresh path
+--   (the MV was just dropped+recreated, so the indexes are gone and get created).
+CREATE UNIQUE INDEX IF NOT EXISTS stop_status_mv_stop_id_uniq ON public.stop_status_mv USING btree (stop_id);
+CREATE INDEX IF NOT EXISTS stop_status_mv_pool_idx ON public.stop_status_mv USING btree (pool_id);
 
 -- Step 4b: Restore ownership to fieldpro (created as postgres above).
 ALTER MATERIALIZED VIEW public.stop_status_mv OWNER TO fieldpro;
@@ -131,8 +147,8 @@ SET ROLE fieldpro;
 GRANT SELECT ON public.stop_status_mv TO mcp_readonly;
 GRANT SELECT ON public.stop_status_mv TO intelligence_reader;
 
--- Step 5: Recreate export views verbatim
-CREATE VIEW public.export_stop_status_v1 AS
+-- Step 5: Recreate export views verbatim (CREATE OR REPLACE — ISSUE-038 guard)
+CREATE OR REPLACE VIEW public.export_stop_status_v1 AS
  SELECT ss.stop_id,
     ss.pool_id,
     ss.is_hotspot,
@@ -159,7 +175,7 @@ CREATE VIEW public.export_stop_status_v1 AS
    FROM stop_status_mv ss;
 GRANT SELECT ON public.export_stop_status_v1 TO mcp_readonly;
 
-CREATE VIEW public.export_pool_daily_summary_v1 AS
+CREATE OR REPLACE VIEW public.export_pool_daily_summary_v1 AS
  SELECT ss.pool_id,
     ss.as_of::date AS as_of_date,
     count(*)::integer AS stops_total,
@@ -180,9 +196,20 @@ GRANT SELECT ON public.export_pool_daily_summary_v1 TO mcp_readonly;
 
 RESET ROLE;
 
--- Step 6: Drop level3_logs — now safe, no dependents remain (0 rows; only reader was the
---   dormant rebuildStopRiskSnapshotLegacy(), and the sole DB dependent stop_status_mv no longer
---   references it). DROP TABLE also removes the owned sequence level3_logs_id_seq.
-DROP TABLE public.level3_logs;
+-- Step 6: Drop level3_logs.
+--   ISSUE-038 — DROP DEPENDENT VIEW FIRST (lexical-order robustness): on a fresh
+--   clean build the runner sorts files lexically, so this file ("p1_2") runs
+--   BEFORE "p1_drop_dead_transit_views" ("p1_2" < "p1_drop"). That sibling is what
+--   normally drops core.v_level3_logs_transit, which 00000000_consolidated creates
+--   reading public.level3_logs. Without dropping it here first, the DROP TABLE
+--   below fails "cannot drop table level3_logs because other objects depend on it"
+--   (it succeeded on dev only because the migrations were hand-applied in intended
+--   order, p1_drop_dead before p1_2). Dropping it here (IF EXISTS) makes this file
+--   self-sufficient regardless of order; p1_drop_dead's own DROP VIEW IF EXISTS is
+--   then a harmless no-op. The other live dependent, stop_status_mv, was already
+--   dropped+recreated above WITHOUT the level3_logs reference. DROP TABLE also
+--   removes the owned sequence level3_logs_id_seq.
+DROP VIEW IF EXISTS core.v_level3_logs_transit;
+DROP TABLE IF EXISTS public.level3_logs;
 
 COMMIT;

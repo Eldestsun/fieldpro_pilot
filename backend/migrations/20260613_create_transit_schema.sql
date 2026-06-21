@@ -51,7 +51,10 @@
 BEGIN;
 
 -- 1. The transit-vertical adapter schema.
-CREATE SCHEMA transit;
+--    IF NOT EXISTS (ISSUE-038 idempotency guard): a re-run against an already-
+--    migrated DB is a no-op instead of erroring "schema transit already exists".
+--    On an empty DB this still creates the schema normally.
+CREATE SCHEMA IF NOT EXISTS transit;
 
 COMMENT ON SCHEMA transit IS
   'Transit-vertical adapter layer (ISSUE-031 DQ-1). Destination for the '
