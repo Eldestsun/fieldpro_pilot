@@ -95,6 +95,22 @@ async function main() {
         if (filename === CONSOLIDATED_SCHEMA) {
           consolidatedApplied = true;
         }
+
+        // ISSUE-038: a migration can record OTHER migrations as applied. The
+        // reconcile migration 00000001_reconcile_issue038_record_canon_drift.sql
+        // inserts the 11 hand-applied ISSUE-031 canon files into schema_migrations
+        // (gated on each one's already-present effect) so the runner SKIPS them
+        // instead of re-running. Re-running them as the app role `fieldpro` would
+        // either error on object ownership (CREATE SCHEMA / view / grant owned by
+        // postgres) or, worse, re-materialize stop_status_mv to ZERO rows under
+        // RLS. The applied-set is snapshotted once before the loop, so refresh it
+        // after each apply to honor rows a migration recorded; otherwise the loop
+        // re-runs an already-applied migration and collides. Cheap — only runs
+        // after an actual apply, of which there are few per run.
+        for (const recorded of await getApplied(client)) {
+          effectivelyApplied.add(recorded);
+          effectivelyApplied.add(`legacy_${recorded}`);
+        }
       } catch (err) {
         await client.query("ROLLBACK");
         console.error(`  FAIL  ${filename}`);

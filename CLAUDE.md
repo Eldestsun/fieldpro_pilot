@@ -163,6 +163,25 @@ mirror follows.
 - Do not reintroduce transit-first design patterns
 - Intelligence and dashboards read the normalized observation columns (`obs_kind` / `norm_status` / `norm_severity`), never observation `payload`. See `planning/architecture/CANONICAL_STATE_LAYER_DESIGN.md` §3.3, §4.3. (Status: normalized columns landed in schema 2026-06-14; identity-isolation app-wiring is the one remaining target-state piece, tracked as ISSUE-018. Detail: `current_state.md`.)
 
+### Migration Recording Discipline (hard rule — ISSUE-038)
+
+Never apply a migration out-of-band (e.g. direct `psql`, including the superuser runs that
+FORCE-RLS DML requires) without recording it in `public.schema_migrations` in the **same
+step**. An applied-but-unrecorded migration is invisible drift: the runner
+(`backend/src/scripts/migrate.ts`) will try to re-run it on the next deploy and either
+collide on non-idempotent DDL or, worse, silently corrupt data (re-running the
+`stop_status_mv` redefine as the non-bypassrls app role re-materializes it to **0 rows**).
+This exact habit — applying the 11 ISSUE-031 canon migrations via `psql` without recording
+them — created ISSUE-038 and broke the fresh-environment deploy gate.
+
+- If you must hand-apply, `INSERT INTO public.schema_migrations (filename) VALUES (...)` in
+  the same transaction/session.
+- Migrations that touch already-existing objects must be idempotent (`IF NOT EXISTS` /
+  `IF EXISTS` / `CREATE OR REPLACE`) and must not assume an apply order other than the
+  runner's lexical filename sort.
+- The deploy gate is a clean-room rebuild: empty DB → `npm run migrate` → exit 0 → schema
+  matches a known-good dump. Run it before claiming a migration change is deploy-ready.
+
 ### RLS Context Gotcha (recurring bug pattern)
 
 Any query or write against a `FORCE ROW LEVEL SECURITY` table silently affects zero rows if `app.current_org_id` is not set on the connection. This has caused multiple bugs; see `docs/KNOWN_ISSUES.md § PATTERN-001` for the instances (ISSUE-005, 012, 013, 014, the role-rename backfill migration) and the systemic trap.
