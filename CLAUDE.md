@@ -174,6 +174,14 @@ collide on non-idempotent DDL or, worse, silently corrupt data (re-running the
 This exact habit — applying the 11 ISSUE-031 canon migrations via `psql` without recording
 them — created ISSUE-038 and broke the fresh-environment deploy gate.
 
+This rule covers **GRANTs and role provisioning, not just DDL** (ISSUE-039). A privilege
+applied out-of-band (e.g. `GRANT SELECT … TO mcp_readonly` via direct `psql`) is the same
+invisible drift one layer down: it lives only in the hand-mutated DB, the consolidated
+baseline reproduces none of it, and a fresh build ends in a different — and for the
+labor-safety grant wall, *unprovable* — posture. The out-of-band `mcp_readonly` grants
+created ISSUE-039 and were the second clean-build blocker. Grant posture is a
+version-controlled, runner-owned, idempotent migration like any other schema change.
+
 - If you must hand-apply, `INSERT INTO public.schema_migrations (filename) VALUES (...)` in
   the same transaction/session.
 - Migrations that touch already-existing objects must be idempotent (`IF NOT EXISTS` /

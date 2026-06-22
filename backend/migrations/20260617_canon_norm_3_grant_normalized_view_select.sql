@@ -16,6 +16,11 @@
 --                           ISSUE-018 wires the app connection to it. Granting now
 --                           means the seam is ready and the repoint needs no further
 --                           permission change when the app switches roles.
+--   * mcp_readonly        — the diagnostic read role (ISSUE-039). The normalized view
+--                           is part of its intended canonical-only set, but the view is
+--                           created later than the ISSUE-039 grant migration (20260611),
+--                           so its grant lives here, where the object exists. Identity-
+--                           safe: the view carries no worker column (see below).
 --
 -- Both roles already hold SELECT on the base table core.observations and on
 -- core.observation_type_registry (the haz CTE joins type_id -> registry to resolve
@@ -43,5 +48,6 @@ BEGIN;
 
 GRANT SELECT ON core.v_observation_normalized TO fieldpro;
 GRANT SELECT ON core.v_observation_normalized TO intelligence_reader;
+GRANT SELECT ON core.v_observation_normalized TO mcp_readonly;  -- ISSUE-039: diagnostic role's normalized read seam (identity-free)
 
 COMMIT;
