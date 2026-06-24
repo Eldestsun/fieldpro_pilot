@@ -573,7 +573,9 @@ Have the trigger derive `org_id` for the `transit_stop_assets` insert — e.g. `
 ---
 
 ## ISSUE-025 — CI `test-backend` runs as a superuser, bypassing RLS; RLS-enforcement tests cannot pass
-**Status:** Open — CI infrastructure / architecture, discovered during cleanup Phase 1  
+**Status:** Root permanently fixed in the runner — gate proof GREEN 2026-06-24 (CI workaround still in place) — see Update below  
+**Update (2026-06-24):** the ROOT — a fresh init leaving `fieldpro` a superuser, which silently disables FORCE-RLS — is now **permanently fixed in version control and gate-proven**. Migration `backend/migrations/20260624_role_provisioning_codify.sql` (Option A) codifies a guarded `ALTER ROLE fieldpro NOSUPERUSER NOBYPASSRLS` plus a least-privilege `fieldpro_admin` provisioner (NOSUPERUSER BYPASSRLS, member of `fieldpro`) and the app's runtime grants. Empty→migrate gate proof: fresh DB → exit 0 (26 applied), `fieldpro` stays NOSUPERUSER NOBYPASSRLS and **enforces RLS** (org-scoped, denied cross-org), `mcp_readonly` 30-object canonical-only / identity-leak 0, idempotent re-run. Full record + the BYPASSRLS/membership/grants rationale: `docs/audit/2026-06-23-role-provisioning-fix.md § EXECUTED`. The CI `fieldpro_test` workaround (below) remains valid and complementary. The cleaner end state (a non-super app role so the runner need not be `fieldpro`) is reserved to **ISSUE-018**'s app-connection wiring.  
+**Status (original):** Open — CI infrastructure / architecture, discovered during cleanup Phase 1  
 **Discovered:** 2026-06-05 (fresh-DB CI replication in the cleanup Phase 1 dispatch)  
 **Area:** CI config (`.github/workflows/ci.yml` `test-backend`) + the test DB connection role  
 **Severity:** medium (six RLS-enforcement tests stay red on CI; the suite otherwise executes and passes)  
