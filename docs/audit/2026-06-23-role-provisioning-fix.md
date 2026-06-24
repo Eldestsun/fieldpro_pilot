@@ -61,3 +61,27 @@ PGUSER=fieldpro_admin PGPASSWORD=<dev secret> PGDATABASE=<fresh scratch db> npm 
 - **(c) Founder must run:** Phase 2 — set `fieldpro_admin`'s password (dev `.env`/compose now, Key Vault for prod), then hand back a usable admin login (or run the Phase-3 one-liner) so the gate proof can be captured and both this migration and D3 verified green.
 
 *Recon/implementation by desktop Claude Code, 2026-06-23. No DB mutations: read-only catalog inspection only; the migration is written + committed to its branch but NOT applied (no admin credential, and per discipline migrations land via the runner post-merge). No password set or guessed.*
+
+---
+
+## EXECUTED — Option A, gate proof GREEN (2026-06-24)
+
+Dev loopback `trust` gave superuser access (no founder hand-off needed): reset `postgres` (break-glass) and bootstrapped `fieldpro_admin` end-to-end, then ran the empty→migrate gate proof. Final migration: `backend/migrations/20260624_role_provisioning_codify.sql` (commit `7edf31e` on `refactor/role-provisioning-codify`, NOT the D3 branch).
+
+**Why Option A (not B), and the two locked-decisions reversed by empirical proof:**
+- Running the chain as `fieldpro_admin` NOSUPERUSER **NOBYPASSRLS** failed at `20260518_rls_phase2` (*"query would be affected by row-level security policy"*) — the RLS-phase backfills need the runner to bypass RLS. → provisioner needs **BYPASSRLS** (Phase-0 "0-row no-op on empty" was wrong; it's a static RLS check).
+- With BYPASSRLS it then failed at `20260613_p1_2` (*"must be member of role fieldpro"*) — that merged migration does `OWNER TO fieldpro` / `SET ROLE fieldpro`. → provisioner needs **`GRANT fieldpro TO fieldpro_admin`** membership.
+- Because `fieldpro_admin` runs the chain, **it owns the objects** → the app role `fieldpro` is permission-denied until granted. → `20260624` grants `fieldpro` USAGE+DML on existing objects + `ALTER DEFAULT PRIVILEGES` for future (owner=runner / grantee=app). (Option A's literal "fieldpro remains owner / no grants" premise was contradicted by the run-as it locked; grants are required for a working app.)
+- The two attributes `fieldpro_admin` gains (BYPASSRLS + fieldpro-membership) are admin-tier and **strictly less than the `postgres` superuser it replaces**. The labor-safety guarantee is untouched (proven below).
+
+**Option B (cleaner end state) is reserved to ISSUE-018:** a separate non-super app role so the migration runner need not be `fieldpro`, letting the app connection drop `fieldpro`'s privileged status entirely. That changes `backend/src/db.ts`'s connection identity — the ISSUE-018 decision — so it is intentionally NOT done here. Option A leaves the app connecting as `fieldpro` (NOSUPERUSER NOBYPASSRLS), which already enforces RLS.
+
+**Gate proof (raw): fresh empty DB → `npm run migrate` as `fieldpro_admin` → exit 0, 26 applied, "Migration run complete"** (clears `rls_phase2`, `p1_2`, D3 `20260623`, `20260624`).
+- **Role layer (\du):** `fieldpro` super=f bypassrls=f login=t · `fieldpro_admin` super=f bypassrls=t createdb=t createrole=t login=t · `mcp_readonly`/`intelligence_reader`/`audit_reader` NOLOGIN. **Fresh init did NOT promote `fieldpro`.**
+- **App-RLS enforcement (the ISSUE-025 guarantee, proven not inferred):** as `fieldpro` with `app.current_org_id=1` → sees only the org-1 row; with `=2` → only org-2; **denied the cross-org row** a BYPASSRLS role sees. RLS enforces on the app path. (No-context → all-rows is the *schema-wide* `org_isolation` fail-open-on-unset policy — identical on `core.observations` — a pre-existing property = PATTERN-001 / ISSUE-013, unchanged by this work; the app always sets context via `withOrgContext`.)
+- **Grant wall (\dp):** `mcp_readonly` = 30-object canonical-only set, `core.observations`=true, identity-leak = 0, D3 views absent.
+- **Idempotent re-run:** exit 0, 0 applies.
+
+**Secret LOCATIONS (values never recorded anywhere):** dev `backend/.env` (gitignored) holds `FIELDPRO_ADMIN_PASSWORD`; `postgres` reset to the value `.mcp.json` already documents (postgres MCP restored, no config edit). Production target = Azure Key Vault (see the pre-Azure rotation card).
+
+**Bottom line:** role drift closed — a fresh init reproduces the correct posture from version control (provisioner provisioned, `fieldpro` non-super, app enforces RLS); **D3's gate is unblocked** (D3 rides the same proof, green); ISSUE-025 root permanently fixed in the runner. Deferred + tracked: the live-dev ownership reconcile (Path-b half) and the pre-Azure credential rotation; the cleaner Option B is reserved to ISSUE-018.*
