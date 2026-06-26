@@ -21,6 +21,7 @@ import "./canonical/roleRenamePhase1Audit.test";
 import "./canonical/cleanLogsIdentity.test";
 import "./canonical/cleanLogsCanonicalPivot.test";
 import "./canonical/infraIssuesWriteClip.test";
+import "./canonical/runtimeIdentityLeak.test";
 
 (async () => {
   console.log("canonical integration tests — real local DB, no mocking\n");
