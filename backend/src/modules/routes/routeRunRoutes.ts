@@ -211,6 +211,14 @@ routeRunRoutes.get(
 
 /** ── Lead: Get Route Run Details: GET /lead/route-runs/:id ──────────────── */
 // Duplicate registration — intentional; kept for backward compat.
+//
+// NAMING (ISSUE-043): "lead" is historical — it predates the Dispatch-role rename
+// (Lead → Dispatch) and is now an identifier only, not a description of who may call
+// it. This is the SURVIVING gated route-run detail view: auth-required, Dispatch/Admin
+// only, and the identity fields in its payload are Admin-gated by loadRouteRunById.
+// The ungated identity-bearing twin GET /route-runs/:id was removed per ISSUE-043;
+// this gated route is the single detail endpoint. Do not rename (names are
+// identifiers — the frontend calls /api/lead/route-runs/:id); document, don't rename.
 routeRunRoutes.get(
     "/lead/route-runs/:id",
     requireAuth,
@@ -243,10 +251,11 @@ routeRunRoutes.get(
  *     description: >
  *       Takes an array of stop IDs, looks up their coordinates, and returns an
  *       OSRM-optimized trip order. Does not create a route run.
- *       Note: this endpoint currently has no auth guard and is used by the
- *       planning UI before authentication completes.
+ *       Requires Dispatch or Admin (ISSUE-043 — previously unauthenticated).
  *     tags: [RouteRuns]
- *     security: []
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Dispatch, Admin]
  *     requestBody:
  *       required: true
  *       content:
@@ -286,7 +295,14 @@ routeRunRoutes.get(
  *       500:
  *         $ref: '#/components/responses/InternalError'
  */
-routeRunRoutes.post("/routes/plan", async (req: Request, res: Response) => {
+// ISSUE-043: auth gate added. Compute endpoint (no identity in response), but it
+// reads stop coordinates and must not be callable anonymously. Matches the
+// Dispatch/Admin posture of the route-creation flow it supports.
+routeRunRoutes.post(
+    "/routes/plan",
+    requireAuth,
+    requireAnyRole(["Dispatch", "Admin"]),
+    async (req: Request, res: Response) => {
     try {
         const { stop_ids } = req.body;
 
@@ -341,10 +357,12 @@ routeRunRoutes.post("/routes/plan", async (req: Request, res: Response) => {
  *     summary: Preview an OSRM-optimized route run without creating it
  *     description: >
  *       Returns the optimized route for a pool or explicit stop list. Does not
- *       persist anything. Used by the Lead planning UI to preview before committing.
- *       Note: no auth guard; intended for pre-auth planning flow.
+ *       persist anything. Used by the Dispatch planning UI to preview before committing.
+ *       Requires Dispatch or Admin (ISSUE-043 — previously unauthenticated).
  *     tags: [RouteRuns]
- *     security: []
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Dispatch, Admin]
  *     requestBody:
  *       required: true
  *       content:
@@ -399,7 +417,14 @@ routeRunRoutes.post("/routes/plan", async (req: Request, res: Response) => {
  *       500:
  *         $ref: '#/components/responses/InternalError'
  */
-routeRunRoutes.post("/route-runs/preview", async (req: Request, res: Response) => {
+// ISSUE-043: auth gate added. Used by the Dispatch route-creation modal
+// (useCreateRoute), which already sends a Bearer token; gated to Dispatch/Admin to
+// match POST /route-runs. No persistence, but must not be callable anonymously.
+routeRunRoutes.post(
+    "/route-runs/preview",
+    requireAuth,
+    requireAnyRole(["Dispatch", "Admin"]),
+    async (req: Request, res: Response) => {
     try {
         const { stop_ids, pool_id, ul_id, run_date } = req.body;
 
@@ -659,65 +684,14 @@ routeRunRoutes.post(
     }
 );
 
-/**
- * @openapi
- * /route-runs/{id}:
- *   get:
- *     summary: Get route run details
- *     description: >
- *       Returns the full route run including all stops and their current status.
- *       This transitional endpoint has no auth guard — prefer domain-specific
- *       accessors where possible.
- *     tags: [RouteRuns]
- *     security: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *         description: Route run ID
- *         example: "42"
- *     responses:
- *       200:
- *         description: Route run found
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 ok: { type: boolean }
- *                 route_run: { type: object }
- *             example:
- *               ok: true
- *               route_run: { id: 42, status: in_progress, stops: [] }
- *       404:
- *         $ref: '#/components/responses/NotFound'
- *       500:
- *         $ref: '#/components/responses/InternalError'
- */
-// [GOVERNANCE-SENSITIVE] Transitional endpoint. Prefer domain-specific accessors where possible.
-// No requireAuth on this transitional endpoint; resolveNumericOrgId tolerates
-// a missing req.user and falls back to the first organization (single-tenant
-// dev/pilot). When this endpoint is removed or guarded, this fallback should
-// be revisited.
-routeRunRoutes.get("/route-runs/:id", async (req: Request, res: Response) => {
-    try {
-        const { id } = req.params;
-        const numericOrgId = await resolveNumericOrgId(req);
-        const routeRun = await loadRouteRunById(id, numericOrgId);
-
-        if (!routeRun) {
-            return res.status(404).json({ error: "Route run not found" });
-        }
-
-        return res.json({ ok: true, route_run: routeRun });
-    } catch (err: any) {
-        console.error("Error in GET /api/route-runs/:id:", err);
-        return res
-            .status(500)
-            .json({ error: err.message || "Internal server error" });
-    }
-});
+// ISSUE-043: GET /route-runs/:id REMOVED (was unauthenticated and identity-bearing).
+// It returned assigned_user.{oid,display_name,role} + created_by.{oid,display_name}
+// (loadRouteRunById.ts) with resolveNumericOrgId falling back to org #1 for anonymous
+// callers — a direct worker-identity leak on an open endpoint. The gated twin
+// GET /lead/route-runs/:id (above) is the sole route-run detail endpoint: auth-required,
+// Dispatch/Admin only, identity fields Admin-gated. Phase 0 caller recon confirmed the
+// frontend reads only the gated twin (getLeadRouteRunById → /api/lead/route-runs/:id)
+// and no test/script/UI path depended on this ungated route.
 
 /**
  * @openapi

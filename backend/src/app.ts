@@ -42,7 +42,12 @@ app.use("/api", ulRoutes);
 app.use("/api", routeRunRoutes);
 app.use("/api", routeRunStopRoutes);
 app.use("/api", uploadRoutes);
-app.use("/api", devRoutes);
+// ISSUE-043: devRoutes (incl. unauthenticated POST /dev/generate-route-run, which
+// writes the live DB) must never be reachable in production. Mount only outside prod,
+// mirroring the dev-auth-bypass gate above. In production these routes 404.
+if (process.env.NODE_ENV !== 'production') {
+  app.use("/api", devRoutes);
+}
 app.use("/api", adminRoutes);
 app.use("/api", stopRoutes);
 app.use("/api", resourceRoutes);
