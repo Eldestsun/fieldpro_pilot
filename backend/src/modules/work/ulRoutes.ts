@@ -1,6 +1,6 @@
 import { Router, Response } from "express";
 import { requireAuth, requireAnyRole } from "../../authz";
-import { pool } from "../../db";
+import { pool, withOrgContext } from "../../db";
 import { loadRouteRunById } from "../../domains/routeRun/loaders/loadRouteRunById";
 import { resolveNumericOrgId } from "../../middleware/resolveOrgId";
 import multer, { MulterError } from "multer";
@@ -121,7 +121,12 @@ ulRoutes.get(
         ORDER BY created_at DESC
         LIMIT 1
       `;
-            const findRes = await pool.query(findQuery, [userOid]);
+            // MT-2: route_runs is FORCE-RLS — resolve org first and run the lookup
+            // inside org context, or fail-closed RLS scopes it to 0 rows (spurious 404).
+            const numericOrgId = await resolveNumericOrgId(req);
+            const findRes = await withOrgContext(numericOrgId, (client) =>
+                client.query(findQuery, [userOid]),
+            );
 
             if (findRes.rows.length === 0) {
                 return res
@@ -130,7 +135,6 @@ ulRoutes.get(
             }
 
             const routeRunId = findRes.rows[0].id;
-            const numericOrgId = await resolveNumericOrgId(req);
             const routeRun = await loadRouteRunById(routeRunId, numericOrgId);
 
             return res.json({ ok: true, route_run: routeRun });
