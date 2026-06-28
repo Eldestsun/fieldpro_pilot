@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { requireAuth, requireAnyRole } from "../../authz";
-import { pool } from "../../db";
+import { withOrgContext } from "../../db";
+import { resolveNumericOrgId } from "../../middleware/resolveOrgId";
 
 export const stopRoutes = Router();
 
@@ -84,7 +85,12 @@ stopRoutes.patch(
                 WHERE stop_id = $2
             `;
 
-            const result = await pool.query(query, [is_hotspot, stop_id]);
+            // MT-2: transit_stops is FORCE-RLS — set org context so the policy
+            // scopes to the caller's org instead of (fail-closed) matching 0 rows.
+            const numericOrgId = await resolveNumericOrgId(req);
+            const result = await withOrgContext(numericOrgId, (client) =>
+                client.query(query, [is_hotspot, stop_id]),
+            );
 
             if (result.rowCount === 0) {
                 return res.status(404).json({ error: "Stop not found" });
@@ -179,7 +185,12 @@ stopRoutes.patch(
                 WHERE stop_id = $2
             `;
 
-            const result = await pool.query(query, [compactor, stop_id]);
+            // MT-2: transit_stops is FORCE-RLS — set org context so the policy
+            // scopes to the caller's org instead of (fail-closed) matching 0 rows.
+            const numericOrgId = await resolveNumericOrgId(req);
+            const result = await withOrgContext(numericOrgId, (client) =>
+                client.query(query, [compactor, stop_id]),
+            );
 
             if (result.rowCount === 0) {
                 return res.status(404).json({ error: "Stop not found" });
@@ -274,7 +285,12 @@ stopRoutes.patch(
                 WHERE stop_id = $2
             `;
 
-            const result = await pool.query(query, [has_trash, stop_id]);
+            // MT-2: transit_stops is FORCE-RLS — set org context so the policy
+            // scopes to the caller's org instead of (fail-closed) matching 0 rows.
+            const numericOrgId = await resolveNumericOrgId(req);
+            const result = await withOrgContext(numericOrgId, (client) =>
+                client.query(query, [has_trash, stop_id]),
+            );
 
             if (result.rowCount === 0) {
                 return res.status(404).json({ error: "Stop not found" });

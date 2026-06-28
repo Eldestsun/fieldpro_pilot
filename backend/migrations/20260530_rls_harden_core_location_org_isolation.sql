@@ -23,10 +23,17 @@
 -- were ever written.
 --
 -- The primary fix is in application code (startRouteRunStopInternal now runs
--- inside withOrgContext). This migration is defense-in-depth: it makes a
--- missing/empty org context fail CLOSED (empty result, the established
--- project convention) instead of raising a type error — matching every other
--- org_isolation policy. Tenant isolation under a real org context is unchanged.
+-- inside withOrgContext). This migration aligned these two policies with the
+-- COALESCE/NULLIF guarded form used by every other org_isolation policy, so an
+-- empty context no longer raises `bigint: ""` (HTTP 500).
+--
+-- CORRECTION (MT-2, 2026-06-27): the original wording here claimed this guarded
+-- form makes an unset/empty context "fail CLOSED (empty result)". That was WRONG.
+-- The guarded form is fail-OPEN: its `COALESCE(...) = '' OR …` first branch is TRUE
+-- when context is unset, so the policy admitted ALL rows. It traded a 500 for
+-- silent all-rows exposure. Migration 20260627_mt2_rls_fail_closed.sql drops that
+-- pass-all branch across every org-scoped policy, making unset context yield ZERO
+-- rows (true fail-closed). Tenant isolation under a real org context is unchanged.
 -- ============================================================
 
 BEGIN;

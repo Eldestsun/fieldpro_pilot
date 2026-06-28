@@ -1,4 +1,4 @@
-import { pool } from '../db';
+import { pool, withOrgContext } from '../db';
 
 export interface AuditEntry {
   actor_oid: string;
@@ -28,17 +28,22 @@ export async function writeAuditLog(entry: AuditEntry): Promise<void> {
     numericOrgId = res.rows[0]?.id ?? 1;
   }
 
-  await pool.query(
-    `INSERT INTO audit_log (actor_oid, org_id, action, resource_type, resource_id, detail, ip_address)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [
-      entry.actor_oid,
-      numericOrgId,
-      entry.action,
-      entry.resource_type ?? null,
-      entry.resource_id ?? null,
-      entry.detail ? JSON.stringify(entry.detail) : null,
-      entry.ip_address ?? null,
-    ]
+  // MT-2: audit_log is FORCE-RLS with a fail-closed WITH CHECK — the INSERT must
+  // run with org context set, or the policy rejects the row (every audit write would
+  // fail). Scope to the row's own numericOrgId.
+  await withOrgContext(numericOrgId, (client) =>
+    client.query(
+      `INSERT INTO audit_log (actor_oid, org_id, action, resource_type, resource_id, detail, ip_address)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        entry.actor_oid,
+        numericOrgId,
+        entry.action,
+        entry.resource_type ?? null,
+        entry.resource_id ?? null,
+        entry.detail ? JSON.stringify(entry.detail) : null,
+        entry.ip_address ?? null,
+      ]
+    )
   );
 }
