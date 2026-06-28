@@ -15,15 +15,23 @@ const CREATE_TRACKING_TABLE = `
   );
 `;
 
+// ISSUE-041 (deploy-wiring): migrations/DDL run as the PROVISIONER role
+// (fieldpro_admin — BYPASSRLS, member of fieldpro), NOT as the runtime app role.
+// The app's pool (backend/src/db.ts) keeps connecting as the non-super `fieldpro`
+// so RLS enforces on the app path. We read PGADMIN_*/PGADMIN_DATABASE_URL when set
+// and fall back to the PG*/DATABASE_URL the app uses — so environments that have
+// not provisioned a separate admin role (e.g. CI, which already runs migrations as
+// a privileged role) are completely unchanged.
 function buildClientConfig() {
-  if (process.env.DATABASE_URL) {
-    return { connectionString: process.env.DATABASE_URL };
+  const adminUrl = process.env.PGADMIN_DATABASE_URL || process.env.DATABASE_URL;
+  if (adminUrl) {
+    return { connectionString: adminUrl };
   }
   return {
     host: process.env.PGHOST || "localhost",
     port: parseInt(process.env.PGPORT || "5432", 10),
-    user: process.env.PGUSER,
-    password: process.env.PGPASSWORD,
+    user: process.env.PGADMIN_USER || process.env.PGUSER,
+    password: process.env.PGADMIN_PASSWORD || process.env.PGPASSWORD,
     database: process.env.PGDATABASE,
   };
 }

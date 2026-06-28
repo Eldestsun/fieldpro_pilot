@@ -9,10 +9,17 @@ services:
       POSTGRES_USER: fieldpro
       POSTGRES_PASSWORD: fieldpro_pass
       POSTGRES_DB: fieldpro_db
+      # ISSUE-041 deploy-wiring: the init bootstrap (db/init) creates the non-super
+      # provisioner role fieldpro_admin with this login secret. Dev value lives in
+      # backend/.env (gitignored); prod target = Azure Key Vault. Not rotated here.
+      FIELDPRO_ADMIN_PASSWORD: ${FIELDPRO_ADMIN_PASSWORD:?FIELDPRO_ADMIN_PASSWORD must be set (see backend/.env)}
     ports:
       - "5432:5432"
     volumes:
       - ./data/db:/var/lib/postgresql/data
+      # ISSUE-041: one-time superuser bootstrap of the fieldpro_admin/fieldpro role
+      # split — runs only on a fresh volume (initdb). See db/init/00_bootstrap_provisioner.sh.
+      - ./db/init:/docker-entrypoint-initdb.d:ro
 
   minio:
     image: minio/minio:latest
@@ -92,9 +99,15 @@ services:
       PORT: "4000"
       PGHOST: postgres
       PGPORT: "5432"
+      # App RUNTIME connects as the non-super fieldpro role → RLS enforces (ISSUE-041).
       PGUSER: fieldpro
       PGPASSWORD: fieldpro_pass
       PGDATABASE: fieldpro_db
+      # Migration runner (Dockerfile CMD: migrate.js && index.js) connects as the
+      # PROVISIONER fieldpro_admin via these — owns/DDLs objects, BYPASSRLS for the
+      # RLS-phase backfills, member of fieldpro. The app pool above ignores them.
+      PGADMIN_USER: fieldpro_admin
+      PGADMIN_PASSWORD: ${FIELDPRO_ADMIN_PASSWORD:?FIELDPRO_ADMIN_PASSWORD must be set (see backend/.env)}
       OSRM_BASE_URL: http://osrm:5000
       # MinIO — names must match backend/src/s3Client.ts exactly
       MINIO_ENDPOINT: http://minio:9000
