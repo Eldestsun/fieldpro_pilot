@@ -216,6 +216,56 @@ export function _setAdapterForTest(adapter: OidCipherAdapter): void {
   _adapter = adapter;
 }
 
+// ── Boot-time fail-closed guard (ISSUE-045, Option 2) ────────────────────────
+
+/**
+ * Verify the CONFIGURED cipher adapter can actually wrap/unwrap a DEK, and
+ * throw a clear error if it cannot. The caller (src/index.ts) turns that throw
+ * into a FATAL log + non-zero exit so the process never comes up.
+ *
+ * WHY: in production the adapter is AzureKeyVaultAdapter, whose wrap/unwrap are a
+ * throwing stub until the Azure Key Vault DEK path is implemented (S3-1). If the
+ * server were allowed to start in that state, worker-OID envelope encryption
+ * would be silently non-functional — encrypt() would only fail at the first
+ * identity write, deep inside a request. Encrypted-identity-at-rest must never be
+ * silently off; this makes a non-functional cipher a visible, fail-closed boot
+ * refusal instead.
+ *
+ * Behaviour:
+ *   - NODE_ENV !== 'production'  → no-op (DevStaticKeyAdapter is functional; dev
+ *     and CI boot/tests are completely unchanged).
+ *   - NODE_ENV === 'production'  → round-trip a throwaway random DEK through the
+ *     adapter's wrapDek → unwrapDek. If anything throws or the round-trip does not
+ *     recover the probe DEK, throw a descriptive Error.
+ *
+ * This probe calls the LOW-LEVEL adapter methods directly, never encrypt()/
+ * decrypt(), so it uses no OID, no DB, and crucially never triggers the mandatory
+ * admin.oid_decrypt audit path. It also needs no live Azure: the current stub
+ * throws synchronously, which is exactly the fail-closed condition we detect.
+ */
+export async function assertCipherOperational(): Promise<void> {
+  if (process.env.NODE_ENV !== "production") return;
+
+  const adapter = getAdapter();
+  const adapterName = (adapter as { constructor?: { name?: string } })?.constructor?.name ?? "unknown adapter";
+  const probeDek = crypto.randomBytes(DEK_LEN);
+  try {
+    const { wrappedDek, keyId } = await adapter.wrapDek(probeDek);
+    const unwrapped = await adapter.unwrapDek(wrappedDek, keyId);
+    if (!Buffer.isBuffer(unwrapped) || !unwrapped.equals(probeDek)) {
+      throw new Error("wrap/unwrap round-trip did not recover the probe DEK");
+    }
+  } catch (err) {
+    const cause = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `OID-at-rest cipher is non-functional in production (${adapterName}): ${cause}. ` +
+        "Refusing to boot — worker-OID envelope encryption must never be silently off (ISSUE-045). " +
+        "Implement the Azure Key Vault DEK wrap/unwrap (oidCipher.ts AzureKeyVaultAdapter / S3-1 spec) " +
+        "and set AZURE_KEY_VAULT_URL + AZURE_KEY_VAULT_KEY_NAME before starting with NODE_ENV=production.",
+    );
+  }
+}
+
 // ── Blob pack / unpack ───────────────────────────────────────────────────────
 
 function packBlob(
