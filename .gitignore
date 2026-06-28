@@ -25,6 +25,7 @@ coverage/
 
 # --- Docker / data volumes (keep folder, ignore contents)
 data/
+!docs/changelog/data/
 docker-data/
 uploads/
 !data/.gitkeep
