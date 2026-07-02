@@ -108,6 +108,11 @@ devRoutes.post("/dev/seed-axe-fixture", async (req: Request, res: Response) => {
 
     const client = await pool.connect();
     try {
+        // PATTERN-001: route_runs / stops / route_run_stops are forced-RLS —
+        // fail-closed without org context. Scope to the EXPLICIT dev org_id
+        // param (dev-only endpoint, gated above; the param default is a dev
+        // fixture assumption, not a resolution fallback).
+        await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(org_id)]);
         // Idempotent: return existing run if one already exists for this OID
         const existing = await client.query(
             `SELECT id FROM route_runs
@@ -155,20 +160,30 @@ devRoutes.post("/dev/seed-axe-fixture", async (req: Request, res: Response) => {
         console.error('Error in /api/dev/seed-axe-fixture:', err);
         return res.status(500).json({ error: err.message || 'Internal server error' });
     } finally {
+        try {
+            await client.query(`SELECT set_config('app.current_org_id', '', false)`);
+        } catch { /* best-effort reset */ }
         client.release();
     }
 });
 
-// DEV ONLY – route run generator for testing, not for production.
+// DEV ONLY – route run generator for testing, not for production (the devRoutes
+// mount itself is prod-gated in app.ts per ISSUE-043).
 devRoutes.post("/dev/generate-route-run", async (req: Request, res: Response) => {
     const client = await pool.connect();
     try {
-        const { pool_id, user_id, base_id = "NORTH", max_stops = 25 } = req.body;
+        const { pool_id, user_id, base_id = "NORTH", max_stops = 25, org_id = 1 } = req.body;
 
         // 1. Validate input
         if (!pool_id || !user_id) {
             return res.status(400).json({ error: "pool_id and user_id are required" });
         }
+
+        // PATTERN-001: route_pools / stops / route_runs are forced-RLS —
+        // fail-closed without org context. Scope to the EXPLICIT dev org_id
+        // param (same dev-fixture convention as /dev/seed-axe-fixture; this
+        // endpoint is unreachable in production).
+        await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(org_id)]);
 
         // Check if pool exists (optional but good for validation)
         const poolCheck = await client.query(
@@ -224,6 +239,9 @@ devRoutes.post("/dev/generate-route-run", async (req: Request, res: Response) =>
             .status(500)
             .json({ error: err.message || "Internal server error" });
     } finally {
+        try {
+            await client.query(`SELECT set_config('app.current_org_id', '', false)`);
+        } catch { /* best-effort reset */ }
         client.release();
     }
 });

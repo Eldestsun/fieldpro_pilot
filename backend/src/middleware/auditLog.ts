@@ -19,13 +19,22 @@ export async function writeAuditLog(entry: AuditEntry): Promise<void> {
   } else if (/^\d+$/.test(String(entry.org_id))) {
     numericOrgId = parseInt(String(entry.org_id), 10);
   } else {
-    // UUID or sentinel string — look up by tenant_uuid, fallback to first org for single-tenant pilot.
+    // Tenant UUID (or sentinel) string — resolve ONLY by a tenant_uuid match.
+    // FAIL CLOSED (ISSUE-013 pattern): the old `UNION ALL … ORDER BY id LIMIT 1`
+    // + `?? 1` fallback silently wrote unmatched callers' audit rows into the
+    // lowest-id org's compliance trail — the same fail-open twin the audit
+    // flagged. An unresolvable value now throws; auditWrite's fire-and-forget
+    // catch logs it, and direct callers surface it. No default org, ever.
     const res = await pool.query(
-      `SELECT id FROM organizations WHERE tenant_uuid = $1
-       UNION ALL SELECT id FROM organizations ORDER BY id LIMIT 1`,
+      `SELECT id FROM organizations WHERE tenant_uuid = $1`,
       [entry.org_id],
     );
-    numericOrgId = res.rows[0]?.id ?? 1;
+    if (res.rows.length === 0) {
+      throw new Error(
+        `writeAuditLog: no organization for tenant '${entry.org_id}' — audit row refused (fail-closed, never defaults to org 1)`,
+      );
+    }
+    numericOrgId = res.rows[0].id;
   }
 
   // MT-2: audit_log is FORCE-RLS with a fail-closed WITH CHECK — the INSERT must

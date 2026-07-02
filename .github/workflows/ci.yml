@@ -41,21 +41,45 @@ jobs:
         run: pnpm install --frozen-lockfile
         working-directory: backend
 
+      # ISSUE-041 alignment (fixes the CI break introduced when 20260624 landed):
+      # the migration chain now assumes the PROVISIONER path — 20260624's guarded
+      # step downgrades fieldpro from SUPERUSER mid-chain, so a superuser-fieldpro
+      # runner fails on the very next fieldpro_admin-scoped statement on any FRESH
+      # database (exactly CI's situation; every "Run migrations" step since has been
+      # red). Mirror db/init/00_bootstrap_provisioner.sh: create fieldpro_admin as
+      # the one-time superuser bootstrap, downgrade fieldpro, then run the chain AS
+      # fieldpro_admin — the same sequence a compose init and the dev rebuild use.
+      - name: Bootstrap provisioner role (mirrors db/init/00_bootstrap_provisioner.sh)
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'fieldpro_admin') THEN CREATE ROLE fieldpro_admin LOGIN NOSUPERUSER BYPASSRLS CREATEDB CREATEROLE; END IF; END \$\$;" \
+            -c "ALTER ROLE fieldpro_admin WITH PASSWORD 'ci_admin_pw';" \
+            -c "GRANT fieldpro TO fieldpro_admin;" \
+            -c "CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;" \
+            -c "ALTER ROLE fieldpro WITH NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;"
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://fieldpro:fieldpro_pass@localhost:5432/fieldpro_test
+
       - name: Run migrations
         run: pnpm run migrate
         working-directory: backend
         env:
-          DATABASE_URL: postgres://fieldpro:fieldpro_pass@localhost:5432/fieldpro_test
+          # Provisioner path (ISSUE-041): the runner connects as fieldpro_admin
+          # (BYPASSRLS, member of fieldpro), matching compose init / dev rebuild.
+          PGADMIN_DATABASE_URL: postgres://fieldpro_admin:ci_admin_pw@localhost:5432/fieldpro_test
 
       # Seed the minimal reference graph the canonical integration tests assume
       # (route_pool TEST_POOL + stop 31150 -> location mapping). Migrations create
       # schema only; without this the fixture setup fails (ISSUE-022 / ISSUE-009).
       # Idempotent SQL under tests/, not migrations/ — see the file header.
+      # Runs as fieldpro_admin (BYPASSRLS) since fieldpro is no longer superuser;
+      # the seed's own defensive set_config covers the org scoping either way.
       - name: Seed test fixtures
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/fixtures/seed.sql
         working-directory: backend
         env:
-          DATABASE_URL: postgres://fieldpro:fieldpro_pass@localhost:5432/fieldpro_test
+          DATABASE_URL: postgres://fieldpro_admin:ci_admin_pw@localhost:5432/fieldpro_test
 
       # ISSUE-025: the postgres:14 service image makes POSTGRES_USER=fieldpro a
       # SUPERUSER, and superusers bypass RLS even on FORCE ROW LEVEL SECURITY
@@ -65,10 +89,11 @@ jobs:
       # bypassed — the opposite of what they assert. Create a non-superuser,
       # non-BYPASSRLS role that inherits fieldpro's grants via role membership
       # (the faithful "same grants minus superuser"), and run the tests as it so
-      # RLS is actually enforced. Migrations + seed above stay on the superuser
-      # fieldpro by design (they need to create schema and seed across orgs).
-      # This is CI-only; it does not touch backend/src/db.ts, the app pool, or
-      # the intelligence_reader runtime-role decision (ISSUE-018).
+      # RLS is actually enforced. (fieldpro itself is also downgraded now — see
+      # the bootstrap step — but fieldpro_test remains the dedicated test login.)
+      # Runs as fieldpro_admin (CREATEROLE). This is CI-only; it does not touch
+      # backend/src/db.ts, the app pool, or the intelligence_reader runtime-role
+      # decision (ISSUE-018).
       - name: Create non-superuser test role (RLS enforcement — ISSUE-025)
         run: |
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
@@ -77,7 +102,7 @@ jobs:
             -c "GRANT fieldpro TO fieldpro_test;"
         working-directory: backend
         env:
-          DATABASE_URL: postgres://fieldpro:fieldpro_pass@localhost:5432/fieldpro_test
+          DATABASE_URL: postgres://fieldpro_admin:ci_admin_pw@localhost:5432/fieldpro_test
 
       - name: Run tests
         run: pnpm test

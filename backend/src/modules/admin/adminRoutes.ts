@@ -945,9 +945,10 @@ import { rebuildStopRiskSnapshot } from "../../intelligence/riskMapService";
  *       500:
  *         $ref: '#/components/responses/InternalError'
  */
-adminRoutes.post("/admin/intelligence/rebuild-risk-map", async (_req: Request, res: Response) => {
+adminRoutes.post("/admin/intelligence/rebuild-risk-map", async (req: Request, res: Response) => {
   try {
-    const rows = await rebuildStopRiskSnapshot(pool);
+    // PATTERN-001: the rebuild now requires an authoritative org (fail-closed).
+    const rows = await rebuildStopRiskSnapshot(pool, await resolveNumericOrgId(req));
     res.json({ status: "ok", rows });
   } catch (err: any) {
     console.error("Error in /admin/intelligence/rebuild-risk-map:", err);
@@ -1013,9 +1014,15 @@ ccRouter.use(requireAuth, requireAdmin);
  *         $ref: '#/components/responses/InternalError'
  */
 // 0. Overview / Today at a Glance (Panel 1 - Authoritative)
-ccRouter.get("/overview", async (_req: Request, res: Response) => {
+ccRouter.get("/overview", async (req: Request, res: Response) => {
   const client = await pool.connect();
   try {
+    // PATTERN-001: this handler read core.visits / core.observations on a bare
+    // connection — under fail-closed RLS (MT-2) every metric silently zeroed.
+    // Resolve the caller's org (fail-closed, ISSUE-013) and set context, same
+    // as the sibling /exceptions and /difficulty handlers.
+    const numericOrgId = await resolveNumericOrgId(req);
+    await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(numericOrgId)]);
     // ISSUE-031/CC-REPOINT: canonical reads — clean events/minutes from core.visits
     // (completed visit = clean event; duration = ended_at - started_at), hazards from
     // core.observations filtered to the 8 pinned safety *_present types (observed_at).
