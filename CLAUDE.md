@@ -198,6 +198,15 @@ Any query or write against a `FORCE ROW LEVEL SECURITY` table silently affects z
 - App code that queries RLS tables must use `withOrgContext(pool, orgId, ...)` — never bare `pool.query()`
 - Migrations and scripts that touch RLS tables must either set `app.current_org_id` explicitly or run as a superuser/bypassrls role
 - Bugs that silently return empty results on RLS tables are almost always a missing org context, not a data problem
+- **Org resolution fails closed.** Every handler or service that touches an RLS-protected
+  table MUST arrive at the DB via `withOrgContext(await resolveNumericOrgId(req), ...)` (or
+  an equivalent explicit `set_config('app.current_org_id', …)` on its checked-out client,
+  reset before release). `resolveNumericOrgId` THROWS (`OrgResolutionError` → 403) when the
+  caller's org is indeterminate — never assume, default to, or fall back to org 1; the same
+  applies to any sibling resolution (e.g. `writeAuditLog`'s tenant-string branch). New
+  handlers must prove this routing in their dispatch paste-back. The CI tripwire
+  (`backend/tests/canonical/orgFailClosed.test.ts`, pre-merge only) turns a reintroduced
+  fallback or a fail-open RLS read into a red PR.
 
 Affected tables include `identity_directory` and all 28+ tables with RLS policies. Check `pg_state.sql` or `\d+ <table>` for `Row Security: enabled (forced)` to confirm.
 

@@ -1,10 +1,11 @@
 import { RequestHandler } from 'express';
 import { writeAuditLog } from './auditLog';
 
-// Null UUID used as the synthetic tenant id (tid) for bypass sessions, and
-// passed as org_id to writeAuditLog, which resolves it to the numeric
-// organizations.id before inserting (audit_log.org_id has been bigint since
-// Phase 3, 20260518_rls_phase3). Clearly synthetic on sight.
+// Null UUID used as the synthetic tenant id (tid) for bypass sessions. Clearly
+// synthetic on sight. The bypass audit row is written with the NUMERIC org id
+// from the x-dev-user-org-id header (audit_log.org_id is bigint since Phase 3)
+// — never with this sentinel, which writeAuditLog would refuse (fail-closed:
+// it no longer falls back to the first org on an unmatched tenant string).
 const DEV_BYPASS_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 interface BypassEnv {
@@ -83,7 +84,7 @@ export function createDevAuthBypass(
       try {
         await writeAuditLog({
           actor_oid: String(oid),
-          org_id:    DEV_BYPASS_TENANT_ID,
+          org_id:    parseInt(String(orgIdRaw), 10),
           action:    'auth.dev_bypass',
           detail: {
             'x-dev-user-oid':    String(oid),

@@ -312,13 +312,20 @@ routeRunRoutes.post(
                 .json({ error: "stop_ids must be an array with at least two items" });
         }
 
-        // 1) Look up lon/lat for the requested stops
+        // 1) Look up lon/lat for the requested stops.
+        // PATTERN-001: `stops` sits over forced-RLS transit data — a bare
+        // pool.query has no org context, so fail-closed RLS (MT-2) returns 0
+        // rows (silent "Not enough stops"). Resolve the caller's org
+        // (fail-closed, ISSUE-013) and scope the read.
+        const numericOrgId = await resolveNumericOrgId(req);
         const query = `
       SELECT stop_id, lon, lat
       FROM stops
       WHERE stop_id = ANY($1::text[])
     `;
-        const result = await pool.query(query, [stop_ids]);
+        const result = await withOrgContext(numericOrgId, (client) =>
+            client.query(query, [stop_ids]),
+        );
 
         if (result.rows.length < 2) {
             return res.status(400).json({
@@ -432,12 +439,17 @@ routeRunRoutes.post(
 
         // Option A: Explicit stop_ids provided
         if (Array.isArray(stop_ids) && stop_ids.length >= 2) {
+            // PATTERN-001: same as /routes/plan — a bare read of `stops`
+            // returns 0 rows under fail-closed RLS; scope to the resolved org.
+            const numericOrgId = await resolveNumericOrgId(req);
             const query = `
         SELECT stop_id, lon, lat, on_street_name, bearing_code
         FROM stops
         WHERE stop_id = ANY($1::text[])
       `;
-            const result = await pool.query(query, [stop_ids]);
+            const result = await withOrgContext(numericOrgId, (client) =>
+                client.query(query, [stop_ids]),
+            );
 
             if (result.rows.length < 2) {
                 return res.status(400).json({

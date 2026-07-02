@@ -33,9 +33,19 @@ const HAZARD_RECENT_DAYS = 1;   // "recent" flag for same-day/next-day caution
 const HAZARD_BASE_WEIGHT = 3.0;     // base multiplier (like you already had)
 const HAZARD_MAX_DAYS_FOR_EFFECT = 7; // after this many days, hazard effect ≈ 0
 
-export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
+// PATTERN-001 / ISSUE-013: the rebuild reads forced-RLS canonical tables and
+// writes forced-RLS stop_risk_snapshot — on a context-less connection under
+// fail-closed RLS (MT-2) it silently rebuilt an EMPTY snapshot. orgId is a
+// REQUIRED explicit parameter: callers resolve it authoritatively
+// (resolveNumericOrgId for routes, RISK_MAP_ORG_ID for the CLI job). There is
+// deliberately no default — an indeterminate org must refuse, never assume.
+export async function rebuildStopRiskSnapshot(pool: Pool, orgId: number | string): Promise<number> {
+    if (orgId === null || orgId === undefined || String(orgId) === "") {
+        throw new Error("rebuildStopRiskSnapshot: orgId is required (fail-closed — never assumes a default org)");
+    }
     const client = await pool.connect();
     try {
+        await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(orgId)]);
         await client.query("BEGIN");
 
         // 1. Clear existing snapshot
@@ -371,6 +381,9 @@ export async function rebuildStopRiskSnapshot(pool: Pool): Promise<number> {
         console.error("[riskMap] Failed to rebuild snapshot:", err);
         throw err;
     } finally {
+        try {
+            await client.query(`SELECT set_config('app.current_org_id', '', false)`);
+        } catch { /* best-effort reset before returning to pool */ }
         client.release();
     }
 }
