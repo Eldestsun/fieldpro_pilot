@@ -22,6 +22,28 @@ function makeTokenPair(): { raw: string; hash: string } {
   return { raw, hash };
 }
 
+// MT-2: every table these tests touch is FORCE-RLS **fail-closed** — a bare
+// pool.query sees 0 rows and its INSERTs are rejected by WITH CHECK. Run each
+// statement with org context set the same way the fixed handlers do:
+// export_delete_tokens scopes on its TEXT tenant-UUID org_id; audit_log
+// scopes on the numeric org id. (Pre-MT-2 these tests ran bare and passed
+// only because RLS was fail-open.)
+async function withCtx<T>(
+  ctx: string,
+  fn: (client: import("pg").PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [ctx]);
+    return await fn(client);
+  } finally {
+    try {
+      await client.query(`SELECT set_config('app.current_org_id', '', false)`);
+    } catch { /* best-effort reset */ }
+    client.release();
+  }
+}
+
 async function insertToken(
   opts: {
     hash: string;
@@ -31,27 +53,32 @@ async function insertToken(
   }
 ): Promise<bigint> {
   const expiresAt = opts.expiresAt ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  const res = await pool.query(
-    `INSERT INTO export_delete_tokens
-       (token_hash, org_id, actor_oid, export_path, expires_at, consumed_at)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id`,
-    [
-      opts.hash,
-      opts.orgId ?? TEST_ORG_UUID,
-      TEST_ACTOR_OID,
-      "/tmp/test-export.json.gz",
-      expiresAt,
-      opts.consumedAt ?? null,
-    ],
+  const orgId = opts.orgId ?? TEST_ORG_UUID;
+  const res = await withCtx(orgId, (client) =>
+    client.query(
+      `INSERT INTO export_delete_tokens
+         (token_hash, org_id, actor_oid, export_path, expires_at, consumed_at)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [
+        opts.hash,
+        orgId,
+        TEST_ACTOR_OID,
+        "/tmp/test-export.json.gz",
+        expiresAt,
+        opts.consumedAt ?? null,
+      ],
+    ),
   );
   return BigInt(res.rows[0].id);
 }
 
 async function cleanupTokens(): Promise<void> {
-  await pool.query(
-    "DELETE FROM export_delete_tokens WHERE actor_oid = $1",
-    [TEST_ACTOR_OID],
+  await withCtx(TEST_ORG_UUID, (client) =>
+    client.query(
+      "DELETE FROM export_delete_tokens WHERE actor_oid = $1",
+      [TEST_ACTOR_OID],
+    ),
   );
 }
 
@@ -97,11 +124,14 @@ test("export_delete_tokens: sha256 hash lookup returns correct row", async () =>
   try {
     const tokenId = await insertToken({ hash });
 
-    // Simulate what /execute does: hash the raw token, look up the row.
+    // Simulate what /execute does: hash the raw token, look up the row
+    // (with the tenant-UUID org context set, exactly as the handler does).
     const lookupHash = crypto.createHash("sha256").update(raw).digest("hex");
-    const res = await pool.query(
-      "SELECT id, org_id, expires_at, consumed_at FROM export_delete_tokens WHERE token_hash = $1",
-      [lookupHash],
+    const res = await withCtx(TEST_ORG_UUID, (client) =>
+      client.query(
+        "SELECT id, org_id, expires_at, consumed_at FROM export_delete_tokens WHERE token_hash = $1",
+        [lookupHash],
+      ),
     );
     assertEqual(res.rowCount, 1, "lookup by hash must return exactly one row");
     assertEqual(BigInt(res.rows[0].id), tokenId, "returned id matches");
@@ -114,9 +144,11 @@ test("export_delete_tokens: sha256 hash lookup returns correct row", async () =>
 
 test("export_delete_tokens: unknown token hash returns no rows (404 signal)", async () => {
   const fakeHash = crypto.createHash("sha256").update("bogus-token").digest("hex");
-  const res = await pool.query(
-    "SELECT id FROM export_delete_tokens WHERE token_hash = $1",
-    [fakeHash],
+  const res = await withCtx(TEST_ORG_UUID, (client) =>
+    client.query(
+      "SELECT id FROM export_delete_tokens WHERE token_hash = $1",
+      [fakeHash],
+    ),
   );
   assertEqual(res.rowCount, 0, "unknown hash must return 0 rows");
 });
@@ -128,11 +160,13 @@ test("export_delete_tokens: expired token is detectable via expires_at < NOW()",
   const pastExpiry = new Date(Date.now() - 1000); // 1 second ago
   try {
     await insertToken({ hash, expiresAt: pastExpiry });
-    const res = await pool.query(
-      `SELECT id, expires_at < NOW() AS is_expired
-       FROM export_delete_tokens
-       WHERE token_hash = $1`,
-      [hash],
+    const res = await withCtx(TEST_ORG_UUID, (client) =>
+      client.query(
+        `SELECT id, expires_at < NOW() AS is_expired
+         FROM export_delete_tokens
+         WHERE token_hash = $1`,
+        [hash],
+      ),
     );
     assertEqual(res.rowCount, 1, "token row found");
     assert(res.rows[0].is_expired === true, "is_expired must be true for past expiry");
@@ -145,11 +179,13 @@ test("export_delete_tokens: active token is not expired", async () => {
   const { hash } = makeTokenPair();
   try {
     await insertToken({ hash }); // default: 7 days in the future
-    const res = await pool.query(
-      `SELECT id, expires_at < NOW() AS is_expired
-       FROM export_delete_tokens
-       WHERE token_hash = $1`,
-      [hash],
+    const res = await withCtx(TEST_ORG_UUID, (client) =>
+      client.query(
+        `SELECT id, expires_at < NOW() AS is_expired
+         FROM export_delete_tokens
+         WHERE token_hash = $1`,
+        [hash],
+      ),
     );
     assertEqual(res.rowCount, 1, "token row found");
     assert(res.rows[0].is_expired === false, "is_expired must be false for future expiry");
@@ -165,15 +201,19 @@ test("export_delete_tokens: consumed token is detectable via consumed_at IS NOT 
   try {
     const tokenId = await insertToken({ hash });
 
-    // Mark as consumed.
-    await pool.query(
-      "UPDATE export_delete_tokens SET consumed_at = NOW() WHERE id = $1",
-      [tokenId],
+    // Mark as consumed (token RLS scopes on the tenant-UUID context).
+    await withCtx(TEST_ORG_UUID, (client) =>
+      client.query(
+        "UPDATE export_delete_tokens SET consumed_at = NOW() WHERE id = $1",
+        [tokenId],
+      ),
     );
 
-    const res = await pool.query(
-      "SELECT consumed_at FROM export_delete_tokens WHERE id = $1",
-      [tokenId],
+    const res = await withCtx(TEST_ORG_UUID, (client) =>
+      client.query(
+        "SELECT consumed_at FROM export_delete_tokens WHERE id = $1",
+        [tokenId],
+      ),
     );
     assert(res.rows[0].consumed_at !== null, "consumed_at must be set after consumption");
   } finally {
@@ -189,9 +229,11 @@ test("export_delete_tokens: token org_id mismatch is detectable (403 signal)", a
     // Token belongs to TEST_ORG_UUID but requester claims OTHER_ORG_UUID.
     await insertToken({ hash, orgId: TEST_ORG_UUID });
 
-    const res = await pool.query(
-      "SELECT org_id FROM export_delete_tokens WHERE token_hash = $1",
-      [hash],
+    const res = await withCtx(TEST_ORG_UUID, (client) =>
+      client.query(
+        "SELECT org_id FROM export_delete_tokens WHERE token_hash = $1",
+        [hash],
+      ),
     );
     assertEqual(res.rowCount, 1, "token found");
 
@@ -212,9 +254,11 @@ test("export_delete_tokens: token org_id match succeeds (same org)", async () =>
   try {
     await insertToken({ hash, orgId: TEST_ORG_UUID });
 
-    const res = await pool.query(
-      "SELECT org_id FROM export_delete_tokens WHERE token_hash = $1",
-      [hash],
+    const res = await withCtx(TEST_ORG_UUID, (client) =>
+      client.query(
+        "SELECT org_id FROM export_delete_tokens WHERE token_hash = $1",
+        [hash],
+      ),
     );
     const tokenOrgId: string = res.rows[0].org_id;
     assertEqual(tokenOrgId, TEST_ORG_UUID, "org_id matches when same org");
@@ -231,9 +275,39 @@ test("export_delete_tokens: token org_id match succeeds (same org)", async () =>
 const AUDIT_DELETE_TEST_ORG = 44; // bigint (Phase 3: audit_log.org_id uuid → bigint)
 const AUDIT_DELETE_TEST_OID = "test-audit-delete-oid-s1-4";
 
+// audit_log.org_id now carries an FK to organizations(id) (053-followup), so
+// the test org row must exist before audit rows referencing it are inserted.
+// organizations has no RLS; idempotent for re-runs.
+async function ensureAuditTestOrg(client: import("pg").PoolClient): Promise<void> {
+  await client.query(
+    `INSERT INTO organizations (id, name, slug)
+     VALUES ($1, 's1-4-audit-test-org', 's1-4-audit-test-org')
+     ON CONFLICT (id) DO NOTHING`,
+    [AUDIT_DELETE_TEST_ORG],
+  );
+}
+
+// Set the numeric org context on the test client — audit_log's MT-2
+// fail-closed policies (INSERT WITH CHECK + SELECT USING) reject/blind a
+// context-less session, exactly as they do for the app.
+async function setAuditCtx(client: import("pg").PoolClient): Promise<void> {
+  await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [
+    String(AUDIT_DELETE_TEST_ORG),
+  ]);
+}
+
+async function releaseWithReset(client: import("pg").PoolClient): Promise<void> {
+  try {
+    await client.query(`SELECT set_config('app.current_org_id', '', false)`);
+  } catch { /* best-effort */ }
+  client.release();
+}
+
 test("audit_log_delete policy: DELETE is blocked without export_delete_active flag", async () => {
   const client = await pool.connect();
   try {
+    await ensureAuditTestOrg(client);
+    await setAuditCtx(client);
     // Insert a test audit row.
     await client.query(
       `INSERT INTO audit_log (actor_oid, org_id, action) VALUES ($1, $2, $3)`,
@@ -258,13 +332,15 @@ test("audit_log_delete policy: DELETE is blocked without export_delete_active fl
     );
     assert(check.rowCount! > 0, "audit row survives without the flag");
   } finally {
-    client.release();
+    await releaseWithReset(client);
   }
 });
 
 test("audit_log_delete policy: DELETE succeeds with export_delete_active + correct org_id", async () => {
   const client = await pool.connect();
   try {
+    await ensureAuditTestOrg(client);
+    await setAuditCtx(client);
     // Insert a test audit row to delete.
     await client.query(
       `INSERT INTO audit_log (actor_oid, org_id, action) VALUES ($1, $2, $3)`,
@@ -306,13 +382,15 @@ test("audit_log_delete policy: DELETE succeeds with export_delete_active + corre
     await client.query("ROLLBACK").catch(() => {});
     throw err;
   } finally {
-    client.release();
+    await releaseWithReset(client);
   }
 });
 
 test("audit_log_delete policy: SET LOCAL resets after COMMIT — subsequent DELETE blocked", async () => {
   const client = await pool.connect();
   try {
+    await ensureAuditTestOrg(client);
+    await setAuditCtx(client);
     // Insert a new test row.
     await client.query(
       `INSERT INTO audit_log (actor_oid, org_id, action) VALUES ($1, $2, $3)`,
@@ -359,13 +437,15 @@ test("audit_log_delete policy: SET LOCAL resets after COMMIT — subsequent DELE
     await client.query("ROLLBACK").catch(() => {});
     throw err;
   } finally {
-    client.release();
+    await releaseWithReset(client);
   }
 });
 
 test("audit_log_delete policy: wrong org_id in session — DELETE blocked even with flag", async () => {
   const client = await pool.connect();
   try {
+    await ensureAuditTestOrg(client);
+    await setAuditCtx(client);
     await client.query(
       `INSERT INTO audit_log (actor_oid, org_id, action) VALUES ($1, $2, $3)`,
       [AUDIT_DELETE_TEST_OID, AUDIT_DELETE_TEST_ORG, "admin.config_change"],
@@ -408,7 +488,7 @@ test("audit_log_delete policy: wrong org_id in session — DELETE blocked even w
     await client.query("ROLLBACK").catch(() => {});
     throw err;
   } finally {
-    client.release();
+    await releaseWithReset(client);
   }
 });
 

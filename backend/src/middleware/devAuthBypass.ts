@@ -1,8 +1,10 @@
 import { RequestHandler } from 'express';
 import { writeAuditLog } from './auditLog';
 
-// Null UUID used as org_id / tid in audit_log rows written by the bypass.
-// Must be a valid UUID (audit_log.org_id is UUID type) but clearly synthetic.
+// Null UUID used as the synthetic tenant id (tid) for bypass sessions, and
+// passed as org_id to writeAuditLog, which resolves it to the numeric
+// organizations.id before inserting (audit_log.org_id has been bigint since
+// Phase 3, 20260518_rls_phase3). Clearly synthetic on sight.
 const DEV_BYPASS_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 interface BypassEnv {

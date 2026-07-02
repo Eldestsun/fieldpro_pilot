@@ -28,24 +28,39 @@ function ensureStagingDir(): void {
   }
 }
 
-// Resolve bigint org_id from the organizations table.
+// ── Org context under fail-closed RLS (MT-2) ─────────────────────────────
 //
-// PILOT LIMITATION: This system has a single organization (KCM). In a
-// multi-org deployment, populate organizations.tenant_uuid with the Azure
-// Tenant UUID so this lookup can be scoped precisely. Until then, the first
-// org is used, which is correct for the single-tenant pilot.
-async function resolveOrgInt(tenantUuid: string, client: any): Promise<bigint> {
-  const res = await client.query(
-    `SELECT id FROM organizations
-     WHERE tenant_uuid = $1
-     UNION ALL
-     SELECT id FROM organizations
-     ORDER BY id
-     LIMIT 1`,
-    [tenantUuid],
-  );
-  if (!res.rows[0]) throw new Error("No organization found for this tenant.");
-  return BigInt(res.rows[0].id);
+// This flow straddles BOTH org notions in one connection:
+//   * export_delete_tokens.org_id is the Azure Entra TENANT UUID (text —
+//     intentional, ISSUE-052), and its RLS policy compares that UUID against
+//     app.current_org_id;
+//   * every canonical table + audit_log is scoped by the NUMERIC
+//     organizations.id, and their policies compare that number against the
+//     same GUC.
+// So the session GUC must hold the tenant UUID for token statements and the
+// numeric id for canonical/audit statements. setOrgCtx flips it per statement
+// group on the checked-out client; every handler resets it to '' in finally
+// (mirroring withOrgContext) so a pooled connection never leaks context.
+//
+// Resolution is FAIL-CLOSED (ISSUE-013): reqOrgId → resolveNumericOrgId
+// throws OrgResolutionError (status 403) when the caller's tenant UUID does
+// not match an organizations row. There is deliberately NO default-org
+// fallback — an export-delete for an unrecognized tenant must refuse loudly,
+// never silently scope to the wrong org. (The old resolveOrgInt helper here,
+// with its ORDER BY id LIMIT 1 fallback, was exactly that fail-open pattern —
+// removed.)
+async function setOrgCtx(client: any, value: string): Promise<void> {
+  await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [
+    value,
+  ]);
+}
+
+async function resetOrgCtx(client: any): Promise<void> {
+  try {
+    await client.query(`SELECT set_config('app.current_org_id', '', false)`);
+  } catch {
+    // best-effort reset; release still returns the client to the pool
+  }
 }
 
 // ── POST /api/admin/export-and-delete/request ────────────────────────────
@@ -63,12 +78,26 @@ exportDeleteRoutes.post(
   async (req: Request, res: Response) => {
     const actorOid = (req as any).user?.oid ?? "unknown";
     const tenantUuid = reqTenantUuid(req);  // for export_delete_tokens (TEXT org_id)
-    const orgIdNum = await reqOrgId(req);   // numeric organizations.id for data + audit queries
+
+    // FAIL-CLOSED resolution (ISSUE-013): tenant UUID → numeric
+    // organizations.id. Throws OrgResolutionError (403) on no match — never
+    // defaults to an org. Must happen before anything is read or written.
+    let orgIdNum: number;
+    try {
+      orgIdNum = await reqOrgId(req);
+    } catch (err: any) {
+      console.error("[export-delete/request] org resolution refused:", err.message);
+      return res.status(err.status ?? 500).json({ error: err.message });
+    }
     const orgInt = BigInt(orgIdNum);
 
     const client = await pool.connect();
     try {
       ensureStagingDir();
+
+      // MT-2 fail-closed RLS: without org context every RLS read below
+      // returns 0 rows. Scope the canonical + audit reads to the RESOLVED org.
+      await setOrgCtx(client, String(orgIdNum));
 
       // ── Build export bundle ──────────────────────────────────────────────
       const exportData: Record<string, unknown[]> = {};
@@ -189,6 +218,11 @@ exportDeleteRoutes.post(
 
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
+      // export_delete_tokens' RLS WITH CHECK compares its TEXT tenant-UUID
+      // org_id against the GUC — flip context to the tenant UUID for the
+      // token INSERT only.
+      await setOrgCtx(client, tenantUuid);
+
       const tokenRes = await client.query(
         `INSERT INTO export_delete_tokens
            (token_hash, org_id, actor_oid, export_path, expires_at)
@@ -242,8 +276,9 @@ exportDeleteRoutes.post(
       });
     } catch (err: any) {
       console.error("[export-delete/request] error:", err);
-      return res.status(500).json({ error: err.message });
+      return res.status(err.status ?? 500).json({ error: err.message });
     } finally {
+      await resetOrgCtx(client);
       client.release();
     }
   },
@@ -260,8 +295,24 @@ exportDeleteRoutes.get(
     const tenantUuid = reqTenantUuid(req);  // compare against export_delete_tokens.org_id (TEXT)
     const { token_id } = req.params;
 
+    // FAIL-CLOSED gate (ISSUE-013): an unrecognized tenant is refused before
+    // any token row is read. The resolved numeric id is not needed for the
+    // statements below (token RLS keys on the tenant UUID), but the positive
+    // resolution IS the authorization that this tenant exists.
     try {
-      const tokenRes = await pool.query(
+      await reqOrgId(req);
+    } catch (err: any) {
+      console.error("[export-delete/download] org resolution refused:", err.message);
+      return res.status(err.status ?? 500).json({ error: err.message });
+    }
+
+    const client = await pool.connect();
+    try {
+      // Token RLS compares the TEXT tenant-UUID org_id against the GUC — a
+      // bare read returns 0 rows under fail-closed RLS (MT-2).
+      await setOrgCtx(client, tenantUuid);
+
+      const tokenRes = await client.query(
         "SELECT export_path, org_id FROM export_delete_tokens WHERE id = $1",
         [token_id],
       );
@@ -288,7 +339,10 @@ exportDeleteRoutes.get(
       fs.createReadStream(export_path).pipe(res);
     } catch (err: any) {
       console.error("[export-delete/download] error:", err);
-      return res.status(500).json({ error: err.message });
+      return res.status(err.status ?? 500).json({ error: err.message });
+    } finally {
+      await resetOrgCtx(client);
+      client.release();
     }
   },
 );
@@ -312,7 +366,17 @@ exportDeleteRoutes.post(
   async (req: Request, res: Response) => {
     const actorOid = (req as any).user?.oid ?? "unknown";
     const tenantUuid = reqTenantUuid(req);  // for cross-org check vs export_delete_tokens.org_id (TEXT)
-    const orgIdNum = await reqOrgId(req);   // numeric, for audit + data ops
+
+    // FAIL-CLOSED resolution (ISSUE-013): tenant UUID → numeric
+    // organizations.id, refused (403) on no match — never a default org. An
+    // export-delete for an unrecognized tenant must not touch a single row.
+    let orgIdNum: number;
+    try {
+      orgIdNum = await reqOrgId(req);
+    } catch (err: any) {
+      console.error("[export-delete/execute] org resolution refused:", err.message);
+      return res.status(err.status ?? 500).json({ error: err.message });
+    }
 
     const { confirmation_token } = req.body ?? {};
     if (!confirmation_token || typeof confirmation_token !== "string") {
@@ -327,6 +391,10 @@ exportDeleteRoutes.post(
     const client = await pool.connect();
     try {
       // ── Token lookup ─────────────────────────────────────────────────────
+      // Token RLS keys on the TEXT tenant-UUID org_id (ISSUE-052); under
+      // fail-closed RLS the lookup returns 0 rows without this context.
+      await setOrgCtx(client, tenantUuid);
+
       const tokenRes = await client.query(
         `SELECT id, org_id, expires_at, consumed_at
          FROM export_delete_tokens
@@ -369,6 +437,13 @@ exportDeleteRoutes.post(
       await client.query("BEGIN");
       try {
         const deletionSummary: Record<string, number> = {};
+
+        // Canonical tables + audit_log scope on the NUMERIC org id — flip the
+        // context from the tenant UUID (token statements) to the resolved id
+        // for the whole delete sequence. Scoping every DELETE below by the
+        // RESOLVED org (both in SQL and in RLS) is what guarantees an org-1
+        // execute can never touch another org's rows.
+        await setOrgCtx(client, String(orgIdNum));
 
         // STEP a — Delete canonical rows (child tables before parents).
 
@@ -447,11 +522,14 @@ exportDeleteRoutes.post(
         );
         deletionSummary.locations = locDel.rowCount ?? 0;
 
-        // STEP b — Mark token consumed.
+        // STEP b — Mark token consumed. Token RLS keys on the tenant UUID —
+        // flip context for this statement, then back for the audit insert.
+        await setOrgCtx(client, tenantUuid);
         await client.query(
           "UPDATE export_delete_tokens SET consumed_at = NOW() WHERE id = $1",
           [tokenRow.id],
         );
+        await setOrgCtx(client, String(orgIdNum));
 
         const executedAt = new Date().toISOString();
 
@@ -509,8 +587,9 @@ exportDeleteRoutes.post(
       }
     } catch (err: any) {
       console.error("[export-delete/execute] error:", err);
-      return res.status(500).json({ error: err.message });
+      return res.status(err.status ?? 500).json({ error: err.message });
     } finally {
+      await resetOrgCtx(client);
       client.release();
     }
   },
