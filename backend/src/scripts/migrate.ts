@@ -48,6 +48,16 @@ async function main() {
   await client.connect();
 
   try {
+    // NI-3: expose the dev-only mcp_readonly login secret to SQL migrations as a
+    // session GUC (plain-SQL migrations cannot read process.env). Parameterized,
+    // so the secret never appears in SQL text. Absent env var → empty GUC → the
+    // env-gated LOGIN migration takes its NOLOGIN (prod) path. See
+    // migrations/20260701_ni3_mcp_readonly_login_env_gated.sql for the gate.
+    await client.query(
+      "SELECT set_config('app.mcp_readonly_password', $1, false)",
+      [process.env.MCP_READONLY_PASSWORD || ""]
+    );
+
     await client.query(CREATE_TRACKING_TABLE);
 
     const files = fs
