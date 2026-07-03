@@ -48,8 +48,17 @@ export async function rebuildStopRiskSnapshot(pool: Pool, orgId: number | string
         await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(orgId)]);
         await client.query("BEGIN");
 
-        // 1. Clear existing snapshot
-        await client.query("TRUNCATE TABLE stop_risk_snapshot");
+        // 1. Clear the existing snapshot FOR THIS ORG (ISSUE-057 finding).
+        //    This was `TRUNCATE TABLE stop_risk_snapshot`, which broke two ways
+        //    once the hardening landed: (a) TRUNCATE needs the TRUNCATE
+        //    privilege/ownership — the app role lost it when the dev rebuild
+        //    moved ownership to fieldpro_admin (it only ever worked via the
+        //    app role owning the table); (b) TRUNCATE is not subject to RLS,
+        //    so an org-scoped rebuild would have destroyed EVERY org's
+        //    snapshot rows — cross-tenant data destruction. DELETE is
+        //    RLS-scoped to the session org set above and uses the app role's
+        //    ordinary DELETE grant: strictly tighter, no privilege widening.
+        await client.query("DELETE FROM stop_risk_snapshot");
 
         // 2. Recompute and Insert
         //

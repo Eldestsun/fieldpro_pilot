@@ -1,4 +1,5 @@
 import { pool, test, assert, assertEqual } from '../setup';
+import { withOrgContext } from "../../src/db";
 import { createDevAuthBypass } from '../../src/middleware/devAuthBypass';
 import { requireAnyRole } from '../../src/authz';
 
@@ -216,13 +217,16 @@ test('devAuthBypass: audit_log entry written for every bypass use', async () => 
   // Fire-and-forget audit write — give it 300 ms to land on the local DB
   await sleep(300);
 
-  const result = await pool.query(
-    `SELECT action, detail
-     FROM audit_log
-     WHERE actor_oid = $1 AND action = 'auth.dev_bypass'
-     ORDER BY occurred_at DESC
-     LIMIT 1`,
-    [uniqueOid]
+  // ISSUE-057 (bucket B): audit_log is fail-closed — read with org context.
+  const result = await withOrgContext(1, (c) =>
+    c.query(
+      `SELECT action, detail
+       FROM audit_log
+       WHERE actor_oid = $1 AND action = 'auth.dev_bypass'
+       ORDER BY occurred_at DESC
+       LIMIT 1`,
+      [uniqueOid]
+    )
   );
 
   assertEqual(result.rowCount, 1, 'exactly one audit_log row must be written');

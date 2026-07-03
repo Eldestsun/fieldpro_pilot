@@ -156,6 +156,26 @@ test("org gate: upsertIdentity still writes for a resolvable tenant (fix targets
   }
 });
 
+test("org gate: the org-scoped scripts refuse to run without an explicit org (riskMap + EAM bridge)", async () => {
+  // ISSUE-057: both ops scripts read/write forced-RLS tables and previously ran
+  // context-less (silent empty output under fail-closed RLS). Their required-org
+  // guards are the fix — pin them so the hole cannot silently reopen.
+  const { rebuildStopRiskSnapshot } = await import("../../src/intelligence/riskMapService");
+  const { populate } = await import("../../src/scripts/populateEamBridge");
+  for (const [name, call] of [
+    ["rebuildStopRiskSnapshot", () => rebuildStopRiskSnapshot(pool, "" as any)],
+    ["populate (EAM bridge)", () => populate("" as any)],
+  ] as const) {
+    let threw = false;
+    try {
+      await call();
+    } catch (err: any) {
+      threw = /orgId is required/.test(err.message);
+    }
+    assert(threw, `ISSUE-057 REGRESSION: ${name} ran WITHOUT an explicit org — the fail-closed required-org guard is gone`);
+  }
+});
+
 // ── (b) PATTERN-001: forced-RLS reads on a bare connection fail CLOSED ──────
 
 test("RLS gate: core.locations read with NO org context returns 0 rows — fail-closed, proven against a real row", async () => {

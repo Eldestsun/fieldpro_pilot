@@ -6,9 +6,26 @@ import * as http from "http";
 const TEST_ORG_ID = 1; // bigint org_id (Phase 3: audit_log.org_id uuid → bigint)
 const TEST_ACTOR_OID = "test-audit-oid-s1-1";
 
+// MT-2 (ISSUE-057 seed repair): audit_log is fail-closed — a bare connection
+// reads 0 rows, so every verification read below runs with org context set,
+// exactly as the app does. The append-only assertions get STRONGER for it:
+// with context set, a blocked UPDATE/DELETE proves the absence of an
+// UPDATE/DELETE policy (true append-only), not merely row invisibility.
+async function auditCtx(client: import("pg").PoolClient, orgId: number): Promise<void> {
+  await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(orgId)]);
+}
+
+async function releaseWithReset(client: import("pg").PoolClient): Promise<void> {
+  try {
+    await client.query(`SELECT set_config('app.current_org_id', '', false)`);
+  } catch { /* best-effort */ }
+  client.release();
+}
+
 test("audit_log: writeAuditLog inserts a row readable by the app role", async () => {
   const client = await pool.connect();
   try {
+    await auditCtx(client, TEST_ORG_ID);
     await writeAuditLog({
       actor_oid: TEST_ACTOR_OID,
       org_id: TEST_ORG_ID,
@@ -37,7 +54,7 @@ test("audit_log: writeAuditLog inserts a row readable by the app role", async ()
     assert(row.detail?.test === true, "detail JSONB readable");
     assertEqual(row.ip_address, "127.0.0.1", "ip_address matches");
   } finally {
-    client.release();
+    await releaseWithReset(client);
   }
 });
 
@@ -48,6 +65,7 @@ test("audit_log: writeAuditLog inserts a row readable by the app role", async ()
 test("audit_log: UPDATE is blocked by RLS — row survives unchanged", async () => {
   const client = await pool.connect();
   try {
+    await auditCtx(client, TEST_ORG_ID);
     await writeAuditLog({
       actor_oid: TEST_ACTOR_OID,
       org_id: TEST_ORG_ID,
@@ -72,13 +90,14 @@ test("audit_log: UPDATE is blocked by RLS — row survives unchanged", async () 
     assert(checkRes.rowCount! > 0, "original row still exists after blocked UPDATE");
     assertEqual(checkRes.rows[0].action, "admin.config_change", "action value is unchanged");
   } finally {
-    client.release();
+    await releaseWithReset(client);
   }
 });
 
 test("audit_log: DELETE is blocked by RLS — row survives", async () => {
   const client = await pool.connect();
   try {
+    await auditCtx(client, TEST_ORG_ID);
     await writeAuditLog({
       actor_oid: TEST_ACTOR_OID,
       org_id: TEST_ORG_ID,
@@ -109,7 +128,7 @@ test("audit_log: DELETE is blocked by RLS — row survives", async () => {
     );
     assertEqual(afterRes.rowCount, 1, "row still exists after blocked DELETE");
   } finally {
-    client.release();
+    await releaseWithReset(client);
   }
 });
 
@@ -118,7 +137,20 @@ test("audit_log: DELETE is blocked by RLS — row survives", async () => {
 const S13_ORG_ID = 99; // bigint org_id for S1-3 isolation tests
 const S13_ACTOR = "test-s13-query-oid";
 
+// ISSUE-057 (bucket A): audit_log now carries an FK to organizations(id)
+// (ISSUE-053c) — the S1-3 isolation orgs must exist as real rows before audit
+// rows can reference them. Idempotent; organizations has no RLS.
+async function ensureS13Orgs(): Promise<void> {
+  await pool.query(
+    `INSERT INTO organizations (id, name, slug) VALUES
+       (99, 's1-3-test-org-99', 's1-3-test-org-99'),
+       (98, 's1-3-test-org-98', 's1-3-test-org-98')
+     ON CONFLICT (id) DO NOTHING`,
+  );
+}
+
 test("audit_log query: S1-3 date range and org filtering returns correct entries", async () => {
+  await ensureS13Orgs();
   // Insert entries for the test org and one for a different org to confirm isolation.
   await writeAuditLog({ actor_oid: S13_ACTOR, org_id: S13_ORG_ID, action: "auth.login",       ip_address: "10.0.0.1" });
   await writeAuditLog({ actor_oid: S13_ACTOR, org_id: S13_ORG_ID, action: "admin.stop_edit",  ip_address: "10.0.0.2" });
@@ -155,6 +187,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 test("audit_log query: S1-3 action filter narrows results", async () => {
+  await ensureS13Orgs();
   const fromDate = new Date(Date.now() - 60 * 1000);
   const toDate   = new Date(Date.now() + 60 * 1000);
 
@@ -196,10 +229,12 @@ test("audit_log meta-trigger: JSON read writes entry with correct shape", async 
     },
   });
 
-  const res = await pool.query(
-    `SELECT action, resource_type, resource_id, detail
-     FROM audit_log WHERE actor_oid = $1 ORDER BY occurred_at DESC LIMIT 1`,
-    [actor],
+  const res = await withOrgContext(META_ORG_ID, (client) =>
+    client.query(
+      `SELECT action, resource_type, resource_id, detail
+       FROM audit_log WHERE actor_oid = $1 ORDER BY occurred_at DESC LIMIT 1`,
+      [actor],
+    ),
   );
   assertEqual(res.rowCount, 1, "exactly one row written");
   const row = res.rows[0];
@@ -230,10 +265,12 @@ test("audit_log meta-trigger: CSV read writes entry with correct shape", async (
     },
   });
 
-  const res = await pool.query(
-    `SELECT action, resource_type, resource_id, detail
-     FROM audit_log WHERE actor_oid = $1 ORDER BY occurred_at DESC LIMIT 1`,
-    [actor],
+  const res = await withOrgContext(META_ORG_ID, (client) =>
+    client.query(
+      `SELECT action, resource_type, resource_id, detail
+       FROM audit_log WHERE actor_oid = $1 ORDER BY occurred_at DESC LIMIT 1`,
+      [actor],
+    ),
   );
   assertEqual(res.rowCount, 1, "exactly one row written");
   const row = res.rows[0];
@@ -278,10 +315,12 @@ test("audit_log meta-trigger: failed request (invalid date) does not write entry
   // Allow time for any fire-and-forget write to land (proves none was fired).
   await sleep(300);
 
-  const check = await pool.query(
-    `SELECT COUNT(*)::int AS ct FROM audit_log
-     WHERE actor_oid = $1 AND action = 'admin.audit_log_read'`,
-    [marker],
+  const check = await withOrgContext(META_ORG_ID, (client) =>
+    client.query(
+      `SELECT COUNT(*)::int AS ct FROM audit_log
+       WHERE actor_oid = $1 AND action = 'admin.audit_log_read'`,
+      [marker],
+    ),
   );
   assertEqual(check.rows[0].ct, 0, "no audit_log_read entry written for a failed request");
 

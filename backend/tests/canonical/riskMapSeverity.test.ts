@@ -87,7 +87,7 @@ test("riskMap CANON-NORM-3: safety_score reads the REAL norm_severity magnitude,
     assertEqual(seeded.rows[0].norm_severity, 3, "precondition: seeded hazard has norm_severity = 3");
 
     // --- Rebuild with the REAL magnitude present ---
-    await rebuildStopRiskSnapshot(pool);
+    await rebuildStopRiskSnapshot(pool, FIXTURE_ORG_ID);
     const hi = await readSnapshot(client, FIXTURE_STOP_ID);
     assert(hi != null, "base-eligible stop appears in the snapshot");
     assertEqual(
@@ -104,7 +104,7 @@ test("riskMap CANON-NORM-3: safety_score reads the REAL norm_severity magnitude,
         WHERE visit_id = $1 AND observation_type = 'biohazard_present'`,
       [visitId]
     );
-    await rebuildStopRiskSnapshot(pool);
+    await rebuildStopRiskSnapshot(pool, FIXTURE_ORG_ID);
     const nul = await readSnapshot(client, FIXTURE_STOP_ID);
     assert(nul != null, "stop still in the snapshot with a NULL-magnitude hazard");
     assertEqual(
