@@ -76,10 +76,14 @@ function auditWarn(event: string, details: Record<string, unknown>) {
   console.warn(`[AUTHZ] ${event}`, { ...details, ts: new Date().toISOString() });
 }
 
-// Non-blocking identity cache upsert
-function upsertIdentity(user: JwtPayload, roles: string[]) {
+// Non-blocking identity cache upsert.
+// Exported and promise-returning ONLY so the org-fail-closed gate test can
+// await and assert on it — the sole caller (requireAuth) still ignores the
+// result, the internal catch is retained (the promise never rejects), and the
+// fire-and-forget behavior at the call site is unchanged.
+export function upsertIdentity(user: JwtPayload, roles: string[]): Promise<void> {
   // Fire and forget - do not block the request
-  (async () => {
+  return (async () => {
     try {
       const oid = user.oid;
       if (!oid) return;
@@ -89,20 +93,34 @@ function upsertIdentity(user: JwtPayload, roles: string[]) {
       const lastSeenRole = roles.length > 0 ? roles[0] : null;
       const tenantUuid = (user as any).tid ?? null;
 
-      // Resolve numeric org_id from tenant UUID so RLS allows the write.
-      // Falls back to the first org (by id) for single-tenant pilot deployments
-      // where organizations.tenant_uuid is not yet populated.
+      // FAIL CLOSED (ISSUE-013 pattern; scoped authz unfreeze, 2026-07-03):
+      // resolve ONLY by a tenant_uuid match. The old `UNION ALL … ORDER BY id
+      // LIMIT 1` fallback wrote unmatched callers' identity rows into the
+      // lowest-id org's identity_directory — cross-org WORKER-IDENTITY
+      // contamination the moment a second org exists. An unresolvable tenant
+      // now SKIPS the cache write with a structured warning (never a guessed
+      // org): the auth request itself proceeds — this cache is not
+      // authorization; per-request org scoping is separately fail-closed via
+      // resolveNumericOrgId — and the misconfiguration is visible in logs,
+      // never silent. Mirrors resolveNumericOrgId / writeAuditLog.
+      // (organizations has no RLS, so the bare lookup is correct here.)
+      if (tenantUuid == null) {
+        auditWarn("upsertIdentity_skipped_no_tid", {
+          oid,
+          reason: "token carries no tenant id (tid) — identity cache write refused (fail-closed)",
+        });
+        return;
+      }
       const orgRes = await pool.query(
-        `SELECT id FROM organizations
-         WHERE tenant_uuid = $1
-         UNION ALL
-         SELECT id FROM organizations
-         ORDER BY id
-         LIMIT 1`,
+        `SELECT id FROM organizations WHERE tenant_uuid = $1`,
         [tenantUuid],
       );
       if (!orgRes.rows[0]) {
-        console.warn("[AUTHZ] upsertIdentity: no organization found, skipping");
+        auditWarn("upsertIdentity_skipped_unknown_tenant", {
+          oid,
+          tenantUuid,
+          reason: "no organization provisioned for tenant — identity cache write refused (fail-closed, never defaults to org 1)",
+        });
         return;
       }
       const orgId = orgRes.rows[0].id;

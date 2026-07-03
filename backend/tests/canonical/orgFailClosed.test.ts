@@ -33,6 +33,7 @@ import type { PoolClient } from "pg";
 import { pool, test, assert, assertEqual } from "../setup";
 import { resolveNumericOrgId, OrgResolutionError } from "../../src/middleware/resolveOrgId";
 import { writeAuditLog } from "../../src/middleware/auditLog";
+import { upsertIdentity } from "../../src/authz";
 
 const BOGUS_TID = "ffffffff-dead-beef-0000-000000000000"; // matches no organizations.tenant_uuid
 const PROBE_OID = "org-failclosed-gate-probe";
@@ -109,6 +110,50 @@ test("org gate: writeAuditLog refuses an unmatched tenant string — the first-o
     0,
     "no audit row may land in org 1 for the refused write (cross-org audit contamination)",
   );
+});
+
+test("org gate: upsertIdentity refuses an unmatched tenant — no fallback-org identity_directory row (the authz twin)", async () => {
+  const bogusOid = "org-gate-authz-twin-probe";
+  // Fire the real identity-cache write path with a tenant matching no org.
+  await upsertIdentity(
+    { oid: bogusOid, tid: BOGUS_TID, name: "Authz Twin Probe" } as any,
+    ["Specialist"],
+  );
+  const check = await withCtx("1", (c) =>
+    c.query(`SELECT count(*)::int AS n FROM identity_directory WHERE oid = $1`, [bogusOid]),
+  );
+  assertEqual(
+    check.rows[0].n,
+    0,
+    `ISSUE-013 REGRESSION (authz twin): upsertIdentity wrote an identity_directory row ` +
+      `for an unmatched tenant ('${BOGUS_TID}') into org 1 — cross-org WORKER-IDENTITY ` +
+      `contamination; the first-org fallback is back`,
+  );
+});
+
+test("org gate: upsertIdentity still writes for a resolvable tenant (fix targets the fallback, not the cache)", async () => {
+  const probeOid = "org-gate-authz-legit-probe";
+  // organizations has no RLS; org 1's tenant_uuid is seeded by 20260627_issue013.
+  const t = await pool.query(`SELECT tenant_uuid FROM organizations WHERE id = 1`);
+  const tenantUuid = t.rows[0]?.tenant_uuid;
+  assert(tenantUuid, "org 1 must carry a tenant_uuid (ISSUE-013 seed) for this probe");
+  try {
+    await upsertIdentity(
+      { oid: probeOid, tid: tenantUuid, name: "Legit Probe", preferred_username: "gate@probe" } as any,
+      ["Specialist"],
+    );
+    const check = await withCtx("1", (c) =>
+      c.query(
+        `SELECT count(*)::int AS n FROM identity_directory WHERE oid = $1 AND org_id = 1`,
+        [probeOid],
+      ),
+    );
+    assertEqual(check.rows[0].n, 1, "a resolvable tenant's identity row upserts into ITS org");
+  } finally {
+    await withCtx("1", (c) =>
+      c.query(`DELETE FROM identity_directory WHERE oid = $1`, [probeOid]),
+    );
+  }
 });
 
 // ── (b) PATTERN-001: forced-RLS reads on a bare connection fail CLOSED ──────
