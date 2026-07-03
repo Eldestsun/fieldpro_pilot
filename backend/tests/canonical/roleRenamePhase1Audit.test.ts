@@ -4,8 +4,8 @@ import {
   assert,
   assertEqual,
   createRouteRunFixture,
-  cleanupFixture,
   FIXTURE_ORG_ID,
+  releaseFixture,
 } from "../setup";
 import * as http from "http";
 
@@ -72,8 +72,11 @@ test("role-rename Phase 1 audit: Dispatch token GETs /lead/route-runs/:id → 20
     assert(res.body?.ok === true, "response body must be { ok: true, route_run: ... }");
     assertEqual(Number(res.body?.route_run?.id), fixture.routeRunId, "returned route_run.id matches fixture");
   } finally {
-    if (fixture) await cleanupFixture(client, fixture);
-    client.release();
+    if (fixture) {
+      await releaseFixture(client, fixture); // cleanup + guaranteed release
+    } else {
+      client.release(); // fixture setup threw — the client must still go back
+    }
     await new Promise<void>((resolve) => server.close(resolve));
   }
 });

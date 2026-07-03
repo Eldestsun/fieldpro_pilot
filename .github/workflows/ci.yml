@@ -9,6 +9,10 @@ on:
 jobs:
   test-backend:
     runs-on: ubuntu-latest
+    # A healthy full run (migrate + seed + 153 tests) completes in well under
+    # 10 minutes; a pool-exhaustion hang previously wedged the job for 27+.
+    # Bound it so any future hang fails fast with a legible "timed out" signal.
+    timeout-minutes: 12
     services:
       postgres:
         image: postgres:14

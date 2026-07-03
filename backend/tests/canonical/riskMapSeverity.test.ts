@@ -3,13 +3,13 @@ import {
   test,
   assert,
   assertEqual,
-  createRouteRunFixture,
-  cleanupFixture,
   FIXTURE_ACTOR_OID,
   FIXTURE_ORG_ID,
   FIXTURE_LOCATION_ID,
   FIXTURE_ASSET_ID,
   FIXTURE_STOP_ID,
+  acquireRouteRunFixture,
+  releaseFixture,
 } from "../setup";
 import { ensureVisitForRouteRunStop } from "../../src/domains/visit/visitService";
 import { emitObservationsForStop, StopUiPayload } from "../../src/domains/observation/observationService";
@@ -56,8 +56,7 @@ async function readSnapshot(client: any, stopId: string) {
 }
 
 test("riskMap CANON-NORM-3: safety_score reads the REAL norm_severity magnitude, and a NULL-magnitude hazard still counts", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     const visitId = await setupVisit(client, f.routeRunStopId);
 
@@ -126,7 +125,6 @@ test("riskMap CANON-NORM-3: safety_score reads the REAL norm_severity magnitude,
     assert(hiScore > nulScore, "magnitude-3 hazard scores higher than a presence-floor hazard");
     assertEqual(hiScore, 3 * nulScore, "safety_score scales linearly with the real magnitude (3x the presence floor)");
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });
