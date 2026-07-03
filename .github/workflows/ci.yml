@@ -108,6 +108,20 @@ jobs:
         env:
           DATABASE_URL: postgres://fieldpro_admin:ci_admin_pw@localhost:5432/fieldpro_test
 
+      # S1-13 env parity: the DEV/TEST cipher adapter (DevStaticKeyAdapter,
+      # src/lib/oidCipher.ts) requires DEV_OID_KEY — a 32-byte hex key (64 hex
+      # chars). Locally it lives in gitignored backend/.env; CI had nothing, so
+      # 24 tests (every ensureVisitForRouteRunStop path + oidCipher's own) died
+      # at env validation before touching a DB row. A THROWAWAY per-run key is
+      # correct: nothing encrypted with it outlives the ephemeral CI Postgres,
+      # and no test asserts a fixed ciphertext (the cipher tests generate and
+      # save/restore their own keys). This is NOT a production secret — prod
+      # selects the Azure Key Vault adapter (NODE_ENV=production, ISSUE-045
+      # track); the KV path is untouched. GITHUB_ENV propagates the var to all
+      # subsequent steps, including "Run tests".
+      - name: Generate throwaway DEV_OID_KEY (S1-13 dev cipher adapter)
+        run: echo "DEV_OID_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
       - name: Run tests
         run: pnpm test
         working-directory: backend
