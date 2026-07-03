@@ -12,9 +12,12 @@ async function ensureFixtureSeed(): Promise<void> {
     const r = await probe.query(`
       SELECT EXISTS (SELECT 1 FROM public.route_pools   WHERE id = 'TEST_POOL')
          AND EXISTS (SELECT 1 FROM public.assets        WHERE id = 2)
-         AND EXISTS (SELECT 1 FROM public.transit_stops WHERE stop_id = '31150')
+         AND EXISTS (SELECT 1 FROM public.transit_stops
+                     WHERE stop_id = '31150' AND pool_id IS NOT NULL AND has_trash)
          AND EXISTS (SELECT 1 FROM core.location_external_ids
                      WHERE source_system = 'metro_stop' AND external_id = '31150')
+         AND EXISTS (SELECT 1 FROM core.asset_locations
+                     WHERE asset_id = 2 AND location_id = 1 AND role = 'primary' AND active)
          AS ok`);
     present = r.rows[0].ok === true;
   } finally {

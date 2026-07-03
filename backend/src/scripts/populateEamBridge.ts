@@ -63,9 +63,19 @@ async function fetchStops(client: PoolClient, routeRunId: number): Promise<StopR
   return res.rows;
 }
 
-export async function populate(): Promise<{ inserted: number; skipped: number }> {
+// PATTERN-001 / ISSUE-013 (ISSUE-057 product fix, mirroring riskMapJob): this
+// script reads forced-RLS route_runs/route_run_stops and writes forced-RLS
+// eam_bridge_route_log — on a context-less connection under fail-closed RLS
+// (MT-2) it silently found 0 runs and populated NOTHING. orgId is a REQUIRED
+// explicit parameter; there is deliberately no default — an indeterminate org
+// must refuse, never assume.
+export async function populate(orgId: number | string): Promise<{ inserted: number; skipped: number }> {
+  if (orgId === null || orgId === undefined || String(orgId) === "") {
+    throw new Error("populate: orgId is required (fail-closed — never assumes a default org)");
+  }
   const client = await pool.connect();
   try {
+    await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(orgId)]);
     const watermark = await fetchWatermark(client);
     const runs = await fetchUnloggedRuns(client, watermark);
 
@@ -122,7 +132,7 @@ export async function populate(): Promise<{ inserted: number; skipped: number }>
     // immediately after populate() returns.
     await writeAuditLog({
       actor_oid: actorOid,
-      org_id: 1,
+      org_id: orgId,
       action: 'admin.eam_bridge_populate',
       detail: {
         rows_written: inserted,
@@ -133,15 +143,26 @@ export async function populate(): Promise<{ inserted: number; skipped: number }>
 
     return { inserted, skipped };
   } finally {
+    try {
+      await client.query(`SELECT set_config('app.current_org_id', '', false)`);
+    } catch { /* best-effort reset before returning to pool */ }
     client.release();
   }
 }
 
-// Run as standalone script: pnpm eam-bridge:populate
+// Run as standalone script: EAM_BRIDGE_ORG_ID=1 pnpm eam-bridge:populate
+//
+// EAM_BRIDGE_ORG_ID is REQUIRED (fail-closed, ISSUE-013 pattern — the
+// EAM-bridge analog of RISK_MAP_ORG_ID): the job never assumes an org.
 if (require.main === module) {
   (async () => {
+    const orgId = process.env.EAM_BRIDGE_ORG_ID;
+    if (!orgId) {
+      console.error("EAM_BRIDGE_ORG_ID is required — the EAM-bridge populate job never assumes a default org (fail-closed).");
+      process.exit(1);
+    }
     console.log("EAM bridge populate — starting");
-    const result = await populate();
+    const result = await populate(orgId);
     console.log(
       `Done. Inserted: ${result.inserted}, Skipped: ${result.skipped}`
     );

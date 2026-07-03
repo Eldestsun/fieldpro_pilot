@@ -32,6 +32,7 @@ test("eam_bridge_route_log: table has no worker identity columns", async () => {
       }`
     );
   } finally {
+    try { await client.query(`SELECT set_config('app.current_org_id', '', false)`); } catch { /* best-effort */ }
     client.release();
   }
 });
@@ -43,6 +44,10 @@ test("eam_bridge_route_log: populate inserts correct stop_count and exception_co
   let savedWatermark: Date | null = null;
 
   try {
+    // ISSUE-057 (bucket B): the route_runs pool-invariant trigger reads
+    // route_pools as invoker — under fail-closed RLS a context-less session
+    // cannot SEE TEST_POOL (it exists; this is visibility, not absence).
+    await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(FIXTURE_ORG_ID)]);
     // Save current watermark so we can restore after test.
     const wmRes = await client.query<{ watermark: Date }>(
       "SELECT watermark FROM eam_bridge_populate_state WHERE id = 1"
@@ -97,7 +102,7 @@ test("eam_bridge_route_log: populate inserts correct stop_count and exception_co
     );
 
     // Run the populate script.
-    const result = await populate();
+    const result = await populate(FIXTURE_ORG_ID);
     assert(
       result.inserted >= 1,
       `populate must insert at least 1 row, got ${result.inserted}`
@@ -156,6 +161,7 @@ test("eam_bridge_route_log: populate inserts correct stop_count and exception_co
         [savedWatermark]
       );
     }
+    try { await client.query(`SELECT set_config('app.current_org_id', '', false)`); } catch { /* best-effort */ }
     client.release();
   }
 });
@@ -166,6 +172,7 @@ test("eam_bridge_route_log: populate is idempotent (ON CONFLICT DO NOTHING)", as
   let savedWatermark: Date | null = null;
 
   try {
+    await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(FIXTURE_ORG_ID)]);
     const wmRes = await client.query<{ watermark: Date }>(
       "SELECT watermark FROM eam_bridge_populate_state WHERE id = 1"
     );
@@ -190,7 +197,7 @@ test("eam_bridge_route_log: populate is idempotent (ON CONFLICT DO NOTHING)", as
       `UPDATE eam_bridge_populate_state
        SET watermark = NOW() - INTERVAL '1 minute' WHERE id = 1`
     );
-    const first = await populate();
+    const first = await populate(FIXTURE_ORG_ID);
     assert(first.inserted >= 1, "first populate inserts a row");
 
     // Reset watermark to force the run back into scope.
@@ -200,7 +207,7 @@ test("eam_bridge_route_log: populate is idempotent (ON CONFLICT DO NOTHING)", as
     );
 
     // Second populate run — NOT EXISTS prevents re-insertion.
-    const second = await populate();
+    const second = await populate(FIXTURE_ORG_ID);
     assertEqual(
       second.inserted,
       0,
@@ -231,6 +238,7 @@ test("eam_bridge_route_log: populate is idempotent (ON CONFLICT DO NOTHING)", as
         [savedWatermark]
       );
     }
+    try { await client.query(`SELECT set_config('app.current_org_id', '', false)`); } catch { /* best-effort */ }
     client.release();
   }
 });

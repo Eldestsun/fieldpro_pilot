@@ -32,11 +32,16 @@ const TEST_SLUG_PREFIX = "test-load-rr-orgb";
 async function createOrgB(): Promise<number> {
   // Unique slug + tenant_uuid per test run to avoid collisions in repeated runs.
   const tag = `${TEST_SLUG_PREFIX}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  // ISSUE-057: other tests seed organizations with EXPLICIT ids (98/99, 44, 7)
+  // which never advance the sequence — a nextval-based insert can collide, and
+  // healing the sequence needs an UPDATE privilege the app role rightly lacks.
+  // Use an explicit clock-derived id instead (unique per run, no sequence).
+  const explicitId = String(Date.now());
   const res = await pool.query<{ id: number }>(
-    `INSERT INTO organizations (name, slug, tenant_uuid)
-     VALUES ($1, $1, $2)
+    `INSERT INTO organizations (id, name, slug, tenant_uuid)
+     VALUES ($2, $1, $1, $3)
      RETURNING id`,
-    [tag, tag],
+    [tag, explicitId, tag],
   );
   return Number(res.rows[0].id);
 }
@@ -54,10 +59,12 @@ async function createOrgBRouteRunFixture(orgBId: number): Promise<{
   const stopId = `test-orgb-stop-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
   const client = await pool.connect();
   try {
-    // route_runs, route_run_stops, and transit_stops all have the Phase 1/2
-    // "unset = bypass" policy. Leaving app.current_org_id unset on this
-    // connection lets the migration-style writes through. We set org_id to
-    // orgBId on each row explicitly so they belong to org B.
+    // ISSUE-057 (bucket B): this fixture was written against the pre-MT-2
+    // fail-OPEN policies ("unset = bypass"). RLS is now fail-CLOSED — the
+    // writes must run WITH org B's context set, exactly as an org-B session
+    // would. The org_id column values below stay explicit and must agree with
+    // the session context (WITH CHECK enforces it).
+    await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(orgBId)]);
 
     // Seed a transit_stops row in org B so the loader's
     //   JOIN stops s ON s.stop_id = rrs.stop_id
@@ -94,12 +101,19 @@ async function createOrgBRouteRunFixture(orgBId: number): Promise<{
   }
 }
 
-async function cleanupOrgBRouteRun(routeRunId: number, stopId: string): Promise<void> {
+async function cleanupOrgBRouteRun(orgBId: number, routeRunId: number, stopId: string): Promise<void> {
   // route_runs CASCADEs to route_run_stops; transit_stops must be cleaned
   // up explicitly. Stop deletion follows route_run_stops removal because
-  // of the FK.
-  await pool.query(`DELETE FROM route_runs WHERE id = $1`, [routeRunId]);
-  await pool.query(`DELETE FROM transit_stops WHERE stop_id = $1`, [stopId]);
+  // of the FK. Fail-closed RLS: deletes need org B's context too.
+  const client = await pool.connect();
+  try {
+    await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(orgBId)]);
+    await client.query(`DELETE FROM route_runs WHERE id = $1`, [routeRunId]);
+    await client.query(`DELETE FROM transit_stops WHERE stop_id = $1`, [stopId]);
+  } finally {
+    try { await client.query(`SELECT set_config('app.current_org_id', '', false)`); } catch { /* best-effort */ }
+    client.release();
+  }
 }
 
 test("loadRouteRunById: cross-tenant request returns null (fail-closed)", async () => {
@@ -120,7 +134,7 @@ test("loadRouteRunById: cross-tenant request returns null (fail-closed)", async 
     assertEqual(Number(sameTenant!.id), routeRunId, "same-tenant load returns the correct route_run id");
   } finally {
     if (routeRunId !== null && stopId !== null) {
-      await cleanupOrgBRouteRun(routeRunId, stopId);
+      await cleanupOrgBRouteRun(orgBId, routeRunId, stopId);
     }
     await deleteOrgB(orgBId);
   }

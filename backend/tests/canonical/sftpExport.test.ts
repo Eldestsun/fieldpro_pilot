@@ -16,6 +16,7 @@ import * as crypto from "crypto";
 import * as zlib from "zlib";
 import { promisify } from "util";
 import { pool, test, assert, assertEqual } from "../setup";
+import { withOrgContext } from "../../src/db";
 import {
   findKnownHostKey,
   toCsv,
@@ -220,6 +221,14 @@ test("sftpExport: org with no tenant_uuid gets synthetic audit UUID", async () =
   const tmpDir = makeTmpDir();
   const client = await pool.connect();
   try {
+    // ISSUE-057 (bucket A): audit_log's org FK (ISSUE-053c) requires org 7 to
+    // exist as a real organizations row before the export audit row can
+    // reference it. Idempotent; organizations has no RLS.
+    await pool.query(
+      `INSERT INTO organizations (id, name, slug)
+       VALUES (7, 'sftp-test-org-7', 'sftp-test-org-7')
+       ON CONFLICT (id) DO NOTHING`,
+    );
     const org = makeOrgRow({ tenant_uuid: null, id: "7" });
 
     const files = await exportOrg(org, client, null, {
@@ -230,11 +239,13 @@ test("sftpExport: org with no tenant_uuid gets synthetic audit UUID", async () =
     assert(files.length > 0, "export produced files");
 
     // Verify audit_log entry was written with the org's numeric id.
-    const auditRes = await pool.query(
-      `SELECT detail FROM audit_log
-       WHERE actor_oid = 'sftp-export-system'
-         AND org_id = 7
-       ORDER BY occurred_at DESC LIMIT 1`,
+    const auditRes = await withOrgContext(7, (c) =>
+      c.query(
+        `SELECT detail FROM audit_log
+         WHERE actor_oid = 'sftp-export-system'
+           AND org_id = 7
+         ORDER BY occurred_at DESC LIMIT 1`,
+      ),
     );
     assert(
       auditRes.rowCount! > 0,
@@ -258,12 +269,14 @@ test("sftpExport: audit_log entry written after successful local export", async 
       timestamp: TIMESTAMP + "-auditcheck",
     });
 
-    const res = await pool.query(
-      `SELECT action, detail FROM audit_log
-       WHERE actor_oid = 'sftp-export-system'
-         AND org_id = 1
-         AND action = 'export.data_export'
-       ORDER BY occurred_at DESC LIMIT 1`,
+    const res = await withOrgContext(1, (c) =>
+      c.query(
+        `SELECT action, detail FROM audit_log
+         WHERE actor_oid = 'sftp-export-system'
+           AND org_id = 1
+           AND action = 'export.data_export'
+         ORDER BY occurred_at DESC LIMIT 1`,
+      ),
     );
 
     assert(res.rowCount! > 0, "audit_log row exists after export");
@@ -550,12 +563,15 @@ test("sftpExport: mock SFTP server receives expected files for org export", asyn
       );
 
       // Audit log entry with destination=sftp should be written.
-      const auditRes = await pool.query(
-        `SELECT detail FROM audit_log
-         WHERE actor_oid = 'sftp-export-system'
-           AND org_id = 1
-           AND action = 'export.data_export'
-         ORDER BY occurred_at DESC LIMIT 1`,
+      // ISSUE-057 (bucket B): fail-closed audit_log — read with org context.
+      const auditRes = await withOrgContext(1, (c) =>
+        c.query(
+          `SELECT detail FROM audit_log
+           WHERE actor_oid = 'sftp-export-system'
+             AND org_id = 1
+             AND action = 'export.data_export'
+           ORDER BY occurred_at DESC LIMIT 1`,
+        ),
       );
       assert(auditRes.rowCount! > 0, "audit_log entry written after SFTP upload");
       assert(

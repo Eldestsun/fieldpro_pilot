@@ -74,9 +74,16 @@ ON CONFLICT (id) DO NOTHING;
 --    write and populate both rows explicitly. CI runs the seed as the postgres
 --    container superuser, which can toggle triggers; this is a CI/test seed only.
 ALTER TABLE public.transit_stops DISABLE TRIGGER trg_sync_transit_stop_primary_asset;
-INSERT INTO public.transit_stops (stop_id, org_id, asset_id)
-VALUES ('31150', 1, 2)
-ON CONFLICT (stop_id) DO NOTHING;
+-- ISSUE-057: the stop must be BASE-ELIGIBLE for the risk-map rebuild
+-- (riskMapService eligibility: pool_id IS NOT NULL AND has_trash/compactor) —
+-- the CANON-NORM-3 test asserts the stop lands in stop_risk_snapshot.
+-- DO UPDATE (not DO NOTHING) so DBs seeded by the older row shape heal the
+-- two eligibility columns on re-run; asset_id is not touched, so the
+-- (disabled) sync trigger stays irrelevant.
+INSERT INTO public.transit_stops (stop_id, org_id, asset_id, pool_id, has_trash)
+VALUES ('31150', 1, 2, 'TEST_POOL', true)
+ON CONFLICT (stop_id) DO UPDATE
+  SET pool_id = EXCLUDED.pool_id, has_trash = EXCLUDED.has_trash;
 ALTER TABLE public.transit_stops ENABLE TRIGGER trg_sync_transit_stop_primary_asset;
 
 INSERT INTO public.transit_stop_assets (org_id, stop_id, asset_id, role, active)
@@ -88,6 +95,17 @@ ON CONFLICT (stop_id, asset_id, role) WHERE active = true DO NOTHING;
 INSERT INTO core.locations (id, org_id, location_type, label)
 VALUES (1, 1, 'transit_stop', '31150')
 ON CONFLICT (id) DO NOTHING;
+
+-- 7b. Canonical asset→location link (FORCE RLS) — the risk-map hazard/l3
+--     CTEs translate asset → stop via core.asset_locations (active, primary)
+--     → core.location_external_ids. Without this row the CANON-NORM-3 hazard
+--     magnitude never joins through (ISSUE-057). Guarded (no unique target).
+INSERT INTO core.asset_locations (org_id, asset_id, location_id, role, active)
+SELECT 1, 2, 1, 'primary', true
+WHERE NOT EXISTS (
+  SELECT 1 FROM core.asset_locations
+  WHERE asset_id = 2 AND location_id = 1 AND role = 'primary'
+);
 
 -- 8. Location external id (FORCE RLS) — the metro_stop mapping that
 --    core.v_locations_transit joins on (external_id = stop_id '31150').
