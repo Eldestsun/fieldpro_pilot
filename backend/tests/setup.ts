@@ -55,6 +55,43 @@ export async function createRouteRunFixture(client: PoolClient): Promise<RouteRu
 }
 
 /**
+ * THE canonical acquisition shape for fixture-backed tests — client checkout
+ * with a GUARANTEED release when fixture setup throws.
+ *
+ * The old two-line shape (`pool.connect()` then `createRouteRunFixture(client)`
+ * BEFORE the try) stranded the checked-out client whenever fixture setup threw
+ * (e.g. a missing seed row FK-failing the insert). pg's default pool is 10
+ * clients, so ten such failures exhausted the pool and every later
+ * `pool.connect()` waited forever — the mid-suite hang. Use this instead:
+ *
+ *   const { client, f } = await acquireRouteRunFixture();
+ *   try { ... } finally { await releaseFixture(client, f); }
+ */
+export async function acquireRouteRunFixture(): Promise<{ client: PoolClient; f: RouteRunFixture }> {
+  const client = await pool.connect();
+  try {
+    const f = await createRouteRunFixture(client);
+    return { client, f };
+  } catch (err) {
+    client.release();
+    throw err;
+  }
+}
+
+/**
+ * Counterpart of acquireRouteRunFixture: cleanup with a GUARANTEED release —
+ * a cleanupFixture throw (likely exactly when a test already failed mid-write)
+ * must not strand the client either.
+ */
+export async function releaseFixture(client: PoolClient, f: RouteRunFixture): Promise<void> {
+  try {
+    await cleanupFixture(client, f);
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Remove everything created by a fixture and any downstream test writes.
  * Order matters: child rows before parents. Most FKs cascade from core.visits
  * and route_runs, but we delete explicitly to be safe and resilient against

@@ -3,11 +3,11 @@ import {
   test,
   assert,
   assertEqual,
-  createRouteRunFixture,
-  cleanupFixture,
   deriveClientVisitIdLocal,
   FIXTURE_ACTOR_OID,
   FIXTURE_STOP_ID,
+  acquireRouteRunFixture,
+  releaseFixture,
 } from "../setup";
 import type { PoolClient } from "pg";
 import { completeStop } from "../../src/domains/routeRunStop/cleanLogService";
@@ -76,8 +76,7 @@ async function planAssignment(client: PoolClient, routeRunId: number): Promise<v
 }
 
 test("clean-logs canonical pivot: 5 booleans match written actions exactly (incl. false-by-absence), row count matches; clean_logs is no longer written", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client); // sets app.current_org_id, run_date = CURRENT_DATE
+  const { client, f } = await acquireRouteRunFixture(); // sets app.current_org_id, run_date = CURRENT_DATE
   try {
     await planAssignment(client, f.routeRunId);
 
@@ -177,8 +176,10 @@ test("clean-logs canonical pivot: 5 booleans match written actions exactly (incl
     // legacy/orphan row (visit_id FK is SET NULL, not cascaded, on visit delete) so
     // nothing pollutes the DB. The sibling trash_volume_logs DELETE was removed when
     // that table was physically dropped in 20260620_issue037_drop_trash_volume_logs.sql.
-    await client.query(`DELETE FROM clean_logs WHERE route_run_stop_id = $1`, [f.routeRunStopId]);
-    await cleanupFixture(client, f); // cascades visit → observations / effort_history
-    client.release();
+    try {
+      await client.query(`DELETE FROM clean_logs WHERE route_run_stop_id = $1`, [f.routeRunStopId]);
+    } finally {
+      await releaseFixture(client, f); // cascades visit → observations / effort_history
+    }
   }
 });

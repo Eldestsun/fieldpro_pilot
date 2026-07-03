@@ -7,6 +7,8 @@ import {
   cleanupFixture,
   deriveClientVisitIdLocal,
   FIXTURE_ACTOR_OID,
+  acquireRouteRunFixture,
+  releaseFixture,
 } from "../setup";
 import { ensureVisitForRouteRunStop } from "../../src/domains/visit/visitService";
 import { createStopPhotos } from "../../src/domains/routeRunStop/stopPhotosService";
@@ -14,8 +16,7 @@ import { createStopPhotos } from "../../src/domains/routeRunStop/stopPhotosServi
 // Tier 1 — Evidence done-criteria
 
 test("evidence: createStopPhotos writes one core.evidence row per photo", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     const visitId = await ensureVisitForRouteRunStop(client, {
       routeRunStopId: f.routeRunStopId,
@@ -44,8 +45,7 @@ test("evidence: createStopPhotos writes one core.evidence row per photo", async 
       assert(keys.includes(r.storage_key), `storage_key recorded: ${r.storage_key}`);
     }
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });
 
@@ -53,8 +53,7 @@ test("evidence (ISSUE-031 Stage 2): createStopPhotos no longer writes the stop_p
   // The public.stop_photos mirror INSERT was clipped. A photo capture must now
   // write ONLY canonical: zero stop_photos rows, one core.evidence row, and the
   // capture OID into core.evidence_actor_audit (never the adapter column).
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     const visitId = await ensureVisitForRouteRunStop(client, {
       routeRunStopId: f.routeRunStopId,
@@ -92,14 +91,12 @@ test("evidence (ISSUE-031 Stage 2): createStopPhotos no longer writes the stop_p
       "sidecar carries the real capture OID"
     );
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });
 
 test("evidence: createStopPhotos does NOT create a visit row when called before stop-start", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     // No ensureVisitForRouteRunStop call — simulating photo upload before stop-start.
     await createStopPhotos(client, {
@@ -123,8 +120,7 @@ test("evidence: createStopPhotos does NOT create a visit row when called before 
     );
     assertEqual(ev.rowCount, 0, "evidence skipped when no visit exists");
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });
 
@@ -135,16 +131,17 @@ test("evidence (Q-D): pool-handed path commits evidence + sidecar atomically (no
   // BEGIN/COMMIT ownership branch. Post-Stage-2 clip, the two canonical tables
   // (core.evidence + the sidecar) must land together; the stop_photos mirror is
   // no longer written.
-  const setup = await pool.connect();
-  const f = await createRouteRunFixture(setup);
+  const { client: setup, f } = await acquireRouteRunFixture();
   try {
     await ensureVisitForRouteRunStop(setup, {
       routeRunStopId: f.routeRunStopId,
       actorOid: FIXTURE_ACTOR_OID,
       visitType: "service",
     });
+  } finally {
     setup.release(); // release before handing the pool so the tx gets its own conn
-
+  }
+  try {
     const key = `tests/canonical/${f.routeRunStopId}-qd-commit.jpg`;
     await createStopPhotos(pool, {
       routeRunStopId: f.routeRunStopId,
@@ -192,14 +189,18 @@ test("evidence (Q-D): a mid-write failure rolls the whole unit back — no orpha
   // orphan identity-audit row — once the unit fails. (Pre-Stage-2 this injected on
   // the stop_photos mirror insert, which no longer exists; the evidence insert is
   // now the first canonical write per key.)
-  const setup = await pool.connect();
-  const f = await createRouteRunFixture(setup);
-  await ensureVisitForRouteRunStop(setup, {
-    routeRunStopId: f.routeRunStopId,
-    actorOid: FIXTURE_ACTOR_OID,
-    visitType: "service",
-  });
-  setup.release();
+  // Same acquire-guard shape as acquireRouteRunFixture: this setup block ran
+  // with NO try at all, so a fixture/visit throw stranded the `setup` client.
+  const { client: setup, f } = await acquireRouteRunFixture();
+  try {
+    await ensureVisitForRouteRunStop(setup, {
+      routeRunStopId: f.routeRunStopId,
+      actorOid: FIXTURE_ACTOR_OID,
+      visitType: "service",
+    });
+  } finally {
+    setup.release();
+  }
 
   const key1 = `tests/canonical/${f.routeRunStopId}-qd-rollback-1.jpg`;
   const key2 = `tests/canonical/${f.routeRunStopId}-qd-rollback-2.jpg`;
@@ -261,14 +262,12 @@ test("evidence (Q-D): a mid-write failure rolls the whole unit back — no orpha
     );
     assertEqual(aud.rowCount, 0, "no orphan identity-audit rows survive the rollback");
   } finally {
-    await cleanupFixture(verify, f);
-    verify.release();
+    await releaseFixture(verify, f);
   }
 });
 
 test("evidence: empty s3Keys list is a no-op", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     const visitId = await ensureVisitForRouteRunStop(client, {
       routeRunStopId: f.routeRunStopId,
@@ -286,7 +285,6 @@ test("evidence: empty s3Keys list is a no-op", async () => {
     );
     assertEqual(ev.rows[0].n, 0, "no canonical evidence rows written for empty list");
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });

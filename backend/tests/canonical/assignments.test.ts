@@ -3,14 +3,14 @@ import {
   test,
   assert,
   assertEqual,
-  createRouteRunFixture,
-  cleanupFixture,
   deriveClientVisitIdLocal,
   FIXTURE_ACTOR_OID,
   FIXTURE_ORG_ID,
   FIXTURE_ASSET_ID,
   FIXTURE_LOCATION_ID,
   FIXTURE_CREATED_BY_OID,
+  acquireRouteRunFixture,
+  releaseFixture,
 } from "../setup";
 import type { PoolClient } from "pg";
 import { ensureVisitForRouteRunStop } from "../../src/domains/visit/visitService";
@@ -74,8 +74,7 @@ async function planAssignments(
 }
 
 test("assignments: route creation writes one core.assignments row per stop", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     await planAssignments(client, f.routeRunId, FIXTURE_CREATED_BY_OID, new Date());
 
@@ -91,14 +90,12 @@ test("assignments: route creation writes one core.assignments row per stop", asy
     assertEqual(asgCount.rows[0].n, stopsCount.rows[0].n, "one assignment per stop");
     assert(asgCount.rows[0].n > 0, "at least one assignment written");
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });
 
 test("assignments: rows have correct type/status/source/location/asset/org", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     await planAssignments(client, f.routeRunId, FIXTURE_CREATED_BY_OID, new Date());
 
@@ -131,14 +128,12 @@ test("assignments: rows have correct type/status/source/location/asset/org", asy
     assertEqual(audit.rowCount, 1, "one assignment_actor_audit row");
     assertEqual(audit.rows[0].actor_ref, FIXTURE_CREATED_BY_OID, "actor_ref (creator identity in sidecar)");
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });
 
 test("assignments: ensureVisitForRouteRunStop writes assignment_id onto the visit", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     // Plant the assignment first (simulating a post-Tier-5 route).
     await planAssignments(client, f.routeRunId, FIXTURE_CREATED_BY_OID, new Date());
@@ -160,14 +155,12 @@ test("assignments: ensureVisitForRouteRunStop writes assignment_id onto the visi
     assert(row.rows[0].assignment_id !== null, "assignment_id non-null on post-Tier-5 route");
     assertEqual(row.rows[0].source_ref, String(f.routeRunId), "links to this route_run");
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });
 
 test("assignments: pre-Tier-5 route (no assignments) produces null assignment_id, no error", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     // Do NOT write assignment — simulates a pre-Tier-5 route.
     await ensureVisitForRouteRunStop(client, {
@@ -183,14 +176,12 @@ test("assignments: pre-Tier-5 route (no assignments) produces null assignment_id
     assertEqual(row.rowCount, 1, "visit was created");
     assertEqual(row.rows[0].assignment_id, null, "assignment_id is null");
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });
 
 test("assignments: re-running the assignment INSERT is idempotent (ON CONFLICT DO NOTHING)", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     const planDate = new Date();
     await planAssignments(client, f.routeRunId, FIXTURE_CREATED_BY_OID, planDate);
@@ -212,7 +203,6 @@ test("assignments: re-running the assignment INSERT is idempotent (ON CONFLICT D
     // routeRunService does, inside its single transaction).
     assert(after.rows[0].n >= before.rows[0].n, "second insert does not error");
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });

@@ -3,10 +3,10 @@ import {
   test,
   assert,
   assertEqual,
-  createRouteRunFixture,
-  cleanupFixture,
   deriveClientVisitIdLocal,
   FIXTURE_ACTOR_OID,
+  acquireRouteRunFixture,
+  releaseFixture,
 } from "../setup";
 import { completeStop } from "../../src/domains/routeRunStop/cleanLogService";
 import type { InfraIssueInput } from "../../src/domains/routeRunStop/infrastructureIssueService";
@@ -54,8 +54,7 @@ const EXPECTED_CANONICAL_TYPES = [
 ].sort();
 
 test("infra write-clip: completeStop writes 0 infrastructure_issues rows; all 8 infra *_present observations still emit canonically", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     // ── BEFORE: global mirror row count (RLS-free table; count is stable across the
     //    transaction except for any write completeStop itself would make).
@@ -115,7 +114,6 @@ test("infra write-clip: completeStop writes 0 infrastructure_issues rows; all 8 
       assert(!("needs_facilities" in p), `observation ${row.observation_type} must NOT carry needs_facilities`);
     }
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });

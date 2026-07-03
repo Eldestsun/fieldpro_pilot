@@ -2,13 +2,13 @@ import {
   pool,
   test,
   assertEqual,
-  createRouteRunFixture,
-  cleanupFixture,
   deriveClientVisitIdLocal,
   FIXTURE_ACTOR_OID,
   FIXTURE_ORG_ID,
   FIXTURE_LOCATION_ID,
   FIXTURE_ASSET_ID,
+  acquireRouteRunFixture,
+  releaseFixture,
 } from "../setup";
 import { ensureVisitForRouteRunStop } from "../../src/domains/visit/visitService";
 import { emitObservationsForStop } from "../../src/domains/observation/observationService";
@@ -24,8 +24,7 @@ async function setupVisit(client: any, routeRunStopId: number): Promise<number> 
 }
 
 test("observations: submit phase writes washed_can=true observation (action row, empty payload)", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     const visitId = await setupVisit(client, f.routeRunStopId);
     await emitObservationsForStop({
@@ -51,14 +50,12 @@ test("observations: submit phase writes washed_can=true observation (action row,
       "payload is empty (intervention identified by observation_type)"
     );
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });
 
 test("observations: submit phase does NOT write washed_can when false (no-manufactured-fact)", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     const visitId = await setupVisit(client, f.routeRunStopId);
     await emitObservationsForStop({
@@ -83,14 +80,12 @@ test("observations: submit phase does NOT write washed_can when false (no-manufa
       "no washed_can row when the act did not happen (canonical state layer §2 invariant #5)"
     );
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });
 
 test("observations: submit phase does NOT write washed_can when field is absent", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     const visitId = await setupVisit(client, f.routeRunStopId);
     await emitObservationsForStop({
@@ -111,14 +106,12 @@ test("observations: submit phase does NOT write washed_can when field is absent"
     );
     assertEqual(rows.rowCount, 0, "no washed_can observation when flag absent");
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });
 
 test("observations: write inside the visit transaction (atomic with stop completion)", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   let aborted = false;
   try {
     await client.query("BEGIN");
@@ -149,7 +142,6 @@ test("observations: write inside the visit transaction (atomic with stop complet
     assertEqual(v.rowCount, 0, "visit rolled back");
   } finally {
     if (!aborted) await client.query("ROLLBACK").catch(() => {});
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });

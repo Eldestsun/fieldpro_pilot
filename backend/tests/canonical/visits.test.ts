@@ -3,14 +3,14 @@ import {
   test,
   assert,
   assertEqual,
-  createRouteRunFixture,
-  cleanupFixture,
   deriveClientVisitIdLocal,
   FIXTURE_ACTOR_OID,
   FIXTURE_CREATED_BY_OID,
   FIXTURE_ORG_ID,
   FIXTURE_LOCATION_ID,
   FIXTURE_ASSET_ID,
+  acquireRouteRunFixture,
+  releaseFixture,
 } from "../setup";
 import {
   ensureVisitForRouteRunStop,
@@ -21,8 +21,7 @@ import {
 // Tier 1 — Visit lifecycle done-criteria
 
 test("visits: ensureVisitForRouteRunStop creates exactly one visit with started_at", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     const visitId = await ensureVisitForRouteRunStop(client, {
       routeRunStopId: f.routeRunStopId,
@@ -43,8 +42,7 @@ test("visits: ensureVisitForRouteRunStop creates exactly one visit with started_
     assertEqual(Number(rows.rows[0].location_id), FIXTURE_LOCATION_ID, "location");
     assertEqual(Number(rows.rows[0].org_id), FIXTURE_ORG_ID, "org");
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });
 
@@ -57,8 +55,7 @@ test("visits: deriveClientVisitId is deterministic (UUIDv5 idempotency contract)
 });
 
 test("visits: calling ensureVisitForRouteRunStop twice produces no duplicate", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     const id1 = await ensureVisitForRouteRunStop(client, {
       routeRunStopId: f.routeRunStopId,
@@ -78,14 +75,12 @@ test("visits: calling ensureVisitForRouteRunStop twice produces no duplicate", a
     );
     assertEqual(count.rows[0].n, 1, "no duplicate row");
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });
 
 test("visits: closeVisitForRouteRunStop writes outcome='completed' on complete", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     await ensureVisitForRouteRunStop(client, {
       routeRunStopId: f.routeRunStopId,
@@ -106,14 +101,12 @@ test("visits: closeVisitForRouteRunStop writes outcome='completed' on complete",
     assertEqual(row.rows[0].reason_code, null, "no reason_code on completion");
     assert(row.rows[0].ended_at !== null, "ended_at set");
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });
 
 test("visits: closeVisitForRouteRunStop writes outcome='skipped' + reason_code on skip", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     await ensureVisitForRouteRunStop(client, {
       routeRunStopId: f.routeRunStopId,
@@ -133,14 +126,12 @@ test("visits: closeVisitForRouteRunStop writes outcome='skipped' + reason_code o
     assertEqual(row.rows[0].outcome, "skipped", "outcome");
     assertEqual(row.rows[0].reason_code, "violence", "reason_code");
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });
 
 test("visits: closeVisitForRouteRunStop returns null when no open visit exists", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     const result = await closeVisitForRouteRunStop(client, {
       routeRunStopId: f.routeRunStopId,
@@ -148,8 +139,7 @@ test("visits: closeVisitForRouteRunStop returns null when no open visit exists",
     });
     assertEqual(result, null, "no visit → null, no error");
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });
 

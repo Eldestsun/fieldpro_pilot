@@ -3,12 +3,12 @@ import {
   test,
   assert,
   assertEqual,
-  createRouteRunFixture,
-  cleanupFixture,
   FIXTURE_ACTOR_OID,
   FIXTURE_ORG_ID,
   FIXTURE_LOCATION_ID,
   FIXTURE_ASSET_ID,
+  acquireRouteRunFixture,
+  releaseFixture,
 } from "../setup";
 import { ensureVisitForRouteRunStop } from "../../src/domains/visit/visitService";
 import { emitObservationsForStop, StopUiPayload } from "../../src/domains/observation/observationService";
@@ -49,8 +49,7 @@ async function readPresence(client: any, visitId: number, observationType: strin
 }
 
 test("hazard severity carry: payload severity 'high' -> norm_severity = 3 in core.observations", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     const visitId = await setupVisit(client, f.routeRunStopId);
 
@@ -82,14 +81,12 @@ test("hazard severity carry: payload severity 'high' -> norm_severity = 3 in cor
     // Legacy text severity column is preserved additively.
     assertEqual(row.severity, "high", "legacy severity text column unchanged ('high')");
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });
 
 test("hazard severity carry: worker reported NO severity -> norm_severity NULL (no manufactured magnitude)", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     const visitId = await setupVisit(client, f.routeRunStopId);
 
@@ -116,14 +113,12 @@ test("hazard severity carry: worker reported NO severity -> norm_severity NULL (
     assert(row.payload.severity === undefined, "no severity threaded into payload when worker gave none");
     assertEqual(row.norm_severity, null, "norm_severity NULL — canonical does not manufacture a magnitude (§4.4)");
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });
 
 test("hazard severity carry: numeric severity passes through unchanged (3 -> 3)", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     const visitId = await setupVisit(client, f.routeRunStopId);
 
@@ -147,7 +142,6 @@ test("hazard severity carry: numeric severity passes through unchanged (3 -> 3)"
     const row = await readPresence(client, visitId, "fire_present");
     assertEqual(row.norm_severity, 3, "numeric severity 3 carried into norm_severity unchanged");
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });

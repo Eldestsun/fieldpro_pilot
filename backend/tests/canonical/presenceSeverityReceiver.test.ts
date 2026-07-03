@@ -3,12 +3,12 @@ import {
   test,
   assert,
   assertEqual,
-  createRouteRunFixture,
-  cleanupFixture,
   FIXTURE_ACTOR_OID,
   FIXTURE_ORG_ID,
   FIXTURE_LOCATION_ID,
   FIXTURE_ASSET_ID,
+  acquireRouteRunFixture,
+  releaseFixture,
 } from "../setup";
 import { ensureVisitForRouteRunStop } from "../../src/domains/visit/visitService";
 import { loadRegistryRules, normalizeObservation } from "../../src/domains/observation/observationNormalizer";
@@ -60,8 +60,7 @@ test("presence severity receiver: registry rule carries the {field:severity} pas
 });
 
 test("presence severity receiver: payload WITH severity:3 -> norm_severity = 3 lands in core.observations", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     const visitId = await setupVisit(client, f.routeRunStopId);
 
@@ -102,14 +101,12 @@ test("presence severity receiver: payload WITH severity:3 -> norm_severity = 3 l
     );
     assertEqual(read.rows[0].norm_severity, 3, "norm_severity = 3 persisted in core.observations");
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });
 
 test("presence severity receiver: payload WITHOUT severity -> norm_severity IS NULL (not an error)", async () => {
-  const client = await pool.connect();
-  const f = await createRouteRunFixture(client);
+  const { client, f } = await acquireRouteRunFixture();
   try {
     const visitId = await setupVisit(client, f.routeRunStopId);
 
@@ -145,7 +142,6 @@ test("presence severity receiver: payload WITHOUT severity -> norm_severity IS N
     );
     assertEqual(read.rows[0].norm_severity, null, "norm_severity IS NULL persisted (no error)");
   } finally {
-    await cleanupFixture(client, f);
-    client.release();
+    await releaseFixture(client, f);
   }
 });

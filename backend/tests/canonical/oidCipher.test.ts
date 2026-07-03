@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { test, assert, assertEqual } from "../setup";
+import { test, assert, assertEqual, acquireRouteRunFixture, releaseFixture } from "../setup";
 import {
   encrypt,
   decrypt,
@@ -222,8 +222,7 @@ import { ensureVisitForRouteRunStop } from "../../src/domains/visit/visitService
 test(
   "oidCipher: ensureVisitForRouteRunStop writes actor_ref_ciphertext and _key_id to visit_actor_audit",
   withFreshDevAdapter(async () => {
-    const client = await pool.connect();
-    const f = await createRouteRunFixture(client);
+    const { client, f } = await acquireRouteRunFixture();
     try {
       await ensureVisitForRouteRunStop(client, {
         routeRunStopId: f.routeRunStopId,
@@ -258,8 +257,7 @@ test(
         "plaintext actor_ref lives in the no-grant sidecar post-extraction",
       );
     } finally {
-      await cleanupFixture(client, f);
-      client.release();
+      await releaseFixture(client, f);
     }
   }),
 );
