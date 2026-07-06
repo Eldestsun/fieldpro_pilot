@@ -251,10 +251,23 @@ test(
         "dev-static-v1",
         "key_id matches dev adapter",
       );
+      // ISSUE-058: actor_ref is now the non-identifying sentinel; the OID lives
+      // only in the ciphertext and round-trips through the audited decrypt path.
       assertEqual(
         row.rows[0].actor_ref,
+        "encrypted",
+        "actor_ref is the sentinel, not the OID (ISSUE-058)",
+      );
+      const recovered = await decrypt(
+        row.rows[0].actor_ref_ciphertext,
+        row.rows[0].actor_ref_key_id,
+        "test: visit sidecar roundtrip",
+        makeReq(),
+      );
+      assertEqual(
+        recovered,
         FIXTURE_ACTOR_OID,
-        "plaintext actor_ref lives in the no-grant sidecar post-extraction",
+        "decrypt(ciphertext) recovers the real actor OID from the no-grant sidecar",
       );
     } finally {
       await releaseFixture(client, f);

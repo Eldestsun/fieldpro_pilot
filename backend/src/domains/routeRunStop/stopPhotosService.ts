@@ -1,6 +1,7 @@
 
 import { Pool, PoolClient } from "pg";
 import { deriveClientVisitId } from "../../domains/visit/visitService";
+import { encrypt as encryptOid } from "../../lib/oidCipher";
 
 export interface StopPhoto {
     id: string;
@@ -59,6 +60,12 @@ export async function createStopPhotos(
 
         const clientVisitId = deriveClientVisitId(routeRunStopId);
 
+        // ISSUE-058: encrypt the captured-by OID once for the whole photo batch
+        // (same actor for every photo in this call). The sentinel 'encrypted' goes
+        // to actor_ref; the real OID lives only in actor_ref_ciphertext.
+        const { ciphertext: oidCiphertext, keyId: oidKeyId } =
+            await encryptOid(userOid, "evidence_capture");
+
         for (const key of s3Keys) {
             // Canonical evidence write — captured-by identity goes to the no-grant
             // sidecar core.evidence_actor_audit (§3.2), never onto core.evidence.
@@ -77,11 +84,15 @@ export async function createStopPhotos(
                     `[createStopPhotos] No visit found for routeRunStopId=${routeRunStopId} — evidence row skipped for key=${key}`
                 );
             } else {
+                // ISSUE-058: actor_ref holds the non-identifying sentinel; the OID
+                // lives only in actor_ref_ciphertext. Never write an identifying
+                // value here.
                 await client.query(
-                    `INSERT INTO core.evidence_actor_audit (evidence_id, org_id, actor_ref)
-                     VALUES ($1, $2, $3)
+                    `INSERT INTO core.evidence_actor_audit
+                       (evidence_id, org_id, actor_ref, actor_ref_ciphertext, actor_ref_key_id)
+                     VALUES ($1, $2, $3, $4, $5)
                      ON CONFLICT (evidence_id) DO NOTHING`,
-                    [evidenceRes.rows[0].id, evidenceRes.rows[0].org_id, userOid]
+                    [evidenceRes.rows[0].id, evidenceRes.rows[0].org_id, 'encrypted', oidCiphertext, oidKeyId]
                 );
             }
         }

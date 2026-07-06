@@ -14,6 +14,7 @@ import {
 } from "../setup";
 import type { PoolClient } from "pg";
 import { ensureVisitForRouteRunStop } from "../../src/domains/visit/visitService";
+import { encrypt as encryptOid, decrypt } from "../../src/lib/oidCipher";
 
 // Tier 5 — Assignment Layer done-criteria
 //
@@ -58,16 +59,21 @@ async function planAssignments(
   );
 
   if (assignRes.rows.length > 0) {
+    // ISSUE-058: mirrors the production write — actor_ref is the non-identifying
+    // sentinel; the real creator OID lives only in actor_ref_ciphertext.
+    const { ciphertext: oidCiphertext, keyId: oidKeyId } =
+      await encryptOid(createdByOid, "assignment_create");
     await client.query(
       `
-      INSERT INTO core.assignment_actor_audit (assignment_id, org_id, actor_ref)
-      SELECT UNNEST($1::bigint[]), UNNEST($2::bigint[]), $3
+      INSERT INTO core.assignment_actor_audit
+        (assignment_id, org_id, actor_ref, actor_ref_ciphertext, actor_ref_key_id)
+      SELECT UNNEST($1::bigint[]), UNNEST($2::bigint[]), $3, $4, $5
       ON CONFLICT (assignment_id) DO NOTHING
       `,
       [
         assignRes.rows.map((r) => r.id),
         assignRes.rows.map((r) => r.org_id),
-        createdByOid,
+        "encrypted", oidCiphertext, oidKeyId,
       ],
     );
   }
@@ -118,15 +124,25 @@ test("assignments: rows have correct type/status/source/location/asset/org", asy
 
     // Creator identity is no longer a column on core.assignments (§3.2 sidecar
     // extraction) — it lives in the no-grant sidecar core.assignment_actor_audit.
+    // ISSUE-058: actor_ref is the non-identifying sentinel; the real creator OID
+    // lives only in actor_ref_ciphertext and round-trips through decrypt.
     const audit = await client.query(
-      `SELECT aa.actor_ref
+      `SELECT aa.actor_ref, aa.actor_ref_ciphertext, aa.actor_ref_key_id
        FROM core.assignment_actor_audit aa
        JOIN core.assignments a ON a.id = aa.assignment_id
        WHERE a.source_system = 'route_runs' AND a.source_ref = $1::text`,
       [f.routeRunId]
     );
     assertEqual(audit.rowCount, 1, "one assignment_actor_audit row");
-    assertEqual(audit.rows[0].actor_ref, FIXTURE_CREATED_BY_OID, "actor_ref (creator identity in sidecar)");
+    assertEqual(audit.rows[0].actor_ref, "encrypted", "actor_ref is the sentinel, not the OID");
+    assert(audit.rows[0].actor_ref_ciphertext !== null, "actor_ref_ciphertext populated");
+    const recovered = await decrypt(
+      audit.rows[0].actor_ref_ciphertext,
+      audit.rows[0].actor_ref_key_id,
+      "test: assignment sidecar roundtrip",
+      { user: { oid: "test-oid-cipher-suite", tid: "00000000-0000-0000-0000-000000000099" } }
+    );
+    assertEqual(recovered, FIXTURE_CREATED_BY_OID, "decrypt(ciphertext) recovers the real creator OID");
   } finally {
     await releaseFixture(client, f);
   }
