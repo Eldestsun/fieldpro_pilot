@@ -80,12 +80,14 @@ no stop-level or visit-level operational records. A query against `audit_log`
 returns records of things administrators did — authenticated, assigned routes,
 changed configuration — not records of what field workers did at stops.
 
-**Worker OID references appear only in records of admin actions against
-assignments.** When an administrator reassigns or cancels a route assignment,
-the audit record captures who was previously assigned and who is now assigned.
-This describes an admin action (the reassignment), not a worker action (stopping
-at a location). The OID appears as metadata on an administrative event, not as
-a field performance datum.
+**Assignment events do not retain worker identity in the audit record.** When an
+administrator creates, reassigns, or cancels a route assignment, the audit log
+records that an assignment changed, which accountable administrator performed the
+change (`actor_oid`), which route was affected (`resource_id`), and when. It
+deliberately does not retain which worker was previously or newly assigned. The
+audit trail therefore cannot be used to reconstruct any individual worker's
+assignment history — the labor-safety guarantee holds at the audit layer by
+omission, not by policy.
 
 **Reconstructing a worker's stop history through the audit log is not
 architecturally possible.** Stop-level history lives in `stop_effort_history`
