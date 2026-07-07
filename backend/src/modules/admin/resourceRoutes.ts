@@ -1,6 +1,6 @@
 import { Router, Request } from "express";
 import { requireAuth, requireAnyRole } from "../../authz";
-import { pool, withOrgContext } from "../../db";
+import { withOrgContext } from "../../db";
 import { resolveNumericOrgId } from "../../middleware/resolveOrgId";
 
 export const resourceRoutes = Router();
@@ -139,19 +139,14 @@ resourceRoutes.get(
   requireAnyRole(["Dispatch", "Admin"]),
   async (req: Request, res) => {
     try {
-      const user = (req as any).user;
-      // dev bypass sets numeric org_id on req.user directly;
-      // real Entra path requires lookup by tid (tenant UUID)
-      const numericOrgId: number =
-        user?.org_id != null
-          ? Number(user.org_id)
-          : await pool
-              .query(
-                `SELECT id FROM organizations WHERE tenant_uuid = $1
-                 UNION ALL SELECT id FROM organizations ORDER BY id LIMIT 1`,
-                [user?.tid ?? null],
-              )
-              .then((r) => r.rows[0]?.id ?? 1);
+      // FAIL CLOSED (ISSUE-059 / ISSUE-013 pattern): resolve org ONLY via a
+      // tenant_uuid match (dev bypass short-circuits on req.user.org_id inside
+      // the helper). The old inline `UNION ALL ... ORDER BY id LIMIT 1 + ?? 1`
+      // fallback silently scoped every real-Entra caller to the lowest-id org
+      // (org 1) — a cross-tenant identity-directory read once a second org is
+      // provisioned. resolveNumericOrgId THROWS OrgResolutionError (403) on an
+      // indeterminate caller; never assume, default, or scope to org 1.
+      const numericOrgId = await resolveNumericOrgId(req);
 
       const query = `
         SELECT
@@ -170,8 +165,10 @@ resourceRoutes.get(
       return res.json({ ok: true, users: result.rows });
     } catch (err: any) {
       console.error("Error in GET /api/users:", err);
+      // Honor OrgResolutionError.status (403) so an indeterminate caller gets a
+      // clean deny (matches the endpoint's declared 403), not a masked 500.
       return res
-        .status(500)
+        .status(err.status ?? 500)
         .json({ error: err.message || "Internal server error" });
     }
   }
