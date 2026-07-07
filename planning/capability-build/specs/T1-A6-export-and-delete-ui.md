@@ -71,33 +71,40 @@ No changes. Three endpoints already exist, audit-logged, Admin-gated.
 
 Add `frontend/src/api/exportDelete.ts`:
 - `requestExport(token)` → `POST` request endpoint, returns
-  `{ token_id, download_url, expires_at, confirm_token }` (or whatever
-  the existing handler returns — confirm on read).
-- `downloadExport(token, tokenId)` → triggers browser download of the
-  gzipped bundle from the download URL.
-- `executeDelete(token, tokenId, confirmToken)` → `POST` execute endpoint,
-  returns `{ deleted: true, rows_affected }`.
+  `{ confirmation_token, export_path, expires_at, instructions }`.
+  (`export_path` is the download URL path — there is no separate `token_id`
+  field; the token id is embedded in `export_path`.)
+- `downloadExport(token, exportPath)` → triggers browser download of the
+  gzipped bundle from `export_path`.
+- `executeDelete(token, confirmToken)` → `POST` execute endpoint (body carries
+  only `confirmation_token`), returns `{ deleted: true, deletion_summary, executed_at }`
+  — `deletion_summary` is a per-table `{ <table>: <rowCount> }` map.
 
 ### 3. Frontend component
 
 Add `frontend/src/components/admin/AdminExportDeletePanel.tsx`:
 - Stepper UI with three explicit phases:
   1. **Request export**: button labeled "Request export bundle". On click,
-     calls `requestExport`, displays `token_id`, `expires_at`, and a
-     "Download bundle" button.
-  2. **Review**: shows the confirmation token in a copy-to-clipboard field
+     calls `requestExport`, displays `expires_at`, and a "Download bundle"
+     button (links to `export_path`).
+  2. **Review**: shows the `confirmation_token` in a copy-to-clipboard field
      and a static block of text describing what executing deletion will do
-     ("This will permanently delete all canonical org data for {org_id}.
-     Audit log is retained. This action is irreversible.").
+     ("This will permanently delete all canonical data for this organization —
+     locations, assignments, visits, observations, evidence, stop history, EAM
+     bridge logs — **and the audit log itself**. The `export.delete_execute`
+     event is recorded in the transaction and then purged with the rest; its
+     counts are returned in the deletion summary. The only surviving copy of
+     this organization's data, including its audit trail, is the export bundle
+     you downloaded. This action is irreversible.").
   3. **Execute deletion**: requires the admin to (a) paste the confirmation
      token back into an input field (matching the token they just received —
      prevents accidental click-through), (b) check a confirmation checkbox
      ("I understand this is irreversible"), and (c) click a red "Execute
      deletion" button. Only when all three conditions hold is the button
      enabled.
-- Result panel: on successful execute, show `rows_affected` count and an
-  explicit "Deletion complete. This page is now showing residual UI state;
-  sign out to re-verify." message.
+- Result panel: on successful execute, show the per-table `deletion_summary`
+  (including the `audit_log` row count) and an explicit "Deletion complete.
+  This page is now showing residual UI state; sign out to re-verify." message.
 - Error states: 401/403 → "Not authorized" (should not occur given route
   guard, but defensive); 410 / token expired → "Confirmation token expired,
   request a new export bundle."
@@ -143,12 +150,29 @@ beyond what is already present in the `core.*` tables. The export bundle
 contains visit records, observations, evidence, etc. As of S1-13,
 `captured_by_oid` is encrypted; the export must use the existing service
 path so encryption is preserved end-to-end. **This UI does not introduce
-any new exposure of worker identity** — it surfaces only `token_id`,
-`expires_at`, `rows_affected`, and the confirmation token.
+any new exposure of worker identity** — it surfaces only `expires_at`, the
+per-table `deletion_summary`, and the `confirmation_token`.
 
-Audit log is **not** deleted by execute (S1-4 spec line 281–282). This
-preserves the security trail even after a data deletion event. The UI must
-not suggest that audit entries are deleted.
+Audit log **is** deleted by execute. STEP d of the execute transaction
+(`exportDeleteRoutes.ts`) runs a gated `DELETE FROM audit_log WHERE org_id = $1`
+— the append-only `audit_log_delete` RLS policy is unlocked for this one
+sanctioned purge path via `SET LOCAL app.export_delete_active = 'true'` +
+`app.export_delete_org_id`. The `export.delete_execute` row written earlier in
+the same transaction is included in that purge; its count appears in
+`deletion_summary.audit_log`. The security trail for this org survives **only**
+inside the downloaded export bundle (which contains the full `audit_log` table).
+The UI must therefore state that the audit log is deleted — never imply it is
+retained in the database.
+
+> **Correction (2026-07-06 truthing):** earlier revisions of this spec asserted
+> "Audit log is **not** deleted by execute" and documented a
+> `{ token_id, download_url, confirm_token }` / `rows_affected` response shape.
+> Both were wrong against the shipped `exportDeleteRoutes.ts` — the code has
+> purged the audit log inside execute since S1-4, and the live response fields
+> are `{ confirmation_token, export_path, expires_at, instructions }` (request)
+> and `{ deleted, deletion_summary, executed_at }` (execute). This section and
+> the API-client / stepper copy above were corrected to match the code, which is
+> authoritative.
 
 ---
 
