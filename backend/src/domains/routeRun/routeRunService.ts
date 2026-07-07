@@ -1,5 +1,6 @@
 import { pool, withOrgContext } from "../../db";
 import { loadRouteRunById } from "./loaders/loadRouteRunById";
+import { encrypt as encryptOid } from "../../lib/oidCipher";
 import { planRouteWithOsrm, OsrmStop } from "../../osrmClient";
 import { makeLegCostCache } from "../../routing/routeCost";
 import { postOptimizeCurbsideOrder } from "../../routing/curbsidePostOptimize";
@@ -440,15 +441,22 @@ export async function createRouteRun(
 
     // Identity sidecar for the assignments just created (RETURNING yields only the
     // rows actually inserted, so ON CONFLICT-skipped duplicates get no sidecar row).
+    // ISSUE-058: actor_ref holds the non-identifying sentinel for every batch row;
+    // the real creator OID lives only in actor_ref_ciphertext. One encrypt for the
+    // batch (same creator across all assignments). Never write an identifying value
+    // into actor_ref.
     if (assignRes.rows.length > 0) {
+      const { ciphertext: oidCiphertext, keyId: oidKeyId } =
+        await encryptOid(effectiveCreatedByOid, "assignment_create");
       await client.query(`
-        INSERT INTO core.assignment_actor_audit (assignment_id, org_id, actor_ref)
-        SELECT UNNEST($1::bigint[]), UNNEST($2::bigint[]), $3
+        INSERT INTO core.assignment_actor_audit
+          (assignment_id, org_id, actor_ref, actor_ref_ciphertext, actor_ref_key_id)
+        SELECT UNNEST($1::bigint[]), UNNEST($2::bigint[]), $3, $4, $5
         ON CONFLICT (assignment_id) DO NOTHING
       `, [
         assignRes.rows.map((r: any) => r.id),
         assignRes.rows.map((r: any) => r.org_id),
-        effectiveCreatedByOid,
+        'encrypted', oidCiphertext, oidKeyId,
       ]);
     }
 

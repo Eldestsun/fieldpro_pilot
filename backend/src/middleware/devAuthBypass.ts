@@ -86,10 +86,12 @@ export function createDevAuthBypass(
           actor_oid: String(oid),
           org_id:    parseInt(String(orgIdRaw), 10),
           action:    'auth.dev_bypass',
+          // Labor safety: the OID is already in actor_oid and the org in org_id —
+          // both are redundant here and are intentionally NOT copied into detail.
+          // Only the (non-identity) roles header is retained. Do not reintroduce
+          // x-dev-user-oid / x-dev-user-org-id.
           detail: {
-            'x-dev-user-oid':    String(oid),
             'x-dev-user-roles':  String(rolesRaw),
-            'x-dev-user-org-id': String(orgIdRaw),
           },
           ip_address: req.ip,
         });

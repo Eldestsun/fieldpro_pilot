@@ -2,6 +2,7 @@ import { PoolClient } from "pg";
 import { withOrgContext } from "../../db";
 import { loadRegistryRules, normalizeObservation } from "./observationNormalizer";
 import { toNumericSeverity } from "../routeRunStop/hazardService";
+import { encrypt as encryptOid } from "../../lib/oidCipher";
 
 // Raw UI payload from UL
 export type StopUiPayload = {
@@ -320,6 +321,12 @@ async function insertObservations(
         observations.map(o => o.observation_type)
     );
 
+    // ISSUE-058: encrypt the actor OID once for the whole batch (same actor for
+    // every observation in this call). The sentinel 'encrypted' goes to actor_ref;
+    // the real OID lives only in actor_ref_ciphertext.
+    const { ciphertext: oidCiphertext, keyId: oidKeyId } =
+        await encryptOid(context.actorOid, "observation_create");
+
     for (const o of observations) {
         // Derive the normalized columns from the registry rule. A missing rule
         // yields all-NULL normalized fields and a warning — never blocks the write
@@ -362,13 +369,16 @@ async function insertObservations(
                 norm.type_id
             ]
         );
+        // ISSUE-058: actor_ref holds the non-identifying sentinel; the OID lives
+        // only in actor_ref_ciphertext. Never write an identifying value here.
         await client.query(
             `
-      INSERT INTO core.observation_actor_audit (observation_id, org_id, actor_ref)
-      VALUES ($1, $2, $3)
+      INSERT INTO core.observation_actor_audit
+        (observation_id, org_id, actor_ref, actor_ref_ciphertext, actor_ref_key_id)
+      VALUES ($1, $2, $3, $4, $5)
       ON CONFLICT (observation_id) DO NOTHING
       `,
-            [res.rows[0].id, context.orgId, context.actorOid]
+            [res.rows[0].id, context.orgId, 'encrypted', oidCiphertext, oidKeyId]
         );
     }
 }
@@ -420,12 +430,17 @@ export async function emitSpotCheckObservation(params: {
             spotNorm.type_id
         ]
     );
+    // ISSUE-058: actor_ref holds the non-identifying sentinel; the OID lives only
+    // in actor_ref_ciphertext. Never write an identifying value here.
+    const { ciphertext: oidCiphertext, keyId: oidKeyId } =
+        await encryptOid(actorOid, "observation_spotcheck");
     await client.query(
         `
-    INSERT INTO core.observation_actor_audit (observation_id, org_id, actor_ref)
-    VALUES ($1, $2, $3)
+    INSERT INTO core.observation_actor_audit
+      (observation_id, org_id, actor_ref, actor_ref_ciphertext, actor_ref_key_id)
+    VALUES ($1, $2, $3, $4, $5)
     ON CONFLICT (observation_id) DO NOTHING
     `,
-        [res.rows[0].id, orgId, actorOid]
+        [res.rows[0].id, orgId, 'encrypted', oidCiphertext, oidKeyId]
     );
 }

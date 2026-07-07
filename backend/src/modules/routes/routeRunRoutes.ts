@@ -672,7 +672,11 @@ routeRunRoutes.post(
                 action: 'assignment.create',
                 resource_type: 'route',
                 resource_id: String(routeRunId),
-                detail: { assigned_user_oid: assignedUserOid ?? null, pool_id: targetPoolId },
+                // Labor safety: worker OID is intentionally NOT recorded in the audit
+                // detail. The accountable actor is in actor_oid and the route in
+                // resource_id; the worker↔route fact lives (encrypted) in the
+                // assignment sidecar. Do not reintroduce assigned_user_oid here.
+                detail: { pool_id: targetPoolId },
                 ip_address: req.ip,
             });
 
@@ -1037,7 +1041,10 @@ routeRunRoutes.patch(
                     action: 'assignment.cancel',
                     resource_type: 'route',
                     resource_id: String(id),
-                    detail: { previous_assigned_user_oid: prevOid },
+                    // Labor safety: worker OID intentionally omitted from detail
+                    // (actor in actor_oid, route in resource_id). Do not reintroduce
+                    // previous_assigned_user_oid.
+                    detail: {},
                     ip_address: req.ip,
                 });
             } else {
@@ -1047,10 +1054,12 @@ routeRunRoutes.patch(
                     action: prevOid ? 'assignment.reassign' : 'assignment.create',
                     resource_type: 'route',
                     resource_id: String(id),
-                    detail: {
-                        previous_assigned_user_oid: prevOid,
-                        new_assigned_user_oid: assigned_user_oid,
-                    },
+                    // Labor safety: worker OIDs (previous + new) intentionally omitted
+                    // from detail. The reassignment is fully audited by actor_oid +
+                    // action + resource_id; the worker↔route fact lives (encrypted) in
+                    // the assignment sidecar. Do not reintroduce the *_assigned_user_oid
+                    // fields here.
+                    detail: {},
                     ip_address: req.ip,
                 });
             }
