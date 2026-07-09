@@ -1,46 +1,38 @@
+import {
+  SAFETY_HAZARD_TYPE_MAP,
+  INFRA_ISSUE_TYPE_MAP,
+} from "./observationService";
+
 // Presence-observation taxonomy — the canonical safety-hazard vs infrastructure-issue
-// split, pinned here as the single shared constant.
+// split, DERIVED from the write-path maps so it cannot drift from what actually gets
+// written.
 //
-// WHY THIS EXISTS (ISSUE-058 / SEAM-C): hazards and infrastructure issues both land
-// in core.observations as `obs_kind = 'presence'` rows — there is NO schema-level
-// discriminator between "safety hazard" and "infrastructure issue". The only
-// authoritative split is the write-path mappers in `observationService.ts`
-// (`mapSafetyHazard` / `mapInfraIssue`), which decide which `observation_type` a
-// field report becomes. These two sets are the exact output ranges of those mappers.
+// WHY (ISSUE-058 / SEAM-C): hazards and infra issues both land in core.observations as
+// `obs_kind = 'presence'` rows — there is NO schema-level discriminator. The only
+// authoritative split is the write-path mappers (observationService.ts
+// mapSafetyHazard / mapInfraIssue). Rather than copy their output lists (which would
+// silently drift and make the CC exceptions count miss or mis-attribute reports), these
+// sets are computed from `SAFETY_HAZARD_TYPE_MAP` / `INFRA_ISSUE_TYPE_MAP` — the single
+// source. A drift-guard test (presenceTaxonomy.test.ts) pins the resulting membership so
+// any mapper change is a visible, reviewed change.
 //
-// KEEP IN SYNC with `observationService.ts` mapSafetyHazard/mapInfraIssue and the
-// `presence` rows in `core.observation_type_registry`. They are NOT data-driven off
-// whatever rows exist — the sets are fixed so a read-side count is deterministic and
-// matches what the write path produces. (Same discipline as CLEAN_ACTION_KEYS.)
-//
-// TAXONOMY NOTE (visible on the Admin CC surface): the infra-capture "contaminated
-// waste" checkbox writes `biohazard_present` — a SAFETY presence — per
-// observationService.ts mapInfraIssue. So contaminated-waste reports count under
-// HAZARDS, not infrastructure. This is deliberate (a biohazard is a safety fact
-// regardless of the capture surface) and is why `biohazard_present` lives in the
-// SAFETY set below, never the infra set.
+// The safety/infra boundary handles the documented cross-map for free: the infra map's
+// "contaminated waste" entry maps to the SAFETY type `biohazard_present`, so subtracting
+// the safety set from the infra values attributes contaminated-waste reports to HAZARDS,
+// never infrastructure.
 
-/** Safety-hazard presence types — the output range of `mapSafetyHazard`. */
-export const SAFETY_PRESENCE_TYPES = [
-  "encampment_present",
-  "fire_present",
-  "dangerous_activity_present",
-  "drug_use_present",
-  "violence_present",
-  "biohazard_present",
-  "access_blocked",
-  "other_safety_concern_present",
-] as const;
+const uniq = (xs: string[]): string[] => Array.from(new Set(xs));
 
-/** Infrastructure-issue presence types — the output range of `mapInfraIssue`
- *  (minus `contaminated_waste`, which maps to the SAFETY `biohazard_present`). */
-export const INFRA_PRESENCE_TYPES = [
-  "glass_damage_present",
-  "graffiti_present",
-  "receptacle_damage_present",
-  "shelter_panel_damage_present",
-  "lighting_failure_present",
-  "access_obstructed_by_landscape",
-  "structural_damage_present",
-  "other_infrastructure_issue_present",
-] as const;
+/** Safety-hazard presence types — every distinct output of mapSafetyHazard. */
+export const SAFETY_PRESENCE_TYPES: readonly string[] = uniq(
+  Object.values(SAFETY_HAZARD_TYPE_MAP),
+);
+
+const SAFETY_SET = new Set(SAFETY_PRESENCE_TYPES);
+
+/** Infrastructure-issue presence types — mapInfraIssue outputs MINUS any that are
+ *  already safety types (i.e. contaminated_waste → biohazard_present is excluded and
+ *  counts under hazards). */
+export const INFRA_PRESENCE_TYPES: readonly string[] = uniq(
+  Object.values(INFRA_ISSUE_TYPE_MAP),
+).filter((t) => !SAFETY_SET.has(t));
