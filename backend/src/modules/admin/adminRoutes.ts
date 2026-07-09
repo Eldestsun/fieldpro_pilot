@@ -7,6 +7,7 @@ import { auditWrite, reqOrgId } from "../../middleware/auditWrite";
 import { AUDIT_KNOWN_ACTIONS } from "../../middleware/auditActions";
 import { resolveNumericOrgId } from "../../middleware/resolveOrgId";
 import { buildCleanLogsCanonicalQueries } from "../../domains/observation/cleanLogsCanonicalQuery";
+import { SAFETY_PRESENCE_TYPES, INFRA_PRESENCE_TYPES } from "../../domains/observation/presenceTaxonomy";
 
 export const adminRoutes = Router();
 
@@ -1302,17 +1303,28 @@ ccRouter.get("/exceptions", async (req: Request, res: Response) => {
                 GROUP BY reason
                 ORDER BY count DESC;
             `,
-      // 2. Total Hazards Today
+      // 2. Total Hazards Today (SEAM-C: canonical repoint off clipped public.hazards).
+      // Safety-hazard reports are core.observations presence rows whose type is in the
+      // SAFETY set (presenceTaxonomy.ts). Each presence row IS one report — count = today's
+      // reports, matching the legacy `reported_at >= CURRENT_DATE` semantics. RLS-scoped by
+      // the org context set on this client above.
       hazards: `
                 SELECT COUNT(*)::int AS total_hazards
-                FROM public.hazards
-                WHERE reported_at >= CURRENT_DATE;
+                FROM core.observations o
+                WHERE o.obs_kind = 'presence'
+                  AND o.observation_type = ANY($1::text[])
+                  AND o.observed_at >= CURRENT_DATE;
             `,
-      // 3. Infrastructure Issues Today
+      // 3. Infrastructure Issues Today (SEAM-C: canonical repoint off clipped
+      // public.infrastructure_issues). INFRA presence set. NB: contaminated-waste reports
+      // write biohazard_present (a SAFETY type) per the write-path taxonomy, so they count
+      // under hazards, not here — see presenceTaxonomy.ts.
       infra: `
                 SELECT COUNT(*)::int AS total_infra_issues
-                FROM public.infrastructure_issues
-                WHERE reported_at >= CURRENT_DATE;
+                FROM core.observations o
+                WHERE o.obs_kind = 'presence'
+                  AND o.observation_type = ANY($1::text[])
+                  AND o.observed_at >= CURRENT_DATE;
             `,
       // 4. Emergency / Ad-Hoc Stops Today
       emergency: `
@@ -1326,8 +1338,8 @@ ccRouter.get("/exceptions", async (req: Request, res: Response) => {
 
     const [skipsRes, hazardsRes, infraRes, emergencyRes] = await Promise.all([
       client.query(queries.skips),
-      client.query(queries.hazards),
-      client.query(queries.infra),
+      client.query(queries.hazards, [SAFETY_PRESENCE_TYPES as unknown as string[]]),
+      client.query(queries.infra, [INFRA_PRESENCE_TYPES as unknown as string[]]),
       client.query(queries.emergency)
     ]);
 

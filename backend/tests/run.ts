@@ -91,6 +91,11 @@ import "./canonical/infraIssuesWriteClip.test";
 import "./canonical/runtimeIdentityLeak.test";
 import "./canonical/orgFailClosed.test";
 import "./canonical/resourceRoutesOrgFailClosed.test";
+import "./canonical/ccExceptionsCanonical.test";
+import "./canonical/loadRouteRunCanonicalBooleans.test";
+import "./canonical/seamCUserIdDropped.test";
+import "./canonical/loadRouteRunOidTrim.test";
+import "./canonical/presenceTaxonomy.test";
 
 (async () => {
   console.log("canonical integration tests — real local DB, no mocking\n");

@@ -53,16 +53,18 @@ const ORG = "1"; // single-tenant dev/test org (matches tests/setup FIXTURE_ORG_
 const isOidKey = (k: string) => k.toLowerCase() === "oid" || /_oid$/i.test(k);
 // Always-hard keys that don't collide with anything benign.
 const ALWAYS_HARD = new Set(["employee_id", "worker_name"]);
-// Person-adjacent keys — a worker's NAME and ROLE. These are flagged ONLY when they
-// sit in the same object as an OID (i.e. a person object like
-// `assigned_user: {oid, display_name, role}`). Flagging `display_name` / `name` /
-// `role` globally would false-positive on benign labels — asset-type and
-// observation-type config rows carry a `display_name` LABEL, pools/stops carry
-// names, and endpoints echo a role SCOPE. Worker identity in this codebase always
-// travels next to its OID (the CONTROLLED EXCEPTION JOIN in loadRouteRunById is the
-// only identity_directory join), so OID co-occurrence is the precise discriminator
-// between a person and a label. Precision keeps the gate trustworthy and un-disabled.
+// Person-adjacent keys — a worker's NAME and ROLE. These are flagged only inside a
+// "person object". Flagging `display_name` / `name` / `role` globally would
+// false-positive on benign labels — asset-type and observation-type config rows carry
+// a `display_name` LABEL, pools/stops carry names, and endpoints echo a role SCOPE.
+// A person object is identified by an OID sibling OR by a known person-object parent
+// key. Historically OID co-occurrence was the sole discriminator, but SEAM-C item 4
+// deliberately trimmed the raw OID from the route-detail R11 exposure while KEEPING the
+// worker's display_name/role — so `assigned_user`/`created_by` are now name-only person
+// objects. PERSON_OBJECT_PARENTS keeps those flagged (the gate must still see the name
+// as identity) without re-flagging labels elsewhere.
 const PERSON_ADJACENT = new Set(["display_name", "name", "role"]);
+const PERSON_OBJECT_PARENTS = new Set(["assigned_user", "created_by"]);
 // `user_id` is the legacy integer column on route_runs (LEGACY_TRANSIT_USER_ID = 0,
 // no FK, no canonical worker reference). Value-aware: a leak only if it ever carries
 // a non-sentinel value. Catches reintroduction of integer worker identity without
@@ -83,7 +85,10 @@ function scanIdentity(body: unknown): Hit[] {
     }
     if (typeof node === "object") {
       const keys = Object.keys(node as Record<string, unknown>);
-      const hasOid = keys.some(isOidKey); // is this a person object?
+      // Is this a person object? OID sibling, or a known person-object parent key
+      // (SEAM-C item 4 decoupled the route-detail name from its OID).
+      const lastSeg = path.split(/[.[\]]/).filter(Boolean).pop() ?? "";
+      const isPersonObject = keys.some(isOidKey) || PERSON_OBJECT_PARENTS.has(lastSeg);
       for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
         const here = path ? `${path}.${key}` : key;
         const lk = key.toLowerCase();
@@ -91,7 +96,7 @@ function scanIdentity(body: unknown): Hit[] {
           if (!LEGACY_SENTINELS.has(value as any)) hits.push({ path: here, key, value });
         } else if (isOidKey(key) || ALWAYS_HARD.has(lk)) {
           if (populated(value)) hits.push({ path: here, key, value });
-        } else if (hasOid && PERSON_ADJACENT.has(lk)) {
+        } else if (isPersonObject && PERSON_ADJACENT.has(lk)) {
           if (populated(value)) hits.push({ path: here, key, value });
         }
         visit(value, here);

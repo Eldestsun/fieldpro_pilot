@@ -284,7 +284,7 @@ opsRoutes.get("/ops/route-runs", async (req: Request, res: Response) => {
 
         const query = `
             SELECT
-                rr.id, rr.user_id, rr.route_pool_id, rr.base_id, rr.status, rr.run_date, rr.created_at,
+                rr.id, rr.route_pool_id, rr.base_id, rr.status, rr.run_date, rr.created_at,
                 rr.created_at,
                 rp.label as pool_label,
                 (SELECT COUNT(*) FROM route_run_stops rrs WHERE rrs.route_run_id = rr.id) as stop_count,
