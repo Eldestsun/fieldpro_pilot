@@ -214,7 +214,10 @@ routeRunRoutes.get(
 // NAMING (ISSUE-043): "lead" is historical — it predates the Dispatch-role rename
 // (Lead → Dispatch) and is now an identifier only, not a description of who may call
 // it. This is the SURVIVING gated route-run detail view: auth-required, Dispatch/Admin
-// only, and the identity fields in its payload are Admin-gated by loadRouteRunById.
+// only. Its payload exposes the assigned worker's and assigning Lead's NAME and ROLE
+// (never their OID — SEAM-C item 4) as the R11 controlled reassignment exception; this
+// is operational, not intelligence, and is NOT role-gated below Dispatch (loadRouteRunById
+// applies no role gate — the earlier "Admin-gated" note was inaccurate).
 // The ungated identity-bearing twin GET /route-runs/:id was removed per ISSUE-043;
 // this gated route is the single detail endpoint. Do not rename (names are
 // identifiers — the frontend calls /api/lead/route-runs/:id); document, don't rename.
@@ -704,7 +707,10 @@ routeRunRoutes.post(
 // (loadRouteRunById.ts) with resolveNumericOrgId falling back to org #1 for anonymous
 // callers — a direct worker-identity leak on an open endpoint. The gated twin
 // GET /lead/route-runs/:id (above) is the sole route-run detail endpoint: auth-required,
-// Dispatch/Admin only, identity fields Admin-gated. Phase 0 caller recon confirmed the
+// Dispatch/Admin only. Its payload carries the assigned worker's/assigning Lead's NAME
+// and ROLE (never OID — SEAM-C item 4) as the R11 reassignment exception; loadRouteRunById
+// applies no role gate (Dispatch reads it), so the prior "Admin-gated" note was wrong.
+// Phase 0 caller recon confirmed the
 // frontend reads only the gated twin (getLeadRouteRunById → /api/lead/route-runs/:id)
 // and no test/script/UI path depended on this ungated route.
 

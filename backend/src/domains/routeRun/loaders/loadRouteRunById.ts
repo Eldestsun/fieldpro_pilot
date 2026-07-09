@@ -164,13 +164,16 @@ export async function loadRouteRunById(id: number | string, orgId: number | stri
     return {
         id: first.route_run_id,
         user_id: first.user_id,
+        // SEAM-C item 4 (founder-ruled 2026-07-08): the R11 controlled exception
+        // surfaces the assigned worker's NAME/ROLE (operational reassignment need) —
+        // never the raw OID. The identity_directory JOIN stays (it sources the names);
+        // only the oid is trimmed from the payload. Presence is still gated on whether
+        // an assigned/creating user exists.
         assigned_user: first.assigned_user_oid ? {
-            oid: first.assigned_user_oid,
             display_name: first.assigned_user_name,
             role: first.assigned_user_role
         } : undefined,
         created_by: first.created_by_oid ? {
-            oid: first.created_by_oid,
             display_name: first.created_by_name
         } : undefined,
         route_pool_id: first.route_pool_id,
