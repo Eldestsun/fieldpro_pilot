@@ -93,6 +93,7 @@ import "./canonical/orgFailClosed.test";
 import "./canonical/resourceRoutesOrgFailClosed.test";
 import "./canonical/ccExceptionsCanonical.test";
 import "./canonical/loadRouteRunCanonicalBooleans.test";
+import "./canonical/seamCUserIdDropped.test";
 
 (async () => {
   console.log("canonical integration tests — real local DB, no mocking\n");

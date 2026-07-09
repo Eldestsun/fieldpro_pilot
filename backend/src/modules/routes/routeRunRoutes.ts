@@ -112,7 +112,6 @@ routeRunRoutes.get(
             const query = `
         SELECT
           rr.id,
-          rr.user_id,
           rr.route_pool_id,
           rr.base_id,
           rr.status,

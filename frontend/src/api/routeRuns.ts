@@ -474,7 +474,6 @@ export async function createRouteRun(
 
 export interface LeadRouteRunSummary {
     id: number;
-    user_id: number;
     route_pool_id: string;
     base_id: string;
     status: string;
@@ -496,7 +495,6 @@ export async function fetchLeadTodaysRuns(token: string): Promise<LeadRouteRunSu
     const data = await res.json();
     return data.route_runs.map((r: any) => ({
         id: r.id,
-        user_id: r.user_id,
         route_pool_id: r.route_pool_id,
         base_id: r.base_id,
         status: r.status,
@@ -882,7 +880,6 @@ export async function parseApiErrorCode(
 
 export interface OpsRouteRun {
     id: number;
-    user_id: number;
     route_pool_id: string;
     base_id: string;
     status: string;
