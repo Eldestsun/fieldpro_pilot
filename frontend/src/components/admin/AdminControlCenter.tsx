@@ -156,10 +156,10 @@ export const AdminControlCenter: React.FC = () => {
             const headers = { Authorization: `Bearer ${token}` };
 
             const [sumRes, routesRes, excRes, diffRes] = await Promise.all([
-                fetch("/api/admin/control-center/overview", { headers }),
-                fetch("/api/admin/control-center/routes", { headers }),
-                fetch("/api/admin/control-center/exceptions", { headers }),
-                fetch("/api/admin/control-center/difficulty", { headers }),
+                fetch("/api/ops/control-center/overview", { headers }),
+                fetch("/api/ops/control-center/routes", { headers }),
+                fetch("/api/ops/control-center/exceptions", { headers }),
+                fetch("/api/ops/control-center/difficulty", { headers }),
             ]);
 
             if (!sumRes.ok || !routesRes.ok || !excRes.ok || !diffRes.ok) {
