@@ -18,7 +18,6 @@ export async function loadRouteRunById(id: number | string, orgId: number | stri
     const query = `
     SELECT
       rr.id                  AS route_run_id,
-      rr.user_id,
       rr.route_pool_id,
       rr.base_id,
       rr.run_date,
@@ -163,7 +162,8 @@ export async function loadRouteRunById(id: number | string, orgId: number | stri
     const first = result.rows[0];
     return {
         id: first.route_run_id,
-        user_id: first.user_id,
+        // SEAM-A A4: the dead user_id sentinel (LEGACY_TRANSIT_USER_ID = 0) is dropped
+        // from the detail payload — zero frontend consumers (A4-rider proof).
         // SEAM-C item 4 (founder-ruled 2026-07-08): the R11 controlled exception
         // surfaces the assigned worker's NAME/ROLE (operational reassignment need) —
         // never the raw OID. The identity_directory JOIN stays (it sources the names);

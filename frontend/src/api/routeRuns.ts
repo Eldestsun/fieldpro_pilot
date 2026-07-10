@@ -1,6 +1,5 @@
 export interface RouteRun {
     id: number;
-    user_id: number;
     route_pool_id: string;
     route_pool_label?: string;
     base_id: string;
@@ -9,6 +8,10 @@ export interface RouteRun {
     total_duration_s: number;
     status: string;
     stops: Stop[];
+    // R11 reassignment exposure (SEAM-C): assigned worker + assigning Lead by NAME/ROLE
+    // only — never an OID. Present only on the route-detail payload.
+    assigned_user?: { display_name: string; role?: string };
+    created_by?: { display_name: string };
 }
 
 export interface Stop {
@@ -313,6 +316,31 @@ export async function getLeadRouteRunById(
 
     const data = await res.json();
     return data.route_run;
+}
+
+// SEAM-A A4 — reassign a route run to a different worker. The OID is a WRITE of
+// assignment intent (never displayed); the UI shows names only.
+export async function reassignRouteRun(
+    token: string,
+    routeRunId: number,
+    assignedUserOid: string,
+): Promise<void> {
+    const res = await fetch(`/api/route-runs/${routeRunId}/assign`, {
+        method: "PATCH",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ assigned_user_oid: assignedUserOid }),
+    });
+    if (!res.ok) {
+        let msg = "Failed to reassign route";
+        try {
+            const data = await res.json();
+            msg = data.error || msg;
+        } catch { /* non-JSON error body */ }
+        throw new Error(msg);
+    }
 }
 
 export async function updateStopCompactor(
@@ -887,6 +915,12 @@ export interface OpsRouteRun {
     created_at: string;
     pool_label?: string;
     stop_count: number;
+    completed_stops: number;
+    // SEAM-A A2 — per-run exception counts (attach to the run, never a worker).
+    hazard_count: number;
+    skipped_count: number;
+    // Historical field name; DISPLAYED as "unplanned" (counts origin_type <> 'planned').
+    emergency_count: number;
 }
 
 export interface OpsCleanLog {

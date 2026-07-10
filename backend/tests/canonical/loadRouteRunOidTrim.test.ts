@@ -76,6 +76,8 @@ test("SEAM-C item 4: /lead/route-runs/:id exposes assigned/creator NAME+ROLE but
     // And specifically the trimmed nested keys are gone.
     assert(!("oid" in (run.assigned_user ?? {})), "assigned_user.oid removed");
     assert(!("oid" in (run.created_by ?? {})), "created_by.oid removed");
+    // SEAM-A A4: the dead user_id sentinel is dropped from the detail payload.
+    assert(!("user_id" in run), "detail payload must not carry user_id (SEAM-A A4)");
   } finally {
     await releaseFixture(client, f);
     await new Promise<void>((resolve) => server.close(() => resolve()));
