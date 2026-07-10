@@ -19,7 +19,8 @@ function run(over: Partial<OpsRouteRun>): OpsRouteRun {
   return {
     id: 1, route_pool_id: 'POOL-1', base_id: 'SOUTH', status: 'in_progress',
     run_date: '2026-07-09', created_at: '2026-07-09T00:00:00Z',
-    pool_label: 'North Sector', stop_count: 5, completed_stops: 0, ...over,
+    pool_label: 'North Sector', stop_count: 5, completed_stops: 0,
+    hazard_count: 0, skipped_count: 0, emergency_count: 0, ...over,
   }
 }
 
@@ -51,5 +52,44 @@ describe('LeadRoutesPanel — A1 X-of-Y progress', () => {
     const row = (await screen.findByText('#21')).closest('tr')!
     expect(within(row).getByText('2 of 5')).toBeInTheDocument()
     expect(within(row).queryByText('5', { exact: true })).not.toBeInTheDocument()
+  })
+})
+
+describe('LeadRoutesPanel — A2 exception badges', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('renders only non-zero counts; emergency_count is displayed as "unplanned"', async () => {
+    mockGet.mockResolvedValue([
+      run({ id: 31, status: 'in_progress', hazard_count: 2, skipped_count: 1, emergency_count: 1 }),
+    ])
+    render(<LeadRoutesPanel />)
+    const row = (await screen.findByText('#31')).closest('tr')!
+    expect(within(row).getByText('2 hazards')).toBeInTheDocument()
+    expect(within(row).getByText('1 skipped')).toBeInTheDocument()
+    expect(within(row).getByText('1 unplanned')).toBeInTheDocument()
+    expect(within(row).queryByText(/emergency/i)).not.toBeInTheDocument()
+  })
+
+  it('renders NO badges when all counts are zero (silence = clean; no "0 hazards")', async () => {
+    mockGet.mockResolvedValue([
+      run({ id: 32, status: 'in_progress', hazard_count: 0, skipped_count: 0, emergency_count: 0 }),
+    ])
+    render(<LeadRoutesPanel />)
+    const row = (await screen.findByText('#32')).closest('tr')!
+    // No "0 hazards/skipped/unplanned" badge — silence = clean.
+    expect(within(row).queryByText(/hazard/i)).not.toBeInTheDocument()
+    expect(within(row).queryByText(/skipped/i)).not.toBeInTheDocument()
+    expect(within(row).queryByText(/unplanned/i)).not.toBeInTheDocument()
+  })
+
+  it('renders partial badges (only the non-zero ones)', async () => {
+    mockGet.mockResolvedValue([
+      run({ id: 33, status: 'in_progress', hazard_count: 0, skipped_count: 3, emergency_count: 0 }),
+    ])
+    render(<LeadRoutesPanel />)
+    const row = (await screen.findByText('#33')).closest('tr')!
+    expect(within(row).getByText('3 skipped')).toBeInTheDocument()
+    expect(within(row).queryByText(/hazard/i)).not.toBeInTheDocument()
+    expect(within(row).queryByText(/unplanned/i)).not.toBeInTheDocument()
   })
 })

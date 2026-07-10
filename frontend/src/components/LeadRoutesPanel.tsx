@@ -11,6 +11,22 @@ import { LeadRouteDetail } from "./LeadRouteDetail";
 import { LeadCompletedRouteDetail } from "./LeadCompletedRouteDetail";
 import { RouteCreatePanel } from "./RouteCreatePanel";
 
+// SEAM-A A2 — per-run exception badges. Only non-zero counts render (silence = clean;
+// "0 hazards" would be assumed-dirty framing). Counts attach to the run, never a worker.
+// "emergency_count" is the historical field name; it is displayed as "unplanned".
+function RunExceptionBadges({ run }: { run: OpsRouteRun }) {
+  const badges: Array<{ key: string; variant: "danger" | "warning" | "info"; label: string }> = [];
+  if (run.hazard_count > 0) badges.push({ key: "haz", variant: "danger", label: `${run.hazard_count} hazard${run.hazard_count === 1 ? "" : "s"}` });
+  if (run.skipped_count > 0) badges.push({ key: "skip", variant: "warning", label: `${run.skipped_count} skipped` });
+  if (run.emergency_count > 0) badges.push({ key: "unpl", variant: "info", label: `${run.emergency_count} unplanned` });
+  if (badges.length === 0) return <span className="text-gray-300">—</span>;
+  return (
+    <span className="inline-flex flex-wrap gap-1">
+      {badges.map((b) => <OpsBadge key={b.key} variant={b.variant} value={b.label} />)}
+    </span>
+  );
+}
+
 export function LeadRoutesPanel() {
   const { getAccessToken } = useAuth();
   const [runs, setRuns] = useState<OpsRouteRun[]>([]);
@@ -75,7 +91,7 @@ export function LeadRoutesPanel() {
 
       <OpsCard className="mb-6">
         <h3 className="mt-0 mb-3 text-lg font-semibold text-gray-800">Active Routes</h3>
-        <OpsTable headers={["ID", "Pool", "Status", "Stops", "Date"]}>
+        <OpsTable headers={["ID", "Pool", "Status", "Stops", "Exceptions", "Date"]}>
           {activeRuns.map((run) => (
             <OpsTableRow key={run.id} onClick={() => setSelectedActiveRunId(run.id)}>
               <OpsTableCell className="font-mono text-gray-500">#{run.id}</OpsTableCell>
@@ -87,12 +103,13 @@ export function LeadRoutesPanel() {
                 />
               </OpsTableCell>
               <OpsTableCell>{run.completed_stops} of {run.stop_count}</OpsTableCell>
+              <OpsTableCell><RunExceptionBadges run={run} /></OpsTableCell>
               <OpsTableCell>{new Date(run.run_date).toLocaleDateString()}</OpsTableCell>
             </OpsTableRow>
           ))}
           {activeRuns.length === 0 && !loading && (
             <OpsTableRow>
-              <OpsTableCell colSpan={5} className="text-center py-6 text-gray-500">
+              <OpsTableCell colSpan={6} className="text-center py-6 text-gray-500">
                 No active routes.
               </OpsTableCell>
             </OpsTableRow>
@@ -102,7 +119,7 @@ export function LeadRoutesPanel() {
 
       <OpsCard>
         <h3 className="mt-0 mb-3 text-lg font-semibold text-gray-800">Completed Routes</h3>
-        <OpsTable headers={["ID", "Pool", "Status", "Stops", "Date"]}>
+        <OpsTable headers={["ID", "Pool", "Status", "Stops", "Exceptions", "Date"]}>
           {completedRuns.map((run) => (
             <OpsTableRow key={run.id} onClick={() => setSelectedCompletedRunId(run.id)}>
               <OpsTableCell className="font-mono text-gray-500">#{run.id}</OpsTableCell>
@@ -114,12 +131,13 @@ export function LeadRoutesPanel() {
                 />
               </OpsTableCell>
               <OpsTableCell>{run.completed_stops} of {run.stop_count}</OpsTableCell>
+              <OpsTableCell><RunExceptionBadges run={run} /></OpsTableCell>
               <OpsTableCell>{new Date(run.run_date).toLocaleDateString()}</OpsTableCell>
             </OpsTableRow>
           ))}
           {completedRuns.length === 0 && !loading && (
             <OpsTableRow>
-              <OpsTableCell colSpan={5} className="text-center py-6 text-gray-500">
+              <OpsTableCell colSpan={6} className="text-center py-6 text-gray-500">
                 No completed routes.
               </OpsTableCell>
             </OpsTableRow>

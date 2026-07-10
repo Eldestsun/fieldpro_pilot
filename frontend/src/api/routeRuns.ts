@@ -888,6 +888,11 @@ export interface OpsRouteRun {
     pool_label?: string;
     stop_count: number;
     completed_stops: number;
+    // SEAM-A A2 — per-run exception counts (attach to the run, never a worker).
+    hazard_count: number;
+    skipped_count: number;
+    // Historical field name; DISPLAYED as "unplanned" (counts origin_type <> 'planned').
+    emergency_count: number;
 }
 
 export interface OpsCleanLog {

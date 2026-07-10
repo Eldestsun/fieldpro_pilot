@@ -5,6 +5,7 @@ import * as poolService from "../../services/adminPoolService";
 import * as stopService from "../../services/adminStopService";
 import { resolveNumericOrgId } from "../../middleware/resolveOrgId";
 import { buildCleanLogsCanonicalQueries } from "../../domains/observation/cleanLogsCanonicalQuery";
+import { SAFETY_PRESENCE_TYPES } from "../../domains/observation/presenceTaxonomy";
 
 export const opsRoutes = Router();
 
@@ -282,20 +283,47 @@ opsRoutes.get("/ops/route-runs", async (req: Request, res: Response) => {
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
+        // Explicit positional params for the tail (positional order is by number, not
+        // by appearance, so the SELECT subquery can reference $safety even though it is
+        // pushed last).
+        const pageSizeParam = idx;
+        const offsetParam = idx + 1;
+        const safetyParam = idx + 2;
+
         const query = `
             SELECT
                 rr.id, rr.route_pool_id, rr.base_id, rr.status, rr.run_date, rr.created_at,
                 rr.created_at,
                 rp.label as pool_label,
                 (SELECT COUNT(*) FROM route_run_stops rrs WHERE rrs.route_run_id = rr.id) as stop_count,
-                (SELECT COUNT(*) FROM route_run_stops rrs WHERE rrs.route_run_id = rr.id AND rrs.status IN ('done', 'skipped')) as completed_stops
+                (SELECT COUNT(*) FROM route_run_stops rrs WHERE rrs.route_run_id = rr.id AND rrs.status IN ('done', 'skipped')) as completed_stops,
+                -- SEAM-A A2: per-RUN exception counts (attach to the run, never a worker).
+                -- Hazards = canonical SAFETY presence observations on this run's visits,
+                -- via the SEAM-C spine (visit → assignment.source_ref = run). Uses the
+                -- shared presenceTaxonomy set (never a copied list). Org-scoped by the
+                -- withOrgContext this query runs inside (PATTERN-001).
+                (SELECT COUNT(*) FROM core.observations o
+                   JOIN core.visits v      ON v.id = o.visit_id
+                   JOIN core.assignments a ON a.id = v.assignment_id
+                        AND a.source_system = 'route_runs' AND a.source_ref = rr.id::text
+                 WHERE o.obs_kind = 'presence'
+                   AND o.observation_type = ANY($${safetyParam}::text[])
+                   AND o.observed_at >= CURRENT_DATE)::int as hazard_count,
+                (SELECT COUNT(*) FROM route_run_stops rrs
+                 WHERE rrs.route_run_id = rr.id AND rrs.status = 'skipped')::int as skipped_count,
+                -- Field name emergency_count is historical; it counts unplanned-origin
+                -- stops (origin_type <> 'planned' — same rows as emergency/ul_ad_hoc under
+                -- the CHECK) and is DISPLAYED as "unplanned" per SEAM-A ruling 3. Data
+                -- value 'ul_ad_hoc' is read-only, not renamed.
+                (SELECT COUNT(*) FROM route_run_stops rrs
+                 WHERE rrs.route_run_id = rr.id AND rrs.origin_type <> 'planned')::int as emergency_count
             FROM route_runs rr
             LEFT JOIN route_pools rp ON rr.route_pool_id = rp.id
             ${whereClause}
             ORDER BY rr.created_at DESC
-            LIMIT $${idx++} OFFSET $${idx++}
+            LIMIT $${pageSizeParam} OFFSET $${offsetParam}
         `;
-        values.push(pageSize, offset);
+        values.push(pageSize, offset, SAFETY_PRESENCE_TYPES);
 
         const numericOrgId = await resolveNumericOrgId(req);
         const result = await withOrgContext(numericOrgId, (client) =>

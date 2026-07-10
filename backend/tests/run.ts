@@ -91,6 +91,7 @@ import "./canonical/infraIssuesWriteClip.test";
 import "./canonical/runtimeIdentityLeak.test";
 import "./canonical/orgFailClosed.test";
 import "./canonical/resourceRoutesOrgFailClosed.test";
+import "./canonical/opsRouteRunsExceptions.test";
 import "./canonical/ccExceptionsCanonical.test";
 import "./canonical/loadRouteRunCanonicalBooleans.test";
 import "./canonical/seamCUserIdDropped.test";
