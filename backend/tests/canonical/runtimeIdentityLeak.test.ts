@@ -215,11 +215,16 @@ type Endpoint = {
 
 function buildEndpoints(): Endpoint[] {
   return [
-    // ── Control Center (Admin) — operational dashboards, must be identity-free ──
-    { method: "GET", route: "/overview", probe: "/ops/control-center/overview", kind: "clean", authorized: "Admin" },
-    { method: "GET", route: "/routes", probe: "/ops/control-center/routes", kind: "clean", authorized: "Admin" },
-    { method: "GET", route: "/exceptions", probe: "/ops/control-center/exceptions", kind: "clean", authorized: "Admin" },
-    { method: "GET", route: "/difficulty", probe: "/ops/control-center/difficulty", kind: "clean", authorized: "Admin" },
+    // ── Control Center (Dispatch+Admin) — operational dashboards, must be
+    // identity-free. SEAM-B relocated these Admin-only surfaces to /ops and widened
+    // the guard to Dispatch+Admin. The audience-widening re-scan runs the clean probe
+    // as the NEW lower-privilege audience (Dispatch) and proves the Specialist floor
+    // (underPriv) is still blocked — a widened surface must not leak to the widened
+    // audience, and the floor beneath it must stay shut. ──
+    { method: "GET", route: "/overview", probe: "/ops/control-center/overview", kind: "clean", authorized: "Dispatch", underPriv: "Specialist" },
+    { method: "GET", route: "/routes", probe: "/ops/control-center/routes", kind: "clean", authorized: "Dispatch", underPriv: "Specialist" },
+    { method: "GET", route: "/exceptions", probe: "/ops/control-center/exceptions", kind: "clean", authorized: "Dispatch", underPriv: "Specialist" },
+    { method: "GET", route: "/difficulty", probe: "/ops/control-center/difficulty", kind: "clean", authorized: "Dispatch", underPriv: "Specialist" },
     // ── Admin dashboards / lists ──
     { method: "GET", route: "/admin/dashboard", probe: "/admin/dashboard", kind: "clean", authorized: "Admin" },
     { method: "GET", route: "/admin/pools", probe: "/admin/pools", kind: "clean", authorized: "Admin" },
@@ -321,6 +326,23 @@ for (const ep of buildEndpoints().filter((e) => e.kind === "clean")) {
       hits.length === 0,
       `${ep.probe}: identity leaked to ${ep.authorized}: ${JSON.stringify(hits)}`,
     );
+
+    // Audience floor: when a clean surface declares an under-privileged role
+    // (SEAM-B widened the CC guard to Dispatch+Admin — the floor beneath is
+    // Specialist), prove that floor is shut. A widened operational read must still
+    // fail-closed for a role below its guard, and must never carry identity there.
+    if (ep.underPriv) {
+      const under = await req(ep.method, ep.probe, ep.underPriv);
+      assert(
+        isBlocked(under.status),
+        `${ep.probe}: under-privileged ${ep.underPriv} returned ${under.status}, expected 401/403 — the widened guard's floor is not enforced`,
+      );
+      assertEqual(
+        scanIdentity(under.body).length,
+        0,
+        `${ep.probe}: under-privileged ${ep.underPriv} response carried identity`,
+      );
+    }
   });
 }
 
