@@ -12,6 +12,7 @@ import { OpsCard } from "./ui/OpsCard";
 import { OpsTable, OpsTableRow, OpsTableCell } from "./ui/OpsTable";
 import { OpsBadge } from "./ui/OpsBadge";
 import { OpsButton } from "./ui/OpsButton";
+import { StopHistoryDrawer } from "./StopHistoryDrawer";
 
 interface LeadRouteDetailProps {
     id: number;
@@ -30,6 +31,9 @@ export function LeadRouteDetail({ id, onBack }: LeadRouteDetailProps) {
     const [selectedOid, setSelectedOid] = useState<string>("");
     const [reassigning, setReassigning] = useState(false);
     const [reassignError, setReassignError] = useState<string | null>(null);
+
+    // D5b — read-only per-stop history drawer (worker-anonymous by construction).
+    const [historyStop, setHistoryStop] = useState<{ stopId: string; label: string } | null>(null);
 
     const fetchDetail = useCallback(async () => {
         try {
@@ -168,7 +172,7 @@ export function LeadRouteDetail({ id, onBack }: LeadRouteDetailProps) {
             </OpsCard>
 
             <OpsCard className="p-0">
-                <OpsTable headers={["Seq", "Stop #", "Location", "Status"]}>
+                <OpsTable headers={["Seq", "Stop #", "Location", "Status", "History"]}>
                     {routeRun.stops.map((stop) => (
                         <OpsTableRow key={stop.route_run_stop_id}>
                             <OpsTableCell className="text-gray-500">{stop.sequence}</OpsTableCell>
@@ -182,17 +186,40 @@ export function LeadRouteDetail({ id, onBack }: LeadRouteDetailProps) {
                                     value={stop.status.replace("_", " ")}
                                 />
                             </OpsTableCell>
+                            <OpsTableCell>
+                                <OpsButton
+                                    size="sm"
+                                    variant="outline"
+                                    aria-label={`History for stop ${stop.stopNumber || stop.stop_id}`}
+                                    onClick={() =>
+                                        setHistoryStop({
+                                            stopId: stop.stop_id,
+                                            label: stop.stopNumber || stop.stop_id,
+                                        })
+                                    }
+                                >
+                                    History
+                                </OpsButton>
+                            </OpsTableCell>
                         </OpsTableRow>
                     ))}
                     {routeRun.stops.length === 0 && (
                         <OpsTableRow>
-                            <OpsTableCell colSpan={4} className="text-center py-8 text-gray-500">
+                            <OpsTableCell colSpan={5} className="text-center py-8 text-gray-500">
                                 No stops in this route.
                             </OpsTableCell>
                         </OpsTableRow>
                     )}
                 </OpsTable>
             </OpsCard>
+
+            {historyStop && (
+                <StopHistoryDrawer
+                    stopId={historyStop.stopId}
+                    stopLabel={historyStop.label}
+                    onClose={() => setHistoryStop(null)}
+                />
+            )}
         </OpsLayout>
     );
 }

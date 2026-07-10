@@ -981,3 +981,60 @@ export async function getOpsCleanLogs(
 
     return await apiFetch<OpsCleanLogsResponse>(`/api/ops/clean-logs?${qs.toString()}`, token);
 }
+
+// ── SEAM-D D5 — per-stop history (visit-grouped, worker-anonymous) ──────────
+// History attaches to the asset. The payload carries no worker identity of any
+// kind — enforced server-side (canonical normalized columns + de-identified
+// intelligence tables) and asserted by the drawer tests.
+
+export interface StopHistoryObservation {
+    type: string;
+    kind: "condition" | "action" | "measurement" | "presence";
+    norm_status: string | null;
+    norm_severity: number | null;
+    intervention: string | null;
+    observed_at: string;
+}
+
+export interface StopHistoryEntry {
+    visit_date: string | null;
+    started_at: string | null;
+    ended_at: string | null;
+    outcome: string | null;
+    reason_code: string | null;
+    observations: StopHistoryObservation[];
+    effort: {
+        service_minutes: number | null;
+        stop_type: string;
+        trash_volume: number | null;
+    } | null;
+    condition_scores: {
+        cleanliness: number | null;
+        safety: number | null;
+        infra: number | null;
+        scored_at: string;
+    } | null;
+}
+
+export interface StopHistoryResponse {
+    stop_id: string;
+    total_visits: number;
+    limit: number;
+    offset: number;
+    entries: StopHistoryEntry[];
+}
+
+export async function getStopHistory(
+    token: string,
+    stopId: string,
+    params?: { limit?: number; offset?: number }
+): Promise<StopHistoryResponse> {
+    const qs = new URLSearchParams();
+    if (params?.limit != null) qs.set("limit", String(params.limit));
+    if (params?.offset != null) qs.set("offset", String(params.offset));
+    const suffix = qs.size > 0 ? `?${qs.toString()}` : "";
+    return await apiFetch<StopHistoryResponse>(
+        `/api/stops/${encodeURIComponent(stopId)}/history${suffix}`,
+        token
+    );
+}

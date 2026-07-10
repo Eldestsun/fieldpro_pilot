@@ -4,6 +4,7 @@ import { getStopsScoped, bulkUpdateAdminStops, updateAdminStop, fetchPools, type
 import { OpsLayout } from "../ui/OpsLayout";
 import { OpsButton } from "../ui/OpsButton";
 import { DataTable, type DataTableColumn } from "../ui/DataTable";
+import { StopHistoryDrawer } from "../StopHistoryDrawer";
 import { cn } from "../../lib/utils";
 
 interface AdminStopsPanelProps {
@@ -39,6 +40,9 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
   const [selectedStopIds, setSelectedStopIds] = useState<string[]>([]);
   const [rowEdits, setRowEdits] = useState<Record<string, { pool_id?: string; notes?: string }>>({});
   const [savingRow, setSavingRow] = useState<Record<string, boolean>>({});
+  // D5b — read-only per-stop history drawer; a read control, so it renders in
+  // BOTH the ops (read-only) and admin (edit) scopes.
+  const [historyStopId, setHistoryStopId] = useState<string | null>(null);
 
   const isReadOnly = scope === "ops";
 
@@ -284,6 +288,24 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
         );
       },
     },
+    {
+      key: "history",
+      header: "History",
+      render: (stop: any) => {
+        const stopId = normalizeText(getStopField(stop, "stop_id"));
+        if (!stopId) return null;
+        return (
+          <OpsButton
+            size="sm"
+            variant="outline"
+            aria-label={`History for stop ${stopId}`}
+            onClick={() => setHistoryStopId(stopId)}
+          >
+            History
+          </OpsButton>
+        );
+      },
+    },
     ...(!isReadOnly ? [{
       key: "actions",
       header: "Actions",
@@ -366,6 +388,10 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
         isLoading={loading}
         emptyMessage="No stops found. Try adjusting your search or filter."
       />
+
+      {historyStopId && (
+        <StopHistoryDrawer stopId={historyStopId} onClose={() => setHistoryStopId(null)} />
+      )}
     </OpsLayout>
   );
 }

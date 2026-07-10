@@ -14,6 +14,7 @@ interface OpsButtonProps {
     /** @deprecated Use className instead. Kept for backward compat. */
     style?: React.CSSProperties;
     type?: "button" | "submit" | "reset";
+    "aria-label"?: string;
 }
 
 const VARIANT_CLASSES: Record<OpsButtonVariant, string> = {
@@ -38,12 +39,14 @@ export function OpsButton({
     className,
     style,
     type = "button",
+    "aria-label": ariaLabel,
 }: OpsButtonProps) {
     return (
         <button
             type={type}
             onClick={onClick}
             disabled={disabled}
+            aria-label={ariaLabel}
             className={cn(
                 "inline-flex items-center justify-center font-semibold rounded-md transition-colors",
                 VARIANT_CLASSES[variant],
