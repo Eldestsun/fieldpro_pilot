@@ -117,6 +117,7 @@ routeRunRoutes.get(
           rr.status,
           rr.run_date,
           rr.created_at,
+          rr.is_adhoc,
           COALESCE(rs.stop_count, 0) AS stop_count,
           COALESCE(rs.completed_stop_count, 0) AS completed_stops
         FROM route_runs rr
@@ -594,7 +595,7 @@ routeRunRoutes.post(
     requireAuth,
     requireAnyRole(["Dispatch", "Admin"]),
     async (req: any, res: Response) => {
-        const { stop_ids, base_id, route_pool_id, pool_id, run_date, ul_id, shift_type } = req.body;
+        const { stop_ids, base_id, route_pool_id, pool_id, run_date, ul_id, shift_type, is_adhoc } = req.body;
 
         const createdByOid = req.user?.oid;
         if (!createdByOid) {
@@ -606,6 +607,19 @@ routeRunRoutes.post(
 
         if (!targetPoolId) {
             return res.status(400).json({ error: "Missing required field: pool_id" });
+        }
+
+        // SEAM-D D3: is_adhoc is an EXPLICIT flag from the picker UI — the server
+        // never infers it. An ad-hoc run must name its stops (the >=2 floor is the
+        // existing OSRM planning floor below). stop_ids WITHOUT the flag remains
+        // the legal, untagged legacy primitive (operator ruling).
+        if (is_adhoc !== undefined && typeof is_adhoc !== "boolean") {
+            return res.status(400).json({ error: "is_adhoc must be a boolean" });
+        }
+        if (is_adhoc === true && !(Array.isArray(stop_ids) && stop_ids.length >= 2)) {
+            return res
+                .status(400)
+                .json({ error: "is_adhoc requires an explicit stop_ids array (min 2)" });
         }
 
         try {
@@ -665,6 +679,7 @@ routeRunRoutes.post(
                     base_id: resolvedBaseId,
                     run_date,
                     shift_type: shift_type ?? 'day',
+                    is_adhoc: is_adhoc === true,
                 });
             });
 

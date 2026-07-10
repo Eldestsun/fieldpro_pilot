@@ -94,6 +94,32 @@ describe('LeadRoutesPanel — A2 exception badges', () => {
   })
 })
 
+describe('LeadRoutesPanel — D3b ad-hoc tag', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('renders the ad-hoc badge ONLY for is_adhoc runs, in both tables', async () => {
+    mockGet.mockResolvedValue([
+      run({ id: 51, status: 'in_progress', is_adhoc: true }),
+      run({ id: 52, status: 'in_progress', is_adhoc: false }),
+      run({ id: 53, status: 'completed', is_adhoc: true }),
+      run({ id: 54, status: 'completed' }), // flag absent — legacy rows read false
+    ])
+    render(<LeadRoutesPanel />)
+
+    const tagged = (await screen.findByText('#51')).closest('tr')!
+    expect(within(tagged).getByText('ad-hoc')).toBeInTheDocument()
+
+    const untagged = screen.getByText('#52').closest('tr')!
+    expect(within(untagged).queryByText('ad-hoc')).not.toBeInTheDocument()
+
+    const taggedDone = screen.getByText('#53').closest('tr')!
+    expect(within(taggedDone).getByText('ad-hoc')).toBeInTheDocument()
+
+    const legacyDone = screen.getByText('#54').closest('tr')!
+    expect(within(legacyDone).queryByText('ad-hoc')).not.toBeInTheDocument()
+  })
+})
+
 describe('LeadRoutesPanel — A3 30s polling', () => {
   beforeEach(() => vi.clearAllMocks())
   afterEach(() => vi.useRealTimers())

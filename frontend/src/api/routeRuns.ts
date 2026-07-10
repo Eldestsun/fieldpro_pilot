@@ -7,6 +7,8 @@ export interface RouteRun {
     total_distance_m: number;
     total_duration_s: number;
     status: string;
+    // SEAM-D D3 — run-level ad-hoc creation tag (explicit flag at create time).
+    is_adhoc?: boolean;
     stops: Stop[];
     // R11 reassignment exposure (SEAM-C): assigned worker + assigning Lead by NAME/ROLE
     // only — never an OID. Present only on the route-detail payload.
@@ -453,7 +455,7 @@ export async function fetchUlUsers(token: string): Promise<UlUser[]> {
 
 export async function previewRouteRun(
     token: string,
-    params: { poolId: string; ulId: string; runDate: string; shiftType?: string }
+    params: { poolId: string; ulId: string; runDate: string; shiftType?: string; stopIds?: string[] }
 ): Promise<RoutePreviewResponse> {
     const res = await fetch("/api/route-runs/preview", {
         method: "POST",
@@ -466,6 +468,7 @@ export async function previewRouteRun(
             ul_id: params.ulId,
             run_date: params.runDate,
             shift_type: params.shiftType ?? "day",
+            ...(params.stopIds ? { stop_ids: params.stopIds } : {}),
         }),
     });
 
@@ -478,7 +481,9 @@ export async function previewRouteRun(
 
 export async function createRouteRun(
     token: string,
-    params: { poolId: string; ulId: string; runDate: string; shiftType?: string }
+    // SEAM-D D3: stopIds + isAdhoc drive the ad-hoc picker mode. is_adhoc is an
+    // EXPLICIT flag — the server validates it and never infers it from stop_ids.
+    params: { poolId: string; ulId: string; runDate: string; shiftType?: string; stopIds?: string[]; isAdhoc?: boolean }
 ): Promise<void> {
     const res = await fetch("/api/route-runs", {
         method: "POST",
@@ -491,6 +496,8 @@ export async function createRouteRun(
             ul_id: params.ulId,
             run_date: params.runDate,
             shift_type: params.shiftType ?? "day",
+            ...(params.stopIds ? { stop_ids: params.stopIds } : {}),
+            ...(params.isAdhoc ? { is_adhoc: true } : {}),
         }),
     });
 
@@ -914,6 +921,8 @@ export interface OpsRouteRun {
     run_date: string;
     created_at: string;
     pool_label?: string;
+    // SEAM-D D3 — run-level ad-hoc creation tag.
+    is_adhoc?: boolean;
     stop_count: number;
     completed_stops: number;
     // SEAM-A A2 — per-run exception counts (attach to the run, never a worker).
@@ -980,4 +989,61 @@ export async function getOpsCleanLogs(
     if (params.run_date) qs.set("run_date", params.run_date);
 
     return await apiFetch<OpsCleanLogsResponse>(`/api/ops/clean-logs?${qs.toString()}`, token);
+}
+
+// ── SEAM-D D5 — per-stop history (visit-grouped, worker-anonymous) ──────────
+// History attaches to the asset. The payload carries no worker identity of any
+// kind — enforced server-side (canonical normalized columns + de-identified
+// intelligence tables) and asserted by the drawer tests.
+
+export interface StopHistoryObservation {
+    type: string;
+    kind: "condition" | "action" | "measurement" | "presence";
+    norm_status: string | null;
+    norm_severity: number | null;
+    intervention: string | null;
+    observed_at: string;
+}
+
+export interface StopHistoryEntry {
+    visit_date: string | null;
+    started_at: string | null;
+    ended_at: string | null;
+    outcome: string | null;
+    reason_code: string | null;
+    observations: StopHistoryObservation[];
+    effort: {
+        service_minutes: number | null;
+        stop_type: string;
+        trash_volume: number | null;
+    } | null;
+    condition_scores: {
+        cleanliness: number | null;
+        safety: number | null;
+        infra: number | null;
+        scored_at: string;
+    } | null;
+}
+
+export interface StopHistoryResponse {
+    stop_id: string;
+    total_visits: number;
+    limit: number;
+    offset: number;
+    entries: StopHistoryEntry[];
+}
+
+export async function getStopHistory(
+    token: string,
+    stopId: string,
+    params?: { limit?: number; offset?: number }
+): Promise<StopHistoryResponse> {
+    const qs = new URLSearchParams();
+    if (params?.limit != null) qs.set("limit", String(params.limit));
+    if (params?.offset != null) qs.set("offset", String(params.offset));
+    const suffix = qs.size > 0 ? `?${qs.toString()}` : "";
+    return await apiFetch<StopHistoryResponse>(
+        `/api/stops/${encodeURIComponent(stopId)}/history${suffix}`,
+        token
+    );
 }

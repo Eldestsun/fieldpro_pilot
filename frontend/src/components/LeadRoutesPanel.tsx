@@ -123,7 +123,10 @@ export function LeadRoutesPanel() {
           {activeRuns.map((run) => (
             <OpsTableRow key={run.id} onClick={() => setSelectedActiveRunId(run.id)}>
               <OpsTableCell className="font-mono text-gray-500">#{run.id}</OpsTableCell>
-              <OpsTableCell>{run.pool_label || run.route_pool_id}</OpsTableCell>
+              <OpsTableCell>
+                {run.pool_label || run.route_pool_id}
+                {run.is_adhoc && <span className="ml-2"><OpsBadge variant="neutral" value="ad-hoc" /></span>}
+              </OpsTableCell>
               <OpsTableCell>
                 <OpsBadge
                   variant={run.status === "in_progress" ? "status" : "neutral"}
@@ -151,7 +154,10 @@ export function LeadRoutesPanel() {
           {completedRuns.map((run) => (
             <OpsTableRow key={run.id} onClick={() => setSelectedCompletedRunId(run.id)}>
               <OpsTableCell className="font-mono text-gray-500">#{run.id}</OpsTableCell>
-              <OpsTableCell>{run.pool_label || run.route_pool_id}</OpsTableCell>
+              <OpsTableCell>
+                {run.pool_label || run.route_pool_id}
+                {run.is_adhoc && <span className="ml-2"><OpsBadge variant="neutral" value="ad-hoc" /></span>}
+              </OpsTableCell>
               <OpsTableCell>
                 <OpsBadge
                   variant="success"

@@ -247,6 +247,11 @@ function buildEndpoints(): Endpoint[] {
     // asset_type_id=1 (transit_stop) is seeded by tests/fixtures/seed.sql.
     { method: "GET", route: "/observation-types", probe: "/admin/tenant/observation-types?org_id=1&asset_type_id=1", kind: "clean", authorized: "Admin" },
     { method: "GET", route: "/by-pool/:pool_id", probe: `/route-overrides/by-pool/${FIX_POOL}`, kind: "clean", authorized: "Dispatch" },
+    // ── Stop history (SEAM-D D5a) — per-STOP intelligence chronology. History
+    // attaches to the asset; worker identity must never appear. New
+    // Dispatch-reachable read surface → probe as Dispatch AND prove the
+    // Specialist floor stays shut (audience-widening rider). ──
+    { method: "GET", route: "/stops/:stop_id/history", probe: `/stops/${FIXTURE_STOP_ID}/history`, kind: "clean", authorized: "Dispatch", underPriv: "Specialist" },
 
     // ── SANCTIONED: identity legitimately behind a gate; prove the gate blocks ──
     // The gated assignment detail view — the surviving twin from ISSUE-043.

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { LeadRouteDetail } from '../LeadRouteDetail'
-import { getLeadRouteRunById, fetchUlUsers, reassignRouteRun, type RouteRun, type UlUser } from '../../api/routeRuns'
+import { getLeadRouteRunById, fetchUlUsers, reassignRouteRun, getStopHistory, type RouteRun, type UlUser } from '../../api/routeRuns'
 
 const getAccessToken = vi.fn().mockResolvedValue('test-token')
 vi.mock('../../auth/AuthContext', () => ({ useAuth: () => ({ getAccessToken }) }))
@@ -10,11 +10,13 @@ vi.mock('../../api/routeRuns', () => ({
   getLeadRouteRunById: vi.fn(),
   fetchUlUsers: vi.fn(),
   reassignRouteRun: vi.fn(),
+  getStopHistory: vi.fn(),
 }))
 
 const mockGetDetail = vi.mocked(getLeadRouteRunById)
 const mockUsers = vi.mocked(fetchUlUsers)
 const mockReassign = vi.mocked(reassignRouteRun)
+const mockHistory = vi.mocked(getStopHistory)
 
 const detail = (over: Partial<RouteRun> = {}): RouteRun => ({
   id: 42, route_pool_id: 'POOL-1', base_id: 'SOUTH', run_date: '2026-07-09',
@@ -67,6 +69,22 @@ describe('LeadRouteDetail — A4 reassign', () => {
     // The option's visible label is the worker name; the OID lives only in the value.
     expect(screen.getByRole('option', { name: /Bob Worker/ })).toHaveValue('oid-bob-1111')
     expect(within(select).queryByText('oid-bob-1111')).not.toBeInTheDocument()
+  })
+
+  it('D5b: stop row History control opens the read-only history drawer', async () => {
+    mockGetDetail.mockResolvedValue(detail({
+      stops: [{
+        route_run_stop_id: 7, stop_id: '31150', stopNumber: '31150', sequence: 1,
+        on_street_name: 'Main St', cross_street: '1st Ave', status: 'done',
+      } as any],
+    }))
+    mockHistory.mockResolvedValue({ stop_id: '31150', total_visits: 0, limit: 20, offset: 0, entries: [] })
+    render(<LeadRouteDetail id={42} onBack={() => {}} />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'History for stop 31150' }))
+    // Empty history renders absence, never an assumed state.
+    expect(await screen.findByText('No observations recorded for this stop.')).toBeInTheDocument()
+    expect(mockHistory).toHaveBeenCalledWith('test-token', '31150')
   })
 
   it('surfaces a reassign error on failure', async () => {
