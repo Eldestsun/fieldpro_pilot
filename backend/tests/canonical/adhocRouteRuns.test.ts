@@ -14,10 +14,12 @@ import { test, assert, assertEqual, pool, FIXTURE_ORG_ID } from "../setup";
 //  - stop_ids[] WITHOUT the flag stays legal and UNTAGGED (legacy primitive).
 //  - Run-level tag only; stop-level origin_type semantics untouched.
 //
-// The persist tests drive the REAL endpoint (in-process app + live OSRM) with
+// The persist tests drive the REAL endpoint (in-process app; routing goes to
+// the OSRM-only stub — tests/fakeOsrm.ts, external infra, never the DB) with
 // the two SEED-OWNED picker fixture stops (tests/fixtures/seed.sql §11:
-// SEAMD_ADHOC_A/B — coordinate-bearing, asset-linked), then read
-// route_runs.is_adhoc back under org context. The stops live in seed.sql,
+// SEAMD_ADHOC_A/B — coordinate-bearing, asset-linked). The DB layer is fully
+// real: the run row is written to the real route_runs table and is_adhoc is
+// read back from the real DB under org context. The stops live in seed.sql,
 // not here: the asset_id write needs the elevated ISSUE-024 trigger toggle,
 // and CI has no runtime provisioner credential by design — this suite runs
 // on the suite pool ONLY. Tests create and clean up their own RUNS.
@@ -129,7 +131,7 @@ test("SEAM-D D3a: ad-hoc run persists is_adhoc=true; untagged explicit-stop run 
       stop_ids: [STOP_A, STOP_B],
       is_adhoc: true,
     });
-    assertEqual(adhocRes.status, 200, "ad-hoc create → 200 (live OSRM plan)");
+    assertEqual(adhocRes.status, 200, "ad-hoc create → 200 (OSRM-stubbed plan; DB write real)");
     const adhocBody = await adhocRes.json();
     assert(adhocBody.route_run_id, "ad-hoc create returns route_run_id");
     createdRunIds.push(adhocBody.route_run_id);

@@ -93,6 +93,14 @@
   `sync_transit_stop_primary_asset` trigger inserts into `transit_stop_assets`
   without its NOT NULL `org_id`). When RLS-TSA lands, the asset_id write works
   under normal roles and the two seed stops can be reconsidered.
+- Second CI gap uncovered once SASL was fixed: CI has **no OSRM service**, and
+  `osrmClient` has no fallback, so the persist test's `POST /route-runs` 500'd
+  at the routing fetch. Operator-ruled fix: **OSRM (external routing infra) is
+  stubbed in the test suite** (`tests/fakeOsrm.ts`, started by `run.ts`,
+  answers `/trip/v1` + `/route/v1` deterministically) — a bounded, greppable
+  carve-out, NOT a mocking precedent: **the canonical/DB layer is never
+  mocked**; the persist test still writes the real `route_runs` row and reads
+  `is_adhoc` back from the real DB under org context.
 
 ## Files touched
 - `backend/migrations/20260710_seam_d_route_runs_is_adhoc.sql` (new)
