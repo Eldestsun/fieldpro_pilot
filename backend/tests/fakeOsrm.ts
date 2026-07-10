@@ -19,12 +19,21 @@
 // with geometrically plausible, deterministic responses (identity stop order,
 // equirectangular distances) so route planning is stable in every environment.
 //
-// run.ts starts it before runAll() and points OSRM_BASE_URL at it — safely
-// before osrmClient's module-load capture, since tests only load the app
-// lazily inside test bodies.
+// LOAD-ORDER CONTRACT: osrmClient captures OSRM_BASE_URL as a module-load
+// const, and several test files import service chains that reach it at
+// IMPORT time (cleanLogService → routeRunService → osrmClient) — before any
+// async setup runs. So the env var is set HERE, as a module-load side effect,
+// on a FIXED port; run.ts imports this module before any test file, and
+// startFakeOsrm() (awaited before runAll) then binds that exact port. An
+// ephemeral listen(0) port cannot work: its number isn't known until after
+// the test-file imports have already bound the const (that inert-stub bug is
+// exactly what the first CI run of this stub demonstrated — local real OSRM
+// on 5005 masked it).
 
 import http from "http";
-import type { AddressInfo } from "net";
+
+export const FAKE_OSRM_PORT = 47811;
+process.env.OSRM_BASE_URL = `http://127.0.0.1:${FAKE_OSRM_PORT}`;
 
 type LonLat = { lon: number; lat: number };
 
@@ -82,9 +91,9 @@ function routeResponse(coords: LonLat[]): object {
 }
 
 /**
- * Start the fake OSRM listener on an ephemeral port and point OSRM_BASE_URL
- * at it. Must run before anything loads src/osrmClient.ts (which captures the
- * env var at module load).
+ * Bind the fake OSRM listener on FAKE_OSRM_PORT (the env var already points
+ * there — see the module-load side effect above). Fails loudly on port
+ * collision rather than silently letting route planning hit a dead URL.
  */
 export function startFakeOsrm(): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -110,10 +119,10 @@ export function startFakeOsrm(): Promise<void> {
         res.end(JSON.stringify({ code: "InvalidQuery", message: String(err) }));
       }
     });
-    server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address() as AddressInfo;
-      process.env.OSRM_BASE_URL = `http://127.0.0.1:${port}`;
+    server.on("error", (err) =>
+      reject(new Error(`fakeOsrm: failed to bind port ${FAKE_OSRM_PORT} (is it in use?): ${err.message}`)),
+    );
+    server.listen(FAKE_OSRM_PORT, "127.0.0.1", () => {
       // Never hold the event loop open past the suite.
       server.unref();
       console.log(`tests: fake OSRM (external routing infra stub — DB layer stays real) listening on ${process.env.OSRM_BASE_URL}\n`);
