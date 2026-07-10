@@ -99,6 +99,7 @@ import "./canonical/loadRouteRunOidTrim.test";
 import "./canonical/presenceTaxonomy.test";
 import "./canonical/controlCenterRelocation.test";
 import "./canonical/stopHistory.test";
+import "./canonical/adhocRouteRuns.test";
 
 (async () => {
   console.log("canonical integration tests — real local DB, no mocking\n");

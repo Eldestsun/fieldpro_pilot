@@ -174,9 +174,10 @@ export async function createRouteRun(
     base_id: string;
     run_date?: string | Date;
     shift_type?: string;        // 'day' | 'night' | 'all_day'. Defaults to 'day'.
+    is_adhoc?: boolean;         // SEAM-D D3: run-level ad-hoc tag. Explicit flag only; defaults false.
   }
 ) {
-  const { stops, user_id, assigned_user_oid, created_by_oid, route_pool_id, base_id, run_date, shift_type } = params;
+  const { stops, user_id, assigned_user_oid, created_by_oid, route_pool_id, base_id, run_date, shift_type, is_adhoc } = params;
 
   let stopsToPlan = stops;
 
@@ -341,9 +342,9 @@ export async function createRouteRun(
     const insertRunText = `
       INSERT INTO route_runs (
         user_id, route_pool_id, base_id, run_date, status, total_distance_m, total_duration_s,
-        assigned_user_oid, created_by_oid, shift_type
+        assigned_user_oid, created_by_oid, shift_type, is_adhoc
       )
-      VALUES ($1, $2, $3, $4, 'planned', $5, $6, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, 'planned', $5, $6, $7, $8, $9, $10)
       RETURNING id
     `;
     // Default to today if run_date is missing
@@ -359,6 +360,7 @@ export async function createRouteRun(
       assigned_user_oid ?? null,
       created_by_oid ?? null,
       shift_type ?? 'day',
+      is_adhoc === true,
     ]);
     const routeRunId = runRes.rows[0].id;
 
