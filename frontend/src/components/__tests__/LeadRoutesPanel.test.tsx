@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import { LeadRoutesPanel } from '../LeadRoutesPanel'
 import { getOpsRouteRuns, type OpsRouteRun } from '../../api/routeRuns'
@@ -91,5 +91,31 @@ describe('LeadRoutesPanel — A2 exception badges', () => {
     expect(within(row).getByText('3 skipped')).toBeInTheDocument()
     expect(within(row).queryByText(/hazard/i)).not.toBeInTheDocument()
     expect(within(row).queryByText(/unplanned/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('LeadRoutesPanel — A3 30s polling', () => {
+  beforeEach(() => vi.clearAllMocks())
+  afterEach(() => vi.useRealTimers())
+
+  it('fetches on mount, refetches every 30s, and stops after unmount (mirrors CC)', async () => {
+    vi.useFakeTimers()
+    mockGet.mockResolvedValue([run({ id: 41, status: 'in_progress' })])
+    const { unmount } = render(<LeadRoutesPanel />)
+
+    // Flush the mount effect + its async chain, then assert the initial fetch fired.
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mockGet).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(mockGet).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(mockGet).toHaveBeenCalledTimes(3)
+
+    // Unmount clears the interval — no further polling.
+    unmount()
+    await vi.advanceTimersByTimeAsync(90_000)
+    expect(mockGet).toHaveBeenCalledTimes(3)
   })
 })

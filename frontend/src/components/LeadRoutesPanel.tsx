@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { getOpsRouteRuns, type OpsRouteRun } from "../api/routeRuns";
 import { useCreateRoute } from "../hooks/useCreateRoute";
@@ -35,11 +35,9 @@ export function LeadRoutesPanel() {
   const [selectedActiveRunId, setSelectedActiveRunId] = useState<number | null>(null);
   const [selectedCompletedRunId, setSelectedCompletedRunId] = useState<number | null>(null);
 
-  const createRouteHook = useCreateRoute({
-    onCreated: () => fetchRuns()
-  });
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchRuns = async () => {
+  const fetchRuns = useCallback(async () => {
     try {
       const token = await getAccessToken();
       const allRuns = await getOpsRouteRuns(token, { page: 1, pageSize: 50 });
@@ -49,11 +47,41 @@ export function LeadRoutesPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [getAccessToken]);
 
+  const createRouteHook = useCreateRoute({
+    onCreated: () => fetchRuns()
+  });
+
+  // SEAM-A A3 — near-real-time refresh: initial fetch + 30s polling, mirroring the
+  // Control Center pattern (AdminControlCenter). Interval is cleared on unmount.
+  const POLL_INTERVAL_MS = 30_000;
   useEffect(() => {
     fetchRuns();
-  }, [getAccessToken]);
+    intervalRef.current = setInterval(fetchRuns, POLL_INTERVAL_MS);
+    return () => {
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [fetchRuns]);
+
+  // Pause polling when the tab is hidden; resume and immediately refresh when visible.
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        fetchRuns();
+        if (intervalRef.current !== null) clearInterval(intervalRef.current);
+        intervalRef.current = setInterval(fetchRuns, POLL_INTERVAL_MS);
+      } else if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [fetchRuns]);
 
   if (selectedActiveRunId) {
     return <LeadRouteDetail id={selectedActiveRunId} onBack={() => setSelectedActiveRunId(null)} />;
