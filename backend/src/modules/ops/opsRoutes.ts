@@ -294,6 +294,7 @@ opsRoutes.get("/ops/route-runs", async (req: Request, res: Response) => {
             SELECT
                 rr.id, rr.route_pool_id, rr.base_id, rr.status, rr.run_date, rr.created_at,
                 rr.created_at,
+                rr.is_adhoc,
                 rp.label as pool_label,
                 (SELECT COUNT(*) FROM route_run_stops rrs WHERE rrs.route_run_id = rr.id) as stop_count,
                 (SELECT COUNT(*) FROM route_run_stops rrs WHERE rrs.route_run_id = rr.id AND rrs.status IN ('done', 'skipped')) as completed_stops,

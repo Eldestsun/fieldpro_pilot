@@ -117,6 +117,7 @@ routeRunRoutes.get(
           rr.status,
           rr.run_date,
           rr.created_at,
+          rr.is_adhoc,
           COALESCE(rs.stop_count, 0) AS stop_count,
           COALESCE(rs.completed_stop_count, 0) AS completed_stops
         FROM route_runs rr

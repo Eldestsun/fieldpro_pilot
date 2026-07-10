@@ -126,7 +126,10 @@ export function LeadRouteDetail({ id, onBack }: LeadRouteDetailProps) {
                     </div>
                     <div>
                         <div className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Pool</div>
-                        <div className="mt-1 font-semibold text-gray-900">{routeRun.route_pool_id}</div>
+                        <div className="mt-1 font-semibold text-gray-900">
+                            {routeRun.route_pool_id}
+                            {routeRun.is_adhoc && <span className="ml-2"><OpsBadge variant="neutral" value="ad-hoc" /></span>}
+                        </div>
                     </div>
                     <div>
                         <div className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Date</div>
