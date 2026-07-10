@@ -35,7 +35,7 @@ import { emitObservationsForStop } from "../../src/domains/observation/observati
 // ============================================================================
 
 const ORG = String(FIXTURE_ORG_ID);
-const EXCEPTIONS = "/api/admin/control-center/exceptions";
+const EXCEPTIONS = "/api/ops/control-center/exceptions";
 
 async function getExceptions(baseUrl: string): Promise<{ total_hazards: number; total_infra_issues: number }> {
   const res = await fetch(`${baseUrl}${EXCEPTIONS}`, {

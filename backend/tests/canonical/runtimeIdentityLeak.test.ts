@@ -216,10 +216,10 @@ type Endpoint = {
 function buildEndpoints(): Endpoint[] {
   return [
     // ── Control Center (Admin) — operational dashboards, must be identity-free ──
-    { method: "GET", route: "/overview", probe: "/admin/control-center/overview", kind: "clean", authorized: "Admin" },
-    { method: "GET", route: "/routes", probe: "/admin/control-center/routes", kind: "clean", authorized: "Admin" },
-    { method: "GET", route: "/exceptions", probe: "/admin/control-center/exceptions", kind: "clean", authorized: "Admin" },
-    { method: "GET", route: "/difficulty", probe: "/admin/control-center/difficulty", kind: "clean", authorized: "Admin" },
+    { method: "GET", route: "/overview", probe: "/ops/control-center/overview", kind: "clean", authorized: "Admin" },
+    { method: "GET", route: "/routes", probe: "/ops/control-center/routes", kind: "clean", authorized: "Admin" },
+    { method: "GET", route: "/exceptions", probe: "/ops/control-center/exceptions", kind: "clean", authorized: "Admin" },
+    { method: "GET", route: "/difficulty", probe: "/ops/control-center/difficulty", kind: "clean", authorized: "Admin" },
     // ── Admin dashboards / lists ──
     { method: "GET", route: "/admin/dashboard", probe: "/admin/dashboard", kind: "clean", authorized: "Admin" },
     { method: "GET", route: "/admin/pools", probe: "/admin/pools", kind: "clean", authorized: "Admin" },
