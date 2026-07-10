@@ -18,6 +18,8 @@ async function ensureFixtureSeed(): Promise<void> {
                      WHERE source_system = 'metro_stop' AND external_id = '31150')
          AND EXISTS (SELECT 1 FROM core.asset_locations
                      WHERE asset_id = 2 AND location_id = 1 AND role = 'primary' AND active)
+         AND EXISTS (SELECT 1 FROM public.transit_stops
+                     WHERE stop_id = 'SEAMD_ADHOC_A' AND asset_id IS NOT NULL)
          AS ok`);
     present = r.rows[0].ok === true;
   } finally {

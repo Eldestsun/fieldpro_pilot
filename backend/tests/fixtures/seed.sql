@@ -134,3 +134,43 @@ VALUES
   ('seed-specialist-oid', 1, 'Seed Specialist', 'Specialist'),
   ('seed-dispatch-oid',   1, 'Seed Dispatch',   'Dispatch')
 ON CONFLICT (oid) DO NOTHING;
+
+-- 11. SEAM-D D3a AD-HOC-PICKER FIXTURE STOPS (SEAMD_ADHOC_A / SEAMD_ADHOC_B).
+--     Owner: tests/canonical/adhocRouteRuns.test.ts — the "ad-hoc run persists
+--     is_adhoc" tests POST /route-runs with stop_ids=[SEAMD_ADHOC_A, SEAMD_ADHOC_B]
+--     through live OSRM. They need exactly two org-1 stops that are
+--     (a) COORDINATE-BEARING (OSRM trip planning needs lon/lat), and
+--     (b) ASSET-LINKED (route_run_stops.asset_id is NOT NULL; createRouteRun
+--         resolves it from public.stops.asset_id = transit_stops.asset_id).
+--     They live HERE, not in the test, because setting transit_stops.asset_id
+--     fires the ISSUE-024 sync trigger (see §6 above) — only this seed's
+--     elevated trigger-disable path can do the asset_id write. CI lacks the
+--     runtime provisioner credential by design; seed.sql is the sanctioned
+--     elevated-fixture path in both CI and local (run.ts ensureFixtureSeed).
+--     WORKAROUND NOTE: when RLS-TSA (the trigger org_id root fix) lands, the
+--     runtime write becomes possible under normal roles and these two rows can
+--     be reconsidered. Deliberately NOT pool-eligible (no pool_id, has_trash
+--     false) so they never enter risk-map eligibility or pool-candidate flows;
+--     the asset ids are high sentinels so they cannot collide with the
+--     historically dense 1..15k asset id range on older dev DBs.
+--     If you are writing a stop/asset COUNT assertion: org 1 carries these two
+--     synthetic stops (plus 31150) by design.
+INSERT INTO public.assets (id, org_id, asset_type_id, seed_key, external_id, display_name, lon, lat)
+VALUES
+  (987654321, 1, 1, 'SEAMD_ADHOC_A', 'SEAMD_ADHOC_A', 'SEAM-D Picker Fixture A', -122.300, 47.500),
+  (987654322, 1, 1, 'SEAMD_ADHOC_B', 'SEAMD_ADHOC_B', 'SEAM-D Picker Fixture B', -122.310, 47.510)
+ON CONFLICT (id) DO NOTHING;
+
+ALTER TABLE public.transit_stops DISABLE TRIGGER trg_sync_transit_stop_primary_asset;
+INSERT INTO public.transit_stops (stop_id, org_id, asset_id, lon, lat, on_street_name)
+VALUES
+  ('SEAMD_ADHOC_A', 1, 987654321, -122.300, 47.500, 'SEAM-D Picker Fixture A'),
+  ('SEAMD_ADHOC_B', 1, 987654322, -122.310, 47.510, 'SEAM-D Picker Fixture B')
+ON CONFLICT (stop_id) DO NOTHING;
+ALTER TABLE public.transit_stops ENABLE TRIGGER trg_sync_transit_stop_primary_asset;
+
+INSERT INTO public.transit_stop_assets (org_id, stop_id, asset_id, role, active)
+VALUES
+  (1, 'SEAMD_ADHOC_A', 987654321, 'primary', true),
+  (1, 'SEAMD_ADHOC_B', 987654322, 'primary', true)
+ON CONFLICT (stop_id, asset_id, role) WHERE active = true DO NOTHING;

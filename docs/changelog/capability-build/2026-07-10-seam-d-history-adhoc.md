@@ -79,6 +79,21 @@
   visit layer are empty post-rebuild — D5 renders absence until new completions
   land; demo staging is a separate founder task (PM-carded).
 
+## CI fix (2026-07-10, post-push)
+- The D3a persist test's fixture stops (SEAMD_ADHOC_A/B) were relocated from a
+  runtime admin connection into `tests/fixtures/seed.sql` §11 (greppable
+  markers). WHY: CI lacks the runtime provisioner credential **by design**
+  (`PGADMIN_DATABASE_URL` is step-scoped to migrations; the test step exports
+  only the suite-role `DATABASE_URL`), so the in-test admin client died with
+  `SASL: client password must be a string`. seed.sql is the sanctioned
+  elevated-fixture path in both CI (dedicated seed step) and local
+  (`run.ts ensureFixtureSeed`, probe extended to self-heal stale DBs). The test
+  now uses the suite pool only and creates/cleans up runs only.
+- This is the WORKAROUND; the root cause stays carded as **RLS-TSA** (the
+  `sync_transit_stop_primary_asset` trigger inserts into `transit_stop_assets`
+  without its NOT NULL `org_id`). When RLS-TSA lands, the asset_id write works
+  under normal roles and the two seed stops can be reconsidered.
+
 ## Files touched
 - `backend/migrations/20260710_seam_d_route_runs_is_adhoc.sql` (new)
 - `backend/src/modules/work/stopRoutes.ts`
