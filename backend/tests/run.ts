@@ -98,6 +98,7 @@ import "./canonical/seamCUserIdDropped.test";
 import "./canonical/loadRouteRunOidTrim.test";
 import "./canonical/presenceTaxonomy.test";
 import "./canonical/controlCenterRelocation.test";
+import "./canonical/stopHistory.test";
 
 (async () => {
   console.log("canonical integration tests — real local DB, no mocking\n");
