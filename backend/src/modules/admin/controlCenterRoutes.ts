@@ -35,7 +35,7 @@ ccRouter.use(requireAuth, requireOps);
 
 /**
  * @openapi
- * /admin/control-center/overview:
+ * /ops/control-center/overview:
  *   get:
  *     summary: Control center — today's operational overview
  *     description: >
@@ -44,10 +44,10 @@ ccRouter.use(requireAuth, requireOps);
  *       Per ISSUE-031 DQ A2 the high-severity hazard count is not surfaced — canonical
  *       severity is a sparse text column; the high-severity cut is restored in the MV-4/DQ-4
  *       intelligence pass.
- *     tags: [Admin]
+ *     tags: [Ops]
  *     security:
  *       - AzureAD: []
- *     x-required-roles: [Admin]
+ *     x-required-roles: [Dispatch, Admin]
  *     responses:
  *       200:
  *         description: Today's overview metrics
@@ -131,7 +131,7 @@ ccRouter.get("/overview", async (req: Request, res: Response) => {
       hazards_reported: parseInt(row.hazards_reported, 10)
     });
   } catch (err: any) {
-    console.error("Error in /api/admin/control-center/overview:", err);
+    console.error("Error in /api/ops/control-center/overview:", err);
     res.status(500).json({ error: "Failed to fetch overview metrics" });
   } finally {
     client.release();
@@ -142,14 +142,14 @@ ccRouter.get("/overview", async (req: Request, res: Response) => {
 
 /**
  * @openapi
- * /admin/control-center/routes:
+ * /ops/control-center/routes:
  *   get:
  *     summary: Control center — active route status table
  *     description: Per-route stop counts, resolved counts, emergency additions, and skip flags for planned and in-progress runs today.
- *     tags: [Admin]
+ *     tags: [Ops]
  *     security:
  *       - AzureAD: []
- *     x-required-roles: [Admin]
+ *     x-required-roles: [Dispatch, Admin]
  *     responses:
  *       200:
  *         description: Array of active route status rows
@@ -288,21 +288,21 @@ ORDER BY rb.route_run_id;
     console.log("[ControlCenter:Routes] rows =", result.rows);
     res.json(result.rows);
   } catch (err: any) {
-    console.error("Error in /api/admin/control-center/routes:", err);
+    console.error("Error in /api/ops/control-center/routes:", err);
     res.status(500).json({ error: "Failed to fetch route status" });
   }
 });
 
 /**
  * @openapi
- * /admin/control-center/exceptions:
+ * /ops/control-center/exceptions:
  *   get:
  *     summary: Control center — today's exception summary
  *     description: Skips by reason, total hazards, total infrastructure issues, and emergency/ad-hoc stop count for today.
- *     tags: [Admin]
+ *     tags: [Ops]
  *     security:
  *       - AzureAD: []
- *     x-required-roles: [Admin]
+ *     x-required-roles: [Dispatch, Admin]
  *     responses:
  *       200:
  *         description: Exception summary
@@ -407,7 +407,7 @@ ccRouter.get("/exceptions", async (req: Request, res: Response) => {
     });
 
   } catch (err: any) {
-    console.error("Error in /api/admin/control-center/exceptions:", err);
+    console.error("Error in /api/ops/control-center/exceptions:", err);
     res.status(500).json({ error: "Failed to fetch exceptions" });
   } finally {
     try { await client.query(`SELECT set_config('app.current_org_id', '', false)`); } catch { /* best-effort reset */ }
@@ -417,14 +417,14 @@ ccRouter.get("/exceptions", async (req: Request, res: Response) => {
 
 /**
  * @openapi
- * /admin/control-center/difficulty:
+ * /ops/control-center/difficulty:
  *   get:
  *     summary: Control center — today's difficulty indicators
  *     description: Heavy stops by location, routes with high difficulty density, and hotspot area concentration. Observational intelligence — no per-worker metrics.
- *     tags: [Admin]
+ *     tags: [Ops]
  *     security:
  *       - AzureAD: []
- *     x-required-roles: [Admin]
+ *     x-required-roles: [Dispatch, Admin]
  *     responses:
  *       200:
  *         description: Difficulty indicators
@@ -583,7 +583,7 @@ ccRouter.get("/difficulty", async (req: Request, res: Response) => {
       hotspot_areas: hotspotsRes.rows
     });
   } catch (err: any) {
-    console.error("Error in /api/admin/control-center/difficulty:", err);
+    console.error("Error in /api/ops/control-center/difficulty:", err);
     res.status(500).json({ error: "Failed to fetch difficulty indicators" });
   } finally {
     try { await client.query(`SELECT set_config('app.current_org_id', '', false)`); } catch { /* best-effort reset */ }
