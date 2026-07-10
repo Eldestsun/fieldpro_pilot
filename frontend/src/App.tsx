@@ -123,6 +123,7 @@ export default function App() {
                   <NavLink to="/ops/dashboard" end className={navLinkClass}>Dashboard</NavLink>
                   <NavLink to="/ops/pools" end className={navLinkClass}>Pools</NavLink>
                   <NavLink to="/ops/stops" end className={navLinkClass}>Stops</NavLink>
+                  <NavLink to="/ops/control-center" end className={navLinkClass}>Control Center</NavLink>
                 </>
               )}
               {isAdmin && (
@@ -130,7 +131,7 @@ export default function App() {
                   <NavLink to="/admin/dashboard" end className={navLinkClass}>Dashboard</NavLink>
                   <NavLink to="/admin/pools" end className={navLinkClass}>Pools</NavLink>
                   <NavLink to="/admin/stops" end className={navLinkClass}>Stops</NavLink>
-                  <NavLink to="/admin/control-center" end className={navLinkClass}>Control Center</NavLink>
+                  <NavLink to="/ops/control-center" end className={navLinkClass}>Control Center</NavLink>
                 </>
               )}
             </div>
@@ -213,6 +214,7 @@ export default function App() {
                   <NavLink to="/ops/dashboard" end className={mobileNavLinkClass} onClick={closeMenu}>Dashboard</NavLink>
                   <NavLink to="/ops/pools" end className={mobileNavLinkClass} onClick={closeMenu}>Pools</NavLink>
                   <NavLink to="/ops/stops" end className={mobileNavLinkClass} onClick={closeMenu}>Stops</NavLink>
+                  <NavLink to="/ops/control-center" end className={mobileNavLinkClass} onClick={closeMenu}>Control Center</NavLink>
                 </>
               )}
               {isAdmin && (
@@ -220,7 +222,7 @@ export default function App() {
                   <NavLink to="/admin/dashboard" end className={mobileNavLinkClass} onClick={closeMenu}>Dashboard</NavLink>
                   <NavLink to="/admin/pools" end className={mobileNavLinkClass} onClick={closeMenu}>Pools</NavLink>
                   <NavLink to="/admin/stops" end className={mobileNavLinkClass} onClick={closeMenu}>Stops</NavLink>
-                  <NavLink to="/admin/control-center" end className={mobileNavLinkClass} onClick={closeMenu}>Control Center</NavLink>
+                  <NavLink to="/ops/control-center" end className={mobileNavLinkClass} onClick={closeMenu}>Control Center</NavLink>
                 </>
               )}
               <div className="mt-2 pt-2 border-t border-gray-100">
@@ -259,8 +261,14 @@ export default function App() {
             <Route path="/admin/stops" element={
               <RequireRole roles={["Admin"]}><AdminStopsPanel scope="admin" /></RequireRole>
             } />
+            {/* SEAM-B: Control Center relocated to /ops/control-center, guard
+                widened to Dispatch+Admin. The old Admin-only path retires with a
+                redirect so muscle-memory / bookmarks land on the live route. */}
             <Route path="/admin/control-center" element={
-              <RequireRole roles={["Admin"]}><AdminControlCenter /></RequireRole>
+              <Navigate to="/ops/control-center" replace />
+            } />
+            <Route path="/ops/control-center" element={
+              <RequireRole roles={["Dispatch", "Admin"]}><AdminControlCenter /></RequireRole>
             } />
             <Route path="/ops/dashboard" element={
               <RequireRole roles={["Dispatch", "Admin"]}><AdminDashboard scope="ops" /></RequireRole>
