@@ -887,6 +887,7 @@ export interface OpsRouteRun {
     created_at: string;
     pool_label?: string;
     stop_count: number;
+    completed_stops: number;
 }
 
 export interface OpsCleanLog {

@@ -86,7 +86,7 @@ export function LeadRoutesPanel() {
                   value={(run.status || "unknown").replaceAll("_", " ")}
                 />
               </OpsTableCell>
-              <OpsTableCell>{run.stop_count}</OpsTableCell>
+              <OpsTableCell>{run.completed_stops} of {run.stop_count}</OpsTableCell>
               <OpsTableCell>{new Date(run.run_date).toLocaleDateString()}</OpsTableCell>
             </OpsTableRow>
           ))}
@@ -113,7 +113,7 @@ export function LeadRoutesPanel() {
                   value={(run.status || "completed").replaceAll("_", " ")}
                 />
               </OpsTableCell>
-              <OpsTableCell>{run.stop_count}</OpsTableCell>
+              <OpsTableCell>{run.completed_stops} of {run.stop_count}</OpsTableCell>
               <OpsTableCell>{new Date(run.run_date).toLocaleDateString()}</OpsTableCell>
             </OpsTableRow>
           ))}
