@@ -6,7 +6,7 @@ import { ConflictResolutionModal } from "./ConflictResolutionModal";
 
 export function OfflineStatusBar() {
     const { pendingCount, conflictCount, failedCount, syncStatus, conflictActions, isOfflineMode } = useOfflineSync();
-    const { account } = useAuth();
+    const { account, isReconnecting } = useAuth();
     const [modalOpen, setModalOpen] = useState(false);
 
     const tenantId = account?.tenantId;
@@ -17,13 +17,22 @@ export function OfflineStatusBar() {
         dismissConflict(tenantId, oid, actionId);
     };
 
-    // Priority order: offline > syncing > success > conflict > failed > clear
+    // Priority order: offline > reconnecting > syncing > success > conflict > failed > clear
     let content: React.ReactNode = null;
 
     if (isOfflineMode) {
         content = (
             <Bar color="#c53030" bg="#fff5f5">
                 🔴 Offline — {pendingCount} action{pendingCount !== 1 ? 's' : ''} queued
+            </Bar>
+        );
+    } else if (isReconnecting) {
+        // PING-RETRY: the session ping (/api/secure/ping) is failing and retries
+        // are being scheduled with backoff (AuthContext). Device is "online" but
+        // the server is unreachable — distinct from device-offline above.
+        content = (
+            <Bar color="#744210" bg="#fffbeb">
+                🟡 Reconnecting to server…
             </Bar>
         );
     } else if (syncStatus === 'syncing') {
