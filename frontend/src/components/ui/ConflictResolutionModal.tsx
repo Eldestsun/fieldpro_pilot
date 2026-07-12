@@ -24,7 +24,7 @@ export function ConflictResolutionModal({ conflicts, onDismiss, onClose }: Props
             style={{
                 position: 'fixed',
                 inset: 0,
-                backgroundColor: 'rgba(0,0,0,0.5)',
+                backgroundColor: 'rgba(17,24,39,0.5)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -37,8 +37,8 @@ export function ConflictResolutionModal({ conflicts, onDismiss, onClose }: Props
                 aria-modal="true"
                 aria-labelledby="conflict-modal-title"
                 style={{
-                    backgroundColor: '#fff',
-                    borderRadius: '8px',
+                    backgroundColor: 'var(--surface-card)',
+                    borderRadius: 'var(--radius-lg)',
                     padding: '24px',
                     maxWidth: '480px',
                     width: '90%',
@@ -53,30 +53,31 @@ export function ConflictResolutionModal({ conflicts, onDismiss, onClose }: Props
                     </h2>
                     <button
                         onClick={onClose}
-                        style={{ background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer', color: '#718096', minHeight: '44px', minWidth: '44px' }}
+                        style={{ background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer', color: 'var(--text-muted)', minHeight: '44px', minWidth: '44px' }}
                     >
                         ✕
                     </button>
                 </div>
 
                 {conflicts.length === 0 ? (
-                    <p style={{ color: '#718096', margin: 0 }}>No conflicts remaining.</p>
+                    <p style={{ color: 'var(--text-muted)', margin: 0 }}>No conflicts remaining.</p>
                 ) : (
                     <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         {conflicts.map(action => (
                             <li
                                 key={action.id}
                                 style={{
+                                    // Conflict orange family per the design-system StatusBar spec
                                     border: '1px solid #fed7aa',
-                                    borderRadius: '6px',
+                                    borderRadius: 'var(--radius-md)',
                                     padding: '12px',
-                                    backgroundColor: '#fffaf0',
+                                    backgroundColor: '#fff7ed',
                                 }}
                             >
                                 <div style={{ fontWeight: 500, marginBottom: '4px' }}>
                                     Stop {action.routeRunStopId ?? 'unknown'}
                                 </div>
-                                <div style={{ fontSize: '0.8125rem', color: '#c05621', marginBottom: '12px' }}>
+                                <div style={{ fontSize: '0.8125rem', color: '#9a3412', marginBottom: '12px' }}>
                                     {friendlyConflict(action.lastError)}
                                 </div>
                                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -84,10 +85,10 @@ export function ConflictResolutionModal({ conflicts, onDismiss, onClose }: Props
                                         onClick={() => onDismiss(action.id)}
                                         style={{
                                             padding: '6px 12px',
-                                            background: '#e53e3e',
-                                            color: '#fff',
+                                            background: 'var(--color-danger)',
+                                            color: 'var(--text-on-brand)',
                                             border: 'none',
-                                            borderRadius: '4px',
+                                            borderRadius: 'var(--radius-sm)',
                                             cursor: 'pointer',
                                             fontSize: '0.8125rem',
                                             minHeight: '44px',
@@ -99,10 +100,10 @@ export function ConflictResolutionModal({ conflicts, onDismiss, onClose }: Props
                                         onClick={() => handleCopyInfo(action)}
                                         style={{
                                             padding: '6px 12px',
-                                            background: '#edf2f7',
-                                            color: '#2d3748',
+                                            background: 'var(--gray-100)',
+                                            color: 'var(--gray-800)',
                                             border: 'none',
-                                            borderRadius: '4px',
+                                            borderRadius: 'var(--radius-sm)',
                                             cursor: 'pointer',
                                             fontSize: '0.8125rem',
                                             minHeight: '44px',

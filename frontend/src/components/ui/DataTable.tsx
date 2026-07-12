@@ -91,25 +91,25 @@ export function DataTable<T>({
     const showingTo = Math.min(page * pageSize, total);
 
     return (
-        <div className={cn("overflow-hidden bg-white border border-gray-200 rounded-lg shadow-sm", className)}>
+        <div className={cn("overflow-hidden bg-(--surface-card) border border-(--border-default) rounded-lg shadow-(--shadow-card)", className)}>
             <div className="overflow-x-auto" tabIndex={0}>
                 <table className="w-full border-collapse text-left">
                     <thead>
-                        <tr className="bg-gray-50 border-b border-gray-200">
+                        <tr className="bg-(--surface-sunken) border-b border-(--border-default)">
                             {columns.map(col => (
                                 <th
                                     key={col.key}
                                     onClick={col.sortable ? () => handleSort(col.key) : undefined}
                                     className={cn(
-                                        "px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-600",
-                                        col.sortable && "cursor-pointer select-none hover:text-gray-900 hover:bg-gray-100",
+                                        "px-4 py-3 text-xs font-semibold uppercase tracking-wide text-(--text-muted)",
+                                        col.sortable && "cursor-pointer select-none hover:text-(--text-heading) hover:bg-(--surface-fill)",
                                         col.headerClassName
                                     )}
                                 >
                                     <span className="inline-flex items-center gap-1">
                                         {col.header}
                                         {col.sortable && (
-                                            <span className="text-gray-500 font-normal">
+                                            <span className="text-(--gray-400) font-normal">
                                                 {sortKey === col.key
                                                     ? (sortDir === "asc" ? "↑" : "↓")
                                                     : "↕"}
@@ -120,16 +120,16 @@ export function DataTable<T>({
                             ))}
                         </tr>
                     </thead>
-                    <tbody className="text-sm text-gray-800 divide-y divide-gray-100">
+                    <tbody className="text-sm text-(--text-body) divide-y divide-(--border-subtle)">
                         {isLoading ? (
                             <tr>
-                                <td colSpan={columns.length} className="px-4 py-8 text-center text-gray-400">
+                                <td colSpan={columns.length} className="px-4 py-8 text-center text-(--text-disabled)">
                                     Loading…
                                 </td>
                             </tr>
                         ) : displayData.length === 0 ? (
                             <tr>
-                                <td colSpan={columns.length} className="px-4 py-8 text-center text-gray-400">
+                                <td colSpan={columns.length} className="px-4 py-8 text-center text-(--text-disabled)">
                                     {emptyMessage}
                                 </td>
                             </tr>
@@ -140,7 +140,7 @@ export function DataTable<T>({
                                     onClick={onRowClick ? () => onRowClick(row) : undefined}
                                     className={cn(
                                         "transition-colors",
-                                        onRowClick && "cursor-pointer hover:bg-gray-50"
+                                        onRowClick && "cursor-pointer hover:bg-(--surface-sunken)"
                                     )}
                                 >
                                     {columns.map(col => (
@@ -161,8 +161,8 @@ export function DataTable<T>({
             </div>
 
             {/* Pagination footer */}
-            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
-                <span className="text-sm text-gray-500">
+            <div className="flex items-center justify-between px-4 py-3 border-t border-(--border-default)">
+                <span className="text-sm text-(--text-muted)">
                     {total === 0
                         ? "No results"
                         : `Showing ${showingFrom}–${showingTo} of ${total}`}
@@ -174,13 +174,13 @@ export function DataTable<T>({
                         className={cn(
                             "px-3 py-1.5 text-sm rounded border transition-colors",
                             page <= 1
-                                ? "border-gray-200 text-gray-300 cursor-not-allowed"
-                                : "border-gray-300 text-gray-600 hover:bg-gray-50 cursor-pointer"
+                                ? "border-(--border-default) text-(--text-disabled) cursor-not-allowed"
+                                : "border-(--border-strong) text-(--text-muted) hover:bg-(--surface-sunken) cursor-pointer"
                         )}
                     >
                         ← Prev
                     </button>
-                    <span className="text-sm text-gray-600 px-1">
+                    <span className="text-sm text-(--text-body) px-1">
                         Page {page} of {totalPages}
                     </span>
                     <button
@@ -189,8 +189,8 @@ export function DataTable<T>({
                         className={cn(
                             "px-3 py-1.5 text-sm rounded border transition-colors",
                             page >= totalPages
-                                ? "border-gray-200 text-gray-300 cursor-not-allowed"
-                                : "border-gray-300 text-gray-600 hover:bg-gray-50 cursor-pointer"
+                                ? "border-(--border-default) text-(--text-disabled) cursor-not-allowed"
+                                : "border-(--border-strong) text-(--text-muted) hover:bg-(--surface-sunken) cursor-pointer"
                         )}
                     >
                         Next →
