@@ -1,0 +1,33 @@
+/* Invaria BASELINE — Shape tokens: radius, border, shadow, motion.
+   Synced from Claude Design project "Invaria BASELINE Design System"
+   (38ee63fc-c984-4f50-979d-7eb24132ef23), tokens/shape.css — verbatim.
+   Lightly-squared corners, thin precise borders, minimal shadow.
+   Restraint over decoration — the instrument, not the app.
+   Note: --radius-* names coincide with Tailwind 4 theme variables at identical
+   values (no visual change). --shadow-sm intentionally flattens Tailwind's
+   default — elevation is a whisper, not a device. */
+:root {
+  /* Radius — values taken from the product (Tailwind rounded-*) */
+  --radius-xs: 2px;
+  --radius-sm: 4px;    /* chips, small controls, sequence tags */
+  --radius-md: 6px;    /* buttons, inputs */
+  --radius-lg: 8px;    /* cards, list items */
+  --radius-xl: 12px;   /* modals, login card */
+  --radius-full: 9999px; /* pill badges, progress track */
+
+  /* Border widths */
+  --border-width: 1px;
+  --border-width-strong: 2px;
+
+  /* Shadow — deliberately shallow */
+  --shadow-sm: 0 1px 2px 0 rgba(17, 24, 39, 0.05);
+  --shadow-card: 0 1px 3px 0 rgba(17, 24, 39, 0.08), 0 1px 2px -1px rgba(17, 24, 39, 0.06);
+  --shadow-modal: 0 8px 24px rgba(15, 23, 42, 0.12);
+  --shadow-overlay: 0 20px 25px -5px rgba(15, 23, 42, 0.15);
+
+  /* Motion — restrained, functional */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 300ms;
+}

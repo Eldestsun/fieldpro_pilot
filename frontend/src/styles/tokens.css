@@ -1,32 +1,15 @@
-:root {
-  /* Brand */
-  --color-brand: #1a56db;
-  --color-brand-dark: #1e429f;
-
-  /* Status */
-  --color-success: #057a55;
-  --color-warning: #c27803;
-  --color-danger: #e02424;
-  --color-neutral: #6b7280;
-
-  /* Surface */
-  --color-surface: #ffffff;
-  --color-surface-secondary: #f9fafb;
-  --color-border: #e5e7eb;
-
-  /* Typography */
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --text-xs: 0.75rem;
-  --text-sm: 0.875rem;
-  --text-base: 1rem;
-  --text-lg: 1.125rem;
-  --text-xl: 1.25rem;
-
-  /* Spacing */
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-6: 1.5rem;
-  --space-8: 2rem;
-}
+/* Invaria BASELINE — Design token entry point.
+   Mirrors styles.css of the Claude Design project "Invaria BASELINE Design
+   System" (38ee63fc-c984-4f50-979d-7eb24132ef23): an @import manifest only —
+   no rules live here. Edit the files in ./tokens/, or re-sync them from the
+   design project.
+   Because several token names (--font-sans, --font-mono, --text-*, --radius-*,
+   --tracking-*, --shadow-sm) coincide with Tailwind 4 theme variables, these
+   unlayered :root definitions also re-point the corresponding Tailwind
+   utilities — that coincidence is by design (the design system was
+   reverse-engineered from this app's Tailwind output). */
+@import "./tokens/fonts.css";
+@import "./tokens/colors.css";
+@import "./tokens/typography.css";
+@import "./tokens/spacing.css";
+@import "./tokens/shape.css";

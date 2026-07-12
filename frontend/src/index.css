@@ -2,16 +2,14 @@
 @import "./styles/tokens.css";
 
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+  font-family: var(--font-sans);
+  line-height: var(--lh-normal);
+  font-weight: var(--fw-regular);
 
   color-scheme: light;
   /* Enforce light mode for now as per design request */
-  color: #374151;
-  /* Dark Gray body text */
-  background-color: #F3F4F6;
-  /* Light Gray background */
+  color: var(--text-body);
+  background-color: var(--surface-app);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -23,10 +21,10 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background-color: #f8fafc;
+  background-color: var(--surface-app);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color: #374151;
+  color: var(--text-body);
 }
 
 #root {
@@ -40,10 +38,8 @@ h3,
 h4,
 h5,
 h6 {
-  font-weight: 600;
-  /* Heavier headings */
-  color: #111827;
-  /* Near black for headings */
+  font-weight: var(--fw-semibold);
+  color: var(--text-heading);
 }
 
 h1 {
