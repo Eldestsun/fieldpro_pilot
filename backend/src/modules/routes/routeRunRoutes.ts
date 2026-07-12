@@ -470,8 +470,14 @@ routeRunRoutes.post(
         }
         // Option B: pool_id provided -> fetch with risk logic
         else if (pool_id) {
-            // We need a pool client to call the helper, or we can use the pool directly (helper takes 'any')
-            stopsToPlan = await getCandidateStopsForPoolWithRisk(pool_id, MAX_OSRM_STOPS, pool);
+            // PATTERN-001: the candidate query reads `stops` / `stop_pool_memberships`,
+            // both FORCE RLS. Passing the bare `pool` runs with no app.current_org_id,
+            // so RLS fails closed and returns 0 rows ("Not enough stops"). Scope to the
+            // resolved org via withOrgContext, matching Option A above.
+            const numericOrgId = await resolveNumericOrgId(req);
+            stopsToPlan = await withOrgContext(numericOrgId, (client) =>
+                getCandidateStopsForPoolWithRisk(pool_id, MAX_OSRM_STOPS, client),
+            );
 
             if (stopsToPlan.length < 2) {
                 return res.status(400).json({
