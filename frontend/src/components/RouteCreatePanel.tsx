@@ -87,6 +87,26 @@ export function RouteCreatePanel({ isOpen, onClose, hook }: RouteCreatePanelProp
 
                     <div>
                         <label className="block mb-2 font-semibold text-sm text-gray-700">
+                            Dispatch Base <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                            value={hook.selectedBaseId}
+                            onChange={(e) => hook.setBase(e.target.value)}
+                            disabled={hook.loadingOptions || hook.loadingPreview || hook.savingRoute}
+                            className="w-full px-3 py-2.5 rounded-md border border-gray-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px] disabled:bg-gray-50 disabled:text-gray-400"
+                        >
+                            <option value="">-- Select Base --</option>
+                            {hook.bases.map((b) => (
+                                <option key={b.id} value={b.id}>{b.name}</option>
+                            ))}
+                        </select>
+                        <p className="mt-1 mb-0 text-xs text-gray-400">
+                            The depot the route is dispatched from. Defaults to the pool's base when it has one.
+                        </p>
+                    </div>
+
+                    <div>
+                        <label className="block mb-2 font-semibold text-sm text-gray-700">
                             Assigned Field Crew <span className="text-red-500">*</span>
                         </label>
                         <select
@@ -234,10 +254,13 @@ export function RouteCreatePanel({ isOpen, onClose, hook }: RouteCreatePanelProp
 
                         <OpsCard className="p-0 max-h-[300px] overflow-y-auto mb-6">
                             <OpsTable headers={["#", "Location"]}>
-                                {hook.preview.ordered_stops.map((s) => (
+                                {hook.preview.ordered_stops.map((s, i) => (
                                     <OpsTableRow key={s.stop_id}>
-                                        <OpsTableCell className="text-gray-500">{s.sequence + 1}</OpsTableCell>
-                                        <OpsTableCell>{s.location || s.stop_id.slice(0, 8)}</OpsTableCell>
+                                        {/* Optimized order is the array order; the planner
+                                            emits no `sequence` field, so index it here (was
+                                            `s.sequence + 1` → NaN). */}
+                                        <OpsTableCell className="text-gray-500">{i + 1}</OpsTableCell>
+                                        <OpsTableCell>{s.on_street_name || s.location || s.stop_id}</OpsTableCell>
                                     </OpsTableRow>
                                 ))}
                             </OpsTable>

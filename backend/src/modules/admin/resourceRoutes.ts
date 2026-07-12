@@ -59,7 +59,7 @@ resourceRoutes.get(
     try {
       const numericOrgId = await resolveNumericOrgId(req);
       const query = `
-        SELECT id, label, trf_district, active, default_max_minutes
+        SELECT id, label, trf_district, active, default_max_minutes, base_id
         FROM route_pools
         WHERE active = true
         ORDER BY label ASC;
@@ -75,6 +75,9 @@ resourceRoutes.get(
         trfDistrict: row.trf_district,
         defaultMaxMinutes: row.default_max_minutes,
         active: row.active,
+        // The pool's pre-attached dispatch base, if any. Nullable — district
+        // pools carry no base, so the create-route UI must let Dispatch pick one.
+        base_id: row.base_id ?? null,
       }));
 
       return res.json({ ok: true, pools });
@@ -82,6 +85,60 @@ resourceRoutes.get(
       console.error("Error in GET /api/pools:", err);
       return res
         .status(500)
+        .json({ error: err.message || "Internal server error" });
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /bases:
+ *   get:
+ *     summary: List active dispatch bases
+ *     description: >
+ *       Returns the org's active bases (the depot a route dispatches from). Used by
+ *       the Create Route flow so Dispatch can pick a base when the pool has none
+ *       pre-attached. Gated to Dispatch/Admin to match the route-creation surface.
+ *     tags: [Resources]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Dispatch, Admin]
+ *     responses:
+ *       200:
+ *         description: List of active bases
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+resourceRoutes.get(
+  "/bases",
+  requireAuth,
+  requireAnyRole(["Dispatch", "Admin"]),
+  async (req: Request, res) => {
+    try {
+      // PATTERN-001: bases is FORCE RLS — scope to the resolved org (fail-closed).
+      const numericOrgId = await resolveNumericOrgId(req);
+      const query = `
+        SELECT id, name
+        FROM bases
+        WHERE active = true
+        ORDER BY id ASC;
+      `;
+      const result = await withOrgContext(numericOrgId, (client) =>
+        client.query(query),
+      );
+      const bases = result.rows.map((row) => ({
+        id: row.id,
+        name: row.name ?? row.id,
+      }));
+      return res.json({ ok: true, bases });
+    } catch (err: any) {
+      console.error("Error in GET /api/bases:", err);
+      return res
+        .status(err.status ?? 500)
         .json({ error: err.message || "Internal server error" });
     }
   }
