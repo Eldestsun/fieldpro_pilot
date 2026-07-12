@@ -1,4 +1,5 @@
 import { cn } from "../../lib/utils";
+import { ProgressBar } from "../ui/ProgressBar";
 
 interface RouteHeaderProps {
   stats: {
@@ -22,7 +23,6 @@ const SYNC_STYLES: Record<string, string> = {
 
 export function RouteHeader({ stats, syncStatus, routeLabel }: RouteHeaderProps) {
   const total = stats.done + stats.pending;
-  const progress = total > 0 ? Math.round((stats.done / total) * 100) : 0;
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
     month: "short",
@@ -44,7 +44,7 @@ export function RouteHeader({ stats, syncStatus, routeLabel }: RouteHeaderProps)
       </div>
 
       <div className="mt-3">
-        <div className="flex items-center justify-between text-sm mb-1.5">
+        <div className="flex items-center justify-between text-sm mb-1.5 tabular-nums">
           <span className="text-gray-600">
             <strong className="text-gray-900 font-semibold">{stats.done}</strong>
             {" of "}
@@ -53,13 +53,7 @@ export function RouteHeader({ stats, syncStatus, routeLabel }: RouteHeaderProps)
           </span>
           <span className="text-gray-500">{stats.miles} mi</span>
         </div>
-        {/* progress bar — width is inherently dynamic */}
-        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-green-500 rounded-full transition-all duration-300"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
+        <ProgressBar value={stats.done} max={total} />
       </div>
     </header>
   );

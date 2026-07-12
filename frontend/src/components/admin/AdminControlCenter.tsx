@@ -3,6 +3,8 @@ import { useAuth } from "../../auth/AuthContext";
 import { OpsLayout } from "../ui/OpsLayout";
 import { OpsCard } from "../ui/OpsCard";
 import { OpsTable, OpsTableRow, OpsTableCell } from "../ui/OpsTable";
+import { StatCard } from "../ui/StatCard";
+import { ProgressBar } from "../ui/ProgressBar";
 import { cn } from "../../lib/utils";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -81,25 +83,6 @@ interface DifficultyResponse {
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────────
-
-interface StatCardProps {
-    label: string;
-    value: number | string;
-    valueClassName?: string;
-}
-
-function StatCard({ label, value, valueClassName }: StatCardProps) {
-    return (
-        <OpsCard>
-            <div className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                {label}
-            </div>
-            <div className={valueClassName ?? "text-4xl font-bold text-gray-800"}>
-                {value}
-            </div>
-        </OpsCard>
-    );
-}
 
 interface LiveIndicatorProps {
     lastUpdatedAt: Date | null;
@@ -270,16 +253,19 @@ export const AdminControlCenter: React.FC = () => {
                         <StatCard
                             label="Clean Events"
                             value={summary?.clean_events ?? 0}
-                            valueClassName="text-4xl font-bold text-blue-700"
+                            tone="brand"
                         />
                         <StatCard
                             label="Observed Minutes"
-                            value={`${Math.round(summary?.total_clean_minutes ?? 0)}m`}
+                            value={Math.round(summary?.total_clean_minutes ?? 0)}
+                            unit="m"
                         />
+                        {/* Hazards carry condition meaning → danger tone, per the
+                            design-system StatCard spec (was green pre-DS). */}
                         <StatCard
                             label="Hazards Reported"
                             value={summary?.hazards_reported ?? 0}
-                            valueClassName="text-4xl font-bold text-green-700"
+                            tone="danger"
                         />
                         {/*
                           ISSUE-031/CC-REPOINT: the "High Severity" tile is intentionally not
@@ -312,21 +298,19 @@ export const AdminControlCenter: React.FC = () => {
                                     : 0;
                             return (
                                 <OpsTableRow key={r.route_run_id}>
-                                    <OpsTableCell>#{r.route_run_id}</OpsTableCell>
-                                    <OpsTableCell>{r.pool_id || "—"}</OpsTableCell>
+                                    <OpsTableCell className="font-mono tabular-nums">#{r.route_run_id}</OpsTableCell>
+                                    <OpsTableCell className="font-mono">{r.pool_id || "—"}</OpsTableCell>
                                     <OpsTableCell>
                                         <div className="flex items-center gap-2">
-                                            <div className="w-[60px] bg-gray-100 h-2 rounded overflow-hidden">
-                                                {/* Progress fill width is data-driven — documented exception */}
-                                                <div
-                                                    style={{ width: `${pct}%` }}
-                                                    className="bg-green-400 h-full"
-                                                />
-                                            </div>
-                                            <span className="text-sm text-gray-700">{Math.round(pct)}% visited</span>
+                                            <ProgressBar
+                                                value={visited}
+                                                max={totalExpected}
+                                                className="w-[60px]"
+                                            />
+                                            <span className="text-sm text-gray-700 tabular-nums">{Math.round(pct)}% visited</span>
                                         </div>
                                     </OpsTableCell>
-                                    <OpsTableCell>{Math.round(r.observed_minutes)}m</OpsTableCell>
+                                    <OpsTableCell className="tabular-nums">{Math.round(r.observed_minutes)}m</OpsTableCell>
                                     <OpsTableCell>
                                         <div className="flex gap-2">
                                             {r.has_emergency_additions && <span title="Emergency Additions">🚨</span>}

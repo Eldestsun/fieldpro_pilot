@@ -13,6 +13,8 @@ export interface DataTableColumn<T = any> {
     render?: (row: T) => ReactNode;
     /** className applied to every <td> in this column */
     className?: string;
+    /** Render cells in the monospace data face (asset IDs, coordinates, data values). */
+    mono?: boolean;
     /** className applied to the <th> */
     headerClassName?: string;
 }
@@ -146,7 +148,7 @@ export function DataTable<T>({
                                     {columns.map(col => (
                                         <td
                                             key={col.key}
-                                            className={cn("px-4 py-3", col.className)}
+                                            className={cn("px-4 py-3", col.mono && "font-mono tabular-nums", col.className)}
                                         >
                                             {col.render
                                                 ? col.render(row)
