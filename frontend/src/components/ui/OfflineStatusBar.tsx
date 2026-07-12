@@ -1,8 +1,22 @@
 import { useState } from "react";
+import { cn } from "../../lib/utils";
 import { useOfflineSync } from "../../offline/OfflineSyncContext";
 import { useAuth } from "../../auth/AuthContext";
 import { dismissConflict } from "../../offline/offlineQueue";
 import { ConflictResolutionModal } from "./ConflictResolutionModal";
+
+// States per the design-system StatusBar spec (components/feedback/StatusBar.jsx):
+// a solid colored dot + text label — never emoji. Semantic colors carry sync /
+// operational meaning; the conflict orange pair is hardcoded there too (no token).
+type BarState = "offline" | "syncing" | "synced" | "conflict" | "failed";
+
+const STATE_CLASSES: Record<BarState, { bar: string; dot: string }> = {
+    offline:  { bar: "text-(--color-danger) bg-(--color-danger-tint) border-(--color-danger)/20",   dot: "bg-(--color-danger)" },
+    syncing:  { bar: "text-(--color-warning) bg-(--color-warning-tint) border-(--color-warning)/20", dot: "bg-(--color-warning) animate-pulse" },
+    synced:   { bar: "text-(--color-success) bg-(--color-success-tint) border-(--color-success)/20", dot: "bg-(--color-success)" },
+    conflict: { bar: "text-[#9a3412] bg-[#fff7ed] border-[#ea580c]/20",                              dot: "bg-[#ea580c]" },
+    failed:   { bar: "text-(--color-danger) bg-(--color-danger-tint) border-(--color-danger)/20",    dot: "bg-(--color-danger)" },
+};
 
 export function OfflineStatusBar() {
     const { pendingCount, conflictCount, failedCount, syncStatus, conflictActions, isOfflineMode } = useOfflineSync();
@@ -22,32 +36,32 @@ export function OfflineStatusBar() {
 
     if (isOfflineMode) {
         content = (
-            <Bar color="#c53030" bg="#fff5f5">
-                🔴 Offline — {pendingCount} action{pendingCount !== 1 ? 's' : ''} queued
+            <Bar state="offline">
+                Offline — {pendingCount} action{pendingCount !== 1 ? 's' : ''} queued
             </Bar>
         );
     } else if (syncStatus === 'syncing') {
         content = (
-            <Bar color="#744210" bg="#fffbeb">
-                🟡 Syncing {pendingCount} action{pendingCount !== 1 ? 's' : ''}...
+            <Bar state="syncing">
+                Syncing {pendingCount} action{pendingCount !== 1 ? 's' : ''}...
             </Bar>
         );
     } else if (syncStatus === 'success') {
         content = (
-            <Bar color="#276749" bg="#f0fff4">
-                🟢 All synced
+            <Bar state="synced">
+                All synced
             </Bar>
         );
     } else if (conflictCount > 0) {
         content = (
-            <Bar color="#7b341e" bg="#fffaf0" onClick={() => setModalOpen(true)} clickable>
-                🟠 {conflictCount} stop{conflictCount !== 1 ? 's' : ''} need attention — tap to review
+            <Bar state="conflict" onClick={() => setModalOpen(true)} clickable>
+                {conflictCount} stop{conflictCount !== 1 ? 's' : ''} need attention — tap to review
             </Bar>
         );
     } else if (failedCount > 0) {
         content = (
-            <Bar color="#c53030" bg="#fff5f5">
-                🔴 {failedCount} action{failedCount !== 1 ? 's' : ''} failed
+            <Bar state="failed">
+                {failedCount} action{failedCount !== 1 ? 's' : ''} failed
             </Bar>
         );
     }
@@ -69,35 +83,26 @@ export function OfflineStatusBar() {
 }
 
 interface BarProps {
-    color: string;
-    bg: string;
+    state: BarState;
     children: React.ReactNode;
     onClick?: () => void;
     clickable?: boolean;
 }
 
-function Bar({ color, bg, children, onClick, clickable }: BarProps) {
+function Bar({ state, children, onClick, clickable }: BarProps) {
+    const s = STATE_CLASSES[state];
     return (
         <div
             onClick={onClick}
-            style={{
-                position: 'fixed',
-                bottom: 0,
-                left: 0,
-                right: 0,
-                padding: '10px 16px',
-                backgroundColor: bg,
-                color,
-                fontSize: '0.875rem',
-                fontWeight: 500,
-                textAlign: 'center',
-                zIndex: 9999,
-                cursor: clickable ? 'pointer' : 'default',
-                borderTop: `1px solid ${color}33`,
-                // On wider screens shift to top
-            }}
+            className={cn(
+                "fixed bottom-0 left-0 right-0 z-[9999] flex items-center justify-center gap-2",
+                "px-4 py-2.5 border-t text-sm font-medium text-center",
+                s.bar,
+                clickable ? "cursor-pointer" : "cursor-default"
+            )}
         >
-            {children}
+            <span className={cn("w-2 h-2 rounded-full shrink-0", s.dot)} />
+            <span>{children}</span>
         </div>
     );
 }

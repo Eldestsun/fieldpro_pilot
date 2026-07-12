@@ -118,12 +118,12 @@ export function TodayRouteView() {
     if (error) {
         return (
             <div className="max-w-xl mx-auto px-4 pt-8 text-center">
-                <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-                    <h3 className="text-base font-semibold text-red-800 mb-1">Something went wrong</h3>
-                    <p className="text-sm text-red-600 mb-4">{error}</p>
+                <div className="bg-(--color-danger-tint) border border-(--color-danger)/20 rounded-lg p-6">
+                    <h3 className="text-base font-semibold text-(--color-danger) mb-1">Something went wrong</h3>
+                    <p className="text-sm text-(--color-danger) mb-4">{error}</p>
                     <button
                         onClick={fetchRoute}
-                        className="px-4 py-2 text-sm font-medium text-red-700 border border-red-300 rounded-md hover:bg-red-100 transition-colors"
+                        className="px-4 py-2 text-sm font-medium text-(--color-danger) border border-(--color-danger)/40 rounded-md hover:bg-(--color-danger-tint) transition-colors"
                     >
                         Retry
                     </button>
@@ -136,14 +136,13 @@ export function TodayRouteView() {
     if (!routeRun) {
         return (
             <div className="max-w-xl mx-auto px-4 pt-16 text-center">
-                <div className="text-4xl mb-4">📋</div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">No route assigned today</h3>
-                <p className="text-sm text-gray-500 mb-6">
+                <h3 className="text-lg font-semibold text-(--text-heading) mb-2">No route assigned today</h3>
+                <p className="text-sm text-(--text-muted) mb-6">
                     Check with your lead to get a route assigned, then refresh.
                 </p>
                 <button
                     onClick={fetchRoute}
-                    className="px-5 py-2.5 text-sm font-medium text-white bg-blue-700 rounded-md hover:bg-blue-800 transition-colors"
+                    className="px-5 py-2.5 text-sm font-medium text-(--text-on-brand) bg-(--color-brand-700) rounded-md hover:bg-(--color-brand-800) transition-colors"
                 >
                     Check again
                 </button>
@@ -220,7 +219,7 @@ export function TodayRouteView() {
     return (
         <UlLayout>
             {syncStatus.summary.totalConflict > 0 && (
-                <div className="mb-2 px-3 py-2 bg-red-600 text-white text-sm rounded-md">
+                <div className="mb-2 px-3 py-2 bg-(--color-danger) text-(--text-on-brand) text-sm rounded-md">
                     Some changes could not be synced. Server truth will reload when you're online.
                 </div>
             )}
@@ -228,8 +227,8 @@ export function TodayRouteView() {
 
             {/* Route Completed Banner */}
             {isRouteCompleted && (
-                <div className="mb-6 p-4 bg-green-100 text-green-800 border border-green-300 rounded-lg text-center font-semibold">
-                    🎉 Route Completed
+                <div className="mb-6 p-4 bg-(--color-success-tint) text-(--color-success) border border-(--color-success)/40 rounded-lg text-center font-semibold">
+                    Route Completed
                 </div>
             )}
 
@@ -239,7 +238,7 @@ export function TodayRouteView() {
                     <button
                         onClick={handleStartRoute}
                         disabled={isStartingRoute}
-                        className="w-full sm:w-auto px-10 py-5 text-2xl font-semibold text-white bg-blue-700 rounded-xl hover:bg-blue-800 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                        className="w-full sm:w-auto px-10 py-5 text-2xl font-semibold text-(--text-on-brand) bg-(--color-brand-700) rounded-xl hover:bg-(--color-brand-800) disabled:opacity-55 disabled:cursor-not-allowed transition-colors"
                     >
                         {isStartingRoute ? "Starting…" : "Start Route"}
                     </button>
@@ -248,12 +247,12 @@ export function TodayRouteView() {
             ) : (
                 <>
                     {/* Suggested Route Sequence label */}
-                    <div className="mb-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
+                    <div className="mb-2 rounded border border-(--border-default) bg-(--surface-sunken) px-3 py-2 text-sm font-semibold text-(--text-body)">
                         Suggested Route Sequence
                     </div>
 
                     {/* Map Viewport */}
-                    <div className="bg-white rounded-xl shadow-md mb-4 overflow-hidden relative">
+                    <div className="bg-(--surface-card) rounded-lg shadow-(--shadow-card) mb-4 overflow-hidden relative">
                         <ULRouteMap
                             stops={routeRun.stops}
                             onSelectStop={handleMapStopSelect}
@@ -274,7 +273,7 @@ export function TodayRouteView() {
                                 }
                             }}
                             disabled={!nextStop}
-                            className={`absolute left-4 bottom-4 z-10 px-3 py-2 bg-white border border-gray-300 rounded-md shadow-md text-sm font-bold transition-colors ${nextStop ? "text-blue-700 cursor-pointer hover:bg-blue-50" : "text-gray-400 cursor-not-allowed"}`}
+                            className={`absolute left-4 bottom-4 z-10 px-3 py-2 bg-(--surface-card) border border-(--border-strong) rounded-md shadow-md text-sm font-bold transition-colors ${nextStop ? "text-(--color-brand-700) cursor-pointer hover:bg-(--color-brand-50)" : "text-(--text-disabled) cursor-not-allowed"}`}
                         >
                             Navigate to Next Stop
                         </button>
@@ -282,17 +281,17 @@ export function TodayRouteView() {
 
                     {/* Next Suggested Stop Banner */}
                     {nextStop && (
-                        <div className="mb-2 rounded border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                        <div className="mb-2 rounded border border-(--border-default) bg-(--surface-card) px-3 py-2 text-sm text-(--text-body)">
                             <span className="font-semibold">Next suggested:</span>{" "}
-                            <span className="font-semibold">#{nextStop.sequence}</span>{" "}
-                            <span className="text-slate-600">
+                            <span className="font-semibold font-mono">#{nextStop.sequence}</span>{" "}
+                            <span className="text-(--gray-600)">
                                 {nextStop.on_street_name ?? nextStop.intersection_loc ?? ""}
                             </span>
                         </div>
                     )}
 
                     {/* Stop list */}
-                    <div className="bg-white rounded-xl shadow-sm mb-6 p-2">
+                    <div className="bg-(--surface-card) rounded-lg shadow-sm mb-6 p-2">
                         <div className="max-h-[60vh] overflow-y-auto">
                             <StopList
                                 stops={sortedStops}
