@@ -49,14 +49,14 @@ h1 {
 
 /* Base Button Reset */
 button {
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid transparent;
   padding: 0.6em 1.2em;
   font-size: 1em;
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--duration-base) var(--ease-standard);
 }
 
 button:focus,
@@ -66,19 +66,18 @@ button:focus-visible {
 
 /* Primary Button Class */
 .btn-primary {
-  background-color: #1D6FBD;
-  /* Deep Cerulean */
-  color: white;
+  background-color: var(--color-brand-700);
+  color: var(--text-on-brand);
   width: 100%;
   /* Full width on mobile */
 }
 
 .btn-primary:hover {
-  background-color: #175a9b;
+  background-color: var(--color-brand-800);
 }
 
 .btn-primary:disabled {
-  background-color: #cbd5e0;
+  background-color: var(--gray-300);
   cursor: not-allowed;
 }
 
@@ -91,9 +90,10 @@ button:focus-visible {
 
 /* Card Class */
 .card {
-  background-color: #ffffff;
-  border-radius: 12px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  background-color: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
   padding: 24px;
   margin-bottom: 24px;
 }

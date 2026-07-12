@@ -3,6 +3,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { OpsLayout } from "../ui/OpsLayout";
 import { OpsCard } from "../ui/OpsCard";
 import { OpsTable, OpsTableRow, OpsTableCell } from "../ui/OpsTable";
+import { OpsBadge } from "../ui/OpsBadge";
 import { StatCard } from "../ui/StatCard";
 import { ProgressBar } from "../ui/ProgressBar";
 import { cn } from "../../lib/utils";
@@ -92,15 +93,15 @@ interface LiveIndicatorProps {
 function LiveIndicator({ lastUpdatedAt, fetchFailed }: LiveIndicatorProps) {
     if (fetchFailed) {
         return (
-            <div className="flex items-center gap-1.5 text-sm text-amber-600">
-                <span className="text-amber-500 font-bold text-base leading-none">!</span>
+            <div className="flex items-center gap-1.5 text-sm text-(--color-warning)">
+                <span className="w-2 h-2 rounded-full bg-(--color-warning) shrink-0" />
                 <span>Live · Update failed</span>
             </div>
         );
     }
     return (
-        <div className="flex items-center gap-1.5 text-sm text-gray-500">
-            <span className="w-2 h-2 rounded-full bg-[var(--color-success)] animate-pulse shrink-0" />
+        <div className="flex items-center gap-1.5 text-sm text-(--text-muted)">
+            <span className="w-2 h-2 rounded-full bg-(--color-success) animate-pulse shrink-0" />
             <span>
                 Live · {lastUpdatedAt
                     ? `Updated ${formatRelativeTime(lastUpdatedAt)}`
@@ -231,8 +232,8 @@ export const AdminControlCenter: React.FC = () => {
     if (error) {
         return (
             <OpsLayout title="Control Center" rightActions={liveIndicator}>
-                <OpsCard className="border-red-200 bg-red-50">
-                    <p className="text-red-600 font-semibold">{error}</p>
+                <OpsCard className="border-(--color-danger)/20 bg-(--color-danger-tint)">
+                    <p className="text-(--color-danger) font-semibold">{error}</p>
                 </OpsCard>
             </OpsLayout>
         );
@@ -248,7 +249,7 @@ export const AdminControlCenter: React.FC = () => {
 
                 {/* PANEL 1: SNAPSHOT */}
                 <section>
-                    <h2 className="text-base font-semibold text-gray-800 mb-4">Today's Operations Snapshot</h2>
+                    <h2 className="text-base font-semibold text-(--text-heading) mb-4">Today's Operations Snapshot</h2>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <StatCard
                             label="Clean Events"
@@ -284,7 +285,7 @@ export const AdminControlCenter: React.FC = () => {
                 {/* PANEL 2: ROUTE STATUS */}
                 {/* "Visited" = completed + skipped stops (worker was present either way) */}
                 <section>
-                    <h2 className="text-base font-semibold text-gray-800 mb-4">Route Status</h2>
+                    <h2 className="text-base font-semibold text-(--text-heading) mb-4">Route Status</h2>
                     <OpsTable headers={["Route ID", "Pool", "Visited", "Workload", "Deviations"]}>
                         {routes.map((r) => {
                             const planned = Number(r.planned_stops);
@@ -307,16 +308,17 @@ export const AdminControlCenter: React.FC = () => {
                                                 max={totalExpected}
                                                 className="w-[60px]"
                                             />
-                                            <span className="text-sm text-gray-700 tabular-nums">{Math.round(pct)}% visited</span>
+                                            <span className="text-sm text-(--text-body) tabular-nums">{Math.round(pct)}% visited</span>
                                         </div>
                                     </OpsTableCell>
                                     <OpsTableCell className="tabular-nums">{Math.round(r.observed_minutes)}m</OpsTableCell>
                                     <OpsTableCell>
+                                        {/* Tinted pill + text label, not emoji, per the DS iconography rules */}
                                         <div className="flex gap-2">
-                                            {r.has_emergency_additions && <span title="Emergency Additions">🚨</span>}
-                                            {r.high_skip_count && <span title="High Skip Count">⏭️</span>}
+                                            {r.has_emergency_additions && <OpsBadge variant="danger" value="Emergency" />}
+                                            {r.high_skip_count && <OpsBadge variant="warning" value="High skips" />}
                                             {!r.has_emergency_additions && !r.high_skip_count && (
-                                                <span className="text-gray-500">—</span>
+                                                <span className="text-(--text-muted)">—</span>
                                             )}
                                         </div>
                                     </OpsTableCell>
@@ -326,7 +328,7 @@ export const AdminControlCenter: React.FC = () => {
                         {routes.length === 0 && (
                             <OpsTableRow>
                                 <OpsTableCell
-                                    className="text-center text-gray-400 italic"
+                                    className="text-center text-(--text-disabled) italic"
                                     colSpan={5}
                                 >
                                     No active routes today
@@ -341,33 +343,33 @@ export const AdminControlCenter: React.FC = () => {
 
                     {/* PANEL 3: EXCEPTIONS & BREAKS */}
                     <section>
-                        <h2 className="text-base font-semibold text-gray-800 mb-4">Exceptions & Breaks</h2>
+                        <h2 className="text-base font-semibold text-(--text-heading) mb-4">Exceptions & Breaks</h2>
                         <OpsCard>
                             {/* Key Indicators */}
-                            <div className="grid grid-cols-3 gap-4 mb-6 pb-4 border-b border-gray-100">
+                            <div className="grid grid-cols-3 gap-4 mb-6 pb-4 border-b border-(--border-subtle)">
                                 <div className="text-center">
-                                    <div className="text-2xl font-bold text-red-700">{stats?.total_hazards ?? 0}</div>
-                                    <div className="text-xs text-gray-500 mt-1">Hazards</div>
+                                    <div className="text-2xl font-bold tabular-nums text-(--color-danger)">{stats?.total_hazards ?? 0}</div>
+                                    <div className="text-xs text-(--text-muted) mt-1">Hazards</div>
                                 </div>
                                 <div className="text-center">
-                                    <div className="text-2xl font-bold text-yellow-600">{stats?.total_infra_issues ?? 0}</div>
-                                    <div className="text-xs text-gray-500 mt-1">Infra Issues</div>
+                                    <div className="text-2xl font-bold tabular-nums text-(--color-warning)">{stats?.total_infra_issues ?? 0}</div>
+                                    <div className="text-xs text-(--text-muted) mt-1">Infra Issues</div>
                                 </div>
                                 <div className="text-center">
-                                    <div className="text-2xl font-bold text-blue-600">{stats?.emergency_count ?? 0}</div>
-                                    <div className="text-xs text-gray-500 mt-1">Emergencies</div>
+                                    <div className="text-2xl font-bold tabular-nums text-(--color-brand)">{stats?.emergency_count ?? 0}</div>
+                                    <div className="text-xs text-(--text-muted) mt-1">Emergencies</div>
                                 </div>
                             </div>
 
-                            <div className="text-sm font-semibold text-gray-700 mb-2">Skips by Reason</div>
+                            <div className="text-sm font-semibold text-(--text-body) mb-2">Skips by Reason</div>
                             {(!stats?.skips_by_reason || stats.skips_by_reason.length === 0) ? (
-                                <div className="py-4 text-center text-gray-500 italic text-sm">No skips recorded today</div>
+                                <div className="py-4 text-center text-(--text-muted) italic text-sm">No skips recorded today</div>
                             ) : (
-                                <div className="divide-y divide-gray-50">
+                                <div className="divide-y divide-(--border-subtle)">
                                     {stats.skips_by_reason.map((s, i) => (
                                         <div key={i} className="flex justify-between items-center py-2 text-sm">
-                                            <span className="text-gray-700">{formatReason(s.reason)}</span>
-                                            <span className="font-bold text-gray-900">{s.count}</span>
+                                            <span className="text-(--text-body)">{formatReason(s.reason)}</span>
+                                            <span className="font-bold tabular-nums text-(--text-heading)">{s.count}</span>
                                         </div>
                                     ))}
                                 </div>
@@ -377,22 +379,22 @@ export const AdminControlCenter: React.FC = () => {
 
                     {/* PANEL 4: DIFFICULTY INDICATORS */}
                     <section>
-                        <h2 className="text-base font-semibold text-gray-800 mb-4">Asset Difficulty Indicators</h2>
+                        <h2 className="text-base font-semibold text-(--text-heading) mb-4">Asset Difficulty Indicators</h2>
                         <div className="flex flex-col gap-4">
 
                             {/* Hotspot Areas */}
                             <OpsCard>
-                                <div className="text-sm font-semibold text-gray-500 mb-3">System Hotspots</div>
+                                <div className="text-sm font-semibold text-(--text-muted) mb-3">System Hotspots</div>
                                 {(!difficulty?.hotspot_areas || difficulty.hotspot_areas.length === 0) ? (
-                                    <div className="text-sm text-gray-500 italic">None detected today</div>
+                                    <div className="text-sm text-(--text-muted) italic">None detected today</div>
                                 ) : (
                                     <div className="flex flex-wrap gap-2">
                                         {difficulty.hotspot_areas.map((h, i) => (
                                             <div
                                                 key={i}
-                                                className="px-2 py-1 bg-blue-50 border border-blue-200 text-blue-800 text-sm font-medium rounded"
+                                                className="px-2 py-1 bg-(--color-brand-50) border border-(--color-brand-100) text-(--color-brand-dark) text-sm font-medium rounded"
                                             >
-                                                {h.pool_label}: <span className="font-bold">{h.heavy_stop_count}</span>
+                                                {h.pool_label}: <span className="font-bold tabular-nums">{h.heavy_stop_count}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -403,7 +405,7 @@ export const AdminControlCenter: React.FC = () => {
 
                                 {/* Heavy Stops */}
                                 <OpsCard>
-                                    <div className="text-sm font-semibold text-gray-500 mb-2 pb-1 border-b border-gray-100">
+                                    <div className="text-sm font-semibold text-(--text-muted) mb-2 pb-1 border-b border-(--border-subtle)">
                                         Heavier Than Median
                                     </div>
                                     <div className="max-h-48 overflow-y-auto">
@@ -414,28 +416,28 @@ export const AdminControlCenter: React.FC = () => {
                                             >
                                                 <span className="max-w-[60%] overflow-hidden text-ellipsis whitespace-nowrap">
                                                     {s.stop_id && s.on_street_name && s.intersection_loc
-                                                        ? `#${s.stop_id} · ${s.on_street_name} — ${s.intersection_loc}`
+                                                        ? <><span className="font-mono">#{s.stop_id}</span>{` · ${s.on_street_name} — ${s.intersection_loc}`}</>
                                                         : sanitizeStopLabel(s.label)}
                                                 </span>
                                                 <span className={cn(
                                                     "px-1.5 py-0.5 rounded font-bold text-xs",
                                                     s.difficulty_band === "very_heavy"
-                                                        ? "bg-red-100 text-red-700"
-                                                        : "bg-orange-100 text-orange-700"
+                                                        ? "bg-(--band-very-heavy-bg) text-(--band-very-heavy-fg)"
+                                                        : "bg-(--band-heavy-bg) text-(--band-heavy-fg)"
                                                 )}>
                                                     {s.difficulty_band === "very_heavy" ? "Very Heavy" : "Heavy"}
                                                 </span>
                                             </div>
                                         ))}
                                         {(!difficulty?.heavy_stops || difficulty.heavy_stops.length === 0) && (
-                                            <div className="text-xs text-gray-500">Normal Load</div>
+                                            <div className="text-xs text-(--text-muted)">Normal Load</div>
                                         )}
                                     </div>
                                 </OpsCard>
 
                                 {/* Heavy Routes */}
                                 <OpsCard>
-                                    <div className="text-sm font-semibold text-gray-500 mb-2 pb-1 border-b border-gray-100">
+                                    <div className="text-sm font-semibold text-(--text-muted) mb-2 pb-1 border-b border-(--border-subtle)">
                                         Route Density
                                     </div>
                                     <div className="max-h-48 overflow-y-auto">
@@ -444,19 +446,19 @@ export const AdminControlCenter: React.FC = () => {
                                                 key={r.route_id}
                                                 className="flex justify-between items-center text-xs py-1.5 border-b border-gray-50 last:border-0"
                                             >
-                                                <span>#{r.route_id} ({r.pool_label})</span>
+                                                <span><span className="font-mono">#{r.route_id}</span> ({r.pool_label})</span>
                                                 <span className={cn(
                                                     "px-1.5 py-0.5 rounded font-bold text-xs",
                                                     r.difficulty_density_band === "high"
-                                                        ? "bg-red-100 text-red-700"
-                                                        : "bg-orange-100 text-orange-700"
+                                                        ? "bg-(--band-very-heavy-bg) text-(--band-very-heavy-fg)"
+                                                        : "bg-(--band-heavy-bg) text-(--band-heavy-fg)"
                                                 )}>
                                                     {r.difficulty_density_band === "high" ? "High" : "Elevated"}
                                                 </span>
                                             </div>
                                         ))}
                                         {(!difficulty?.heavy_routes || difficulty.heavy_routes.length === 0) && (
-                                            <div className="text-xs text-gray-500">Balanced</div>
+                                            <div className="text-xs text-(--text-muted)">Balanced</div>
                                         )}
                                     </div>
                                 </OpsCard>

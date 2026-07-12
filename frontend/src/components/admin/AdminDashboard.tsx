@@ -48,8 +48,8 @@ export function AdminDashboard({ scope = "admin" }: AdminDashboardProps) {
   if (error) {
     return (
       <OpsLayout title="Operations Dashboard" subtitle="Error loading stats">
-        <OpsCard className="border-red-200 bg-red-50">
-          <p className="text-red-600 text-sm">{error}</p>
+        <OpsCard className="border-(--color-danger)/20 bg-(--color-danger-tint)">
+          <p className="text-(--color-danger) text-sm">{error}</p>
         </OpsCard>
       </OpsLayout>
     );
