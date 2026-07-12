@@ -8,11 +8,13 @@ interface StopListItemProps {
   id?: string;
 }
 
+// Status pills follow the DS Badge variants: pending (amber pair), status
+// (brand tint), success, neutral.
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
-  pending:     { label: "Pending",     className: "bg-amber-100 text-amber-800" },
-  in_progress: { label: "In Progress", className: "bg-blue-100 text-blue-700"  },
-  done:        { label: "Done",        className: "bg-green-100 text-green-800" },
-  skipped:     { label: "Skipped",     className: "bg-gray-100 text-gray-500"  },
+  pending:     { label: "Pending",     className: "bg-[#fef3c7] text-[#92400e]" },
+  in_progress: { label: "In Progress", className: "bg-(--color-brand-100) text-(--color-brand-700)" },
+  done:        { label: "Done",        className: "bg-(--color-success-tint) text-(--color-success)" },
+  skipped:     { label: "Skipped",     className: "bg-(--gray-100) text-(--gray-600)" },
 };
 
 export function StopListItem({ stop, onClick, id }: StopListItemProps) {
@@ -25,14 +27,14 @@ export function StopListItem({ stop, onClick, id }: StopListItemProps) {
       id={id}
       onClick={onClick}
       className={cn(
-        "flex items-start gap-3 p-4 bg-white rounded-lg border border-gray-200",
+        "flex items-start gap-3 p-4 bg-(--surface-card) rounded-lg border border-(--border-default)",
         "min-h-[44px] cursor-pointer shadow-sm select-none",
-        "transition-colors active:bg-gray-50 hover:border-gray-300",
+        "transition-colors active:bg-(--surface-sunken) hover:border-(--border-strong)",
         stop.status === "done" && "opacity-70",
       )}
     >
       {/* Sequence number */}
-      <div className="shrink-0 min-w-[2rem] text-center text-xs font-bold text-gray-600 bg-gray-100 border border-gray-200 rounded px-1.5 py-1 mt-0.5">
+      <div className="shrink-0 min-w-[2rem] text-center text-xs font-bold font-mono text-(--gray-600) bg-(--surface-fill) border border-(--border-default) rounded px-1.5 py-1 mt-0.5">
         #{Number.isFinite(stop.sequence) ? stop.sequence : Number(stop.stopNumber)}
       </div>
 
@@ -57,15 +59,17 @@ export function StopListItem({ stop, onClick, id }: StopListItemProps) {
         {(stop.is_hotspot || stop.compactor || stop.has_trash) && (
           <div className="flex flex-wrap gap-1 mt-1.5">
             {stop.is_hotspot && (
-              <span className="text-xs" title="Hotspot">🔥 Hotspot</span>
+              <span className="text-xs px-1.5 py-0.5 bg-(--color-warning-tint) text-(--color-warning) border border-(--color-warning)/30 rounded" title="Hotspot">
+                Hotspot
+              </span>
             )}
             {stop.compactor && (
-              <span className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded">
+              <span className="text-xs px-1.5 py-0.5 bg-(--color-brand-50) text-(--color-brand-700) border border-(--color-brand-100) rounded">
                 Compactor
               </span>
             )}
             {stop.has_trash && (
-              <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-600 border border-gray-200 rounded">
+              <span className="text-xs px-1.5 py-0.5 bg-(--surface-fill) text-(--gray-600) border border-(--border-default) rounded">
                 Trash bag
               </span>
             )}
@@ -74,10 +78,10 @@ export function StopListItem({ stop, onClick, id }: StopListItemProps) {
 
         {/* Offline sync indicator */}
         {syncState === "queued" && (
-          <p className="mt-1.5 text-xs text-amber-600 font-medium">⏳ Queued — will sync when online</p>
+          <p className="mt-1.5 text-xs text-(--color-warning) font-medium">Queued — will sync when online</p>
         )}
         {syncState === "conflict" && (
-          <p className="mt-1.5 text-xs text-red-600 font-medium">⚠ Sync conflict</p>
+          <p className="mt-1.5 text-xs text-(--color-danger) font-medium">Sync conflict</p>
         )}
       </div>
     </li>

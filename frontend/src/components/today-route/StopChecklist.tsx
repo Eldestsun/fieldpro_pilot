@@ -28,10 +28,10 @@ export function StopChecklist({ checklist, isReadOnly, onToggle }: StopChecklist
               className={cn(
                 "flex items-center gap-3 px-4 py-3 rounded-lg min-h-[44px] transition-colors",
                 isReadOnly
-                  ? "cursor-default bg-gray-50"
+                  ? "cursor-default bg-(--surface-sunken)"
                   : isChecked
-                    ? "cursor-pointer bg-green-50 border border-green-300"
-                    : "cursor-pointer bg-white border border-gray-200 hover:border-gray-300",
+                    ? "cursor-pointer bg-(--color-success-tint) border border-(--color-success)/40"
+                    : "cursor-pointer bg-(--surface-card) border border-(--border-default) hover:border-(--border-strong)",
               )}
             >
               <input
@@ -39,7 +39,7 @@ export function StopChecklist({ checklist, isReadOnly, onToggle }: StopChecklist
                 checked={isChecked}
                 onChange={() => onToggle(key as keyof ChecklistState)}
                 disabled={isReadOnly}
-                className="w-5 h-5 shrink-0 accent-green-600"
+                className="w-5 h-5 shrink-0 accent-(--color-success)"
               />
               <span className={cn("text-base", isReadOnly ? "text-gray-400" : "text-gray-900")}>
                 {label}
