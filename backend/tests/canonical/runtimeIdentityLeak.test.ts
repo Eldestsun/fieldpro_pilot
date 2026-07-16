@@ -241,6 +241,9 @@ function buildEndpoints(): Endpoint[] {
     { method: "GET", route: "/lead/todays-runs", probe: "/lead/todays-runs", kind: "clean", authorized: "Dispatch" },
     // ── Resource + config reads ──
     { method: "GET", route: "/pools", probe: "/pools", kind: "clean", authorized: "Dispatch" },
+    // /bases returns depot {id, name} only (NORTH/SOUTH facilities) — no worker
+    // identity. Same shape/role as /pools. Used by the Create Route base picker.
+    { method: "GET", route: "/bases", probe: "/bases", kind: "clean", authorized: "Dispatch" },
     // tenant config uses its own org convention (?org_id= / X-Org-Id), not the
     // dev-bypass org header — supply org_id so the authorized probe reaches 200.
     { method: "GET", route: "/asset-types", probe: "/admin/tenant/asset-types?org_id=1", kind: "clean", authorized: "Admin" },
