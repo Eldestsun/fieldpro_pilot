@@ -15,20 +15,15 @@ const requireOps = (req: Request, res: Response, next: NextFunction) => {
   requireAnyRole(["Dispatch", "Admin"])(req as any, res, next);
 };
 
-// ISSUE-031/CC-REPOINT (DQ A3): the 8 pinned safety *_present observation types.
-// Canonical hazard reads filter to exactly these. Distinct from the infrastructure
-// *_present set — do not conflate. Includes other_safety_concern_present.
-// (Moved byte-identical from adminRoutes.ts in the SEAM-B extraction.)
-const SAFETY_HAZARD_OBSERVATION_TYPES = [
-  'encampment_present',
-  'fire_present',
-  'dangerous_activity_present',
-  'drug_use_present',
-  'violence_present',
-  'biohazard_present',
-  'access_blocked_present',
-  'other_safety_concern_present',
-] as const;
+// SEAM-B-R1: the local SAFETY_HAZARD_OBSERVATION_TYPES array (moved byte-identical
+// from adminRoutes.ts in the SEAM-B extraction) is DELETED. It listed
+// 'access_blocked_present', but the write path (observationService.ts
+// SAFETY_HAZARD_TYPE_MAP) emits the bare 'access_blocked' — so the /overview
+// hazards_reported tile silently excluded every access-blocked report while
+// /exceptions (which uses the derived set) counted them. All CC hazard reads now
+// consume SAFETY_PRESENCE_TYPES, derived from the write map itself
+// (presenceTaxonomy.ts) and pinned by presenceTaxonomy.test.ts, so the read
+// side cannot drift from what the write path actually emits.
 
 const ccRouter = Router();
 ccRouter.use(requireAuth, requireOps);
@@ -82,7 +77,11 @@ ccRouter.get("/overview", async (req: Request, res: Response) => {
     await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(numericOrgId)]);
     // ISSUE-031/CC-REPOINT: canonical reads — clean events/minutes from core.visits
     // (completed visit = clean event; duration = ended_at - started_at), hazards from
-    // core.observations filtered to the 8 pinned safety *_present types (observed_at).
+    // core.observations filtered to the derived safety presence set (observed_at).
+    // SEAM-B-R1: the filter set is SAFETY_PRESENCE_TYPES (derived from the write map,
+    // presenceTaxonomy.ts) — same set as /exceptions — replacing the drifted local
+    // array whose 'access_blocked_present' entry never matched the written bare
+    // 'access_blocked' type (silent undercount).
     // No identity columns. High-severity hazard cut dropped per DQ A2.
     const query = `
             WITH today AS (
@@ -117,7 +116,7 @@ ccRouter.get("/overview", async (req: Request, res: Response) => {
             CROSS JOIN hazard_metrics h;
         `;
 
-    const result = await client.query(query, [SAFETY_HAZARD_OBSERVATION_TYPES]);
+    const result = await client.query(query, [SAFETY_PRESENCE_TYPES as unknown as string[]]);
     // Return row 0 as JSON, or default zeros if something goes strictly wrong (though aggregate always returns 1 row)
     const row = result.rows[0] || {
       clean_events: 0,
@@ -285,7 +284,6 @@ ORDER BY rb.route_run_id;
     const result = await withOrgContext(numericOrgId, (client) =>
       client.query(query),
     );
-    console.log("[ControlCenter:Routes] rows =", result.rows);
     res.json(result.rows);
   } catch (err: any) {
     console.error("Error in /api/ops/control-center/routes:", err);

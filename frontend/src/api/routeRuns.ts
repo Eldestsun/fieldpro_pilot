@@ -381,6 +381,12 @@ export interface Pool {
     trfDistrict?: string;
     defaultMaxMinutes?: number;
     region_id?: string;
+    baseId?: string | null; // pre-attached dispatch base, if any (nullable for district pools)
+}
+
+export interface Base {
+    id: string;
+    name: string;
 }
 
 export interface UlUser {
@@ -390,12 +396,20 @@ export interface UlUser {
     role: string;
 }
 
+// Shape actually emitted by the OSRM planner (backend planRouteWithOsrm →
+// ordered_stops). It carries coords + descriptors but NO `sequence` field —
+// optimized order IS the array order. `location`/`planned_*` are declared
+// optional for forward-compat but are not currently sent.
 export interface RoutePreviewStop {
     stop_id: string;
-    sequence: number;
-    location: string; // or structured
-    planned_duration_s: number;
-    planned_distance_m: number;
+    lon?: number;
+    lat?: number;
+    on_street_name?: string;
+    bearing_code?: string;
+    sequence?: number;
+    location?: string;
+    planned_duration_s?: number;
+    planned_distance_m?: number;
 }
 
 export interface RoutePreviewResponse {
@@ -406,6 +420,10 @@ export interface RoutePreviewResponse {
     truncated?: boolean;
     total_stops?: number;
     used_stops?: number;
+    // Which base anchored the plan (null = stop-to-stop, no depot leg). When set,
+    // distance_m includes the base→first-stop drive, matching the saved route.
+    base_id?: string | null;
+    base_anchored?: boolean;
 }
 
 export async function fetchPools(token: string): Promise<Pool[]> {
@@ -433,12 +451,28 @@ function normalizePool(raw: any): Pool {
         trfDistrict: raw?.trfDistrict ?? raw?.trf_district ?? raw?.trf_district_code ?? raw?.TRF_DISTRICT_CODE,
         defaultMaxMinutes: raw?.defaultMaxMinutes ?? raw?.default_max_minutes,
         region_id: raw?.region_id,
+        baseId: raw?.baseId ?? raw?.base_id ?? raw?.BASE_ID ?? null,
     };
 }
 
 function normalizePoolsArray(rawPools: any): Pool[] {
     if (!Array.isArray(rawPools)) return [];
     return rawPools.map(normalizePool);
+}
+
+export async function fetchBases(token: string): Promise<Base[]> {
+    const res = await fetch("/api/bases", {
+        headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to fetch bases");
+    }
+    const data = await res.json();
+    return (data?.bases ?? []).map((b: any) => ({
+        id: String(b.id),
+        name: String(b.name ?? b.id),
+    }));
 }
 
 export async function fetchUlUsers(token: string): Promise<UlUser[]> {
@@ -455,7 +489,7 @@ export async function fetchUlUsers(token: string): Promise<UlUser[]> {
 
 export async function previewRouteRun(
     token: string,
-    params: { poolId: string; ulId: string; runDate: string; shiftType?: string; stopIds?: string[] }
+    params: { poolId: string; ulId: string; runDate: string; shiftType?: string; stopIds?: string[]; baseId?: string }
 ): Promise<RoutePreviewResponse> {
     const res = await fetch("/api/route-runs/preview", {
         method: "POST",
@@ -468,6 +502,8 @@ export async function previewRouteRun(
             ul_id: params.ulId,
             run_date: params.runDate,
             shift_type: params.shiftType ?? "day",
+            // Anchor the preview to the base so its miles match the saved route.
+            ...(params.baseId ? { base_id: params.baseId } : {}),
             ...(params.stopIds ? { stop_ids: params.stopIds } : {}),
         }),
     });
@@ -483,7 +519,9 @@ export async function createRouteRun(
     token: string,
     // SEAM-D D3: stopIds + isAdhoc drive the ad-hoc picker mode. is_adhoc is an
     // EXPLICIT flag — the server validates it and never infers it from stop_ids.
-    params: { poolId: string; ulId: string; runDate: string; shiftType?: string; stopIds?: string[]; isAdhoc?: boolean }
+    // baseId is the dispatch base; if omitted the server falls back to the pool's
+    // pre-attached base (and errors if neither exists).
+    params: { poolId: string; ulId: string; runDate: string; shiftType?: string; stopIds?: string[]; isAdhoc?: boolean; baseId?: string }
 ): Promise<void> {
     const res = await fetch("/api/route-runs", {
         method: "POST",
@@ -496,6 +534,7 @@ export async function createRouteRun(
             ul_id: params.ulId,
             run_date: params.runDate,
             shift_type: params.shiftType ?? "day",
+            ...(params.baseId ? { base_id: params.baseId } : {}),
             ...(params.stopIds ? { stop_ids: params.stopIds } : {}),
             ...(params.isAdhoc ? { is_adhoc: true } : {}),
         }),

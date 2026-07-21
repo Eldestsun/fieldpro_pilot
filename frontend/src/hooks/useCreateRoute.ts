@@ -2,11 +2,13 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../auth/AuthContext";
 import {
     fetchPools,
+    fetchBases,
     fetchUlUsers,
     previewRouteRun,
     createRouteRun,
     getStopsScoped,
     type Pool,
+    type Base,
     type UlUser,
     type RoutePreviewResponse,
 } from "../api/routeRuns";
@@ -30,6 +32,7 @@ export function useCreateRoute({ onCreated }: UseCreateRouteOptions = {}) {
 
     // Form State
     const [selectedPoolId, setSelectedPoolId] = useState<string>("");
+    const [selectedBaseId, setSelectedBaseId] = useState<string>("");
     const [selectedUlId, setSelectedUlId] = useState<string>("");
     const [shiftType, setShiftType] = useState<string>("day");
     const [runDate] = useState(() => new Date().toISOString().split("T")[0]); // Default today
@@ -45,6 +48,7 @@ export function useCreateRoute({ onCreated }: UseCreateRouteOptions = {}) {
 
     // Data State
     const [pools, setPools] = useState<Pool[]>([]);
+    const [bases, setBases] = useState<Base[]>([]);
     const [uls, setUls] = useState<UlUser[]>([]);
     const [preview, setPreview] = useState<RoutePreviewResponse | null>(null);
 
@@ -59,6 +63,7 @@ export function useCreateRoute({ onCreated }: UseCreateRouteOptions = {}) {
         if (isOpen) {
             // Reset state on open
             setSelectedPoolId("");
+            setSelectedBaseId("");
             setSelectedUlId("");
             setShiftType("day");
             setPreview(null);
@@ -72,12 +77,18 @@ export function useCreateRoute({ onCreated }: UseCreateRouteOptions = {}) {
             const loadData = async () => {
                 try {
                     const token = await getAccessToken();
-                    const [poolsData, ulsData] = await Promise.all([
+                    const [poolsData, basesData, ulsData] = await Promise.all([
                         fetchPools(token),
+                        fetchBases(token),
                         fetchUlUsers(token),
                     ]);
                     setPools(poolsData);
-                    setUls(ulsData);
+                    setBases(basesData);
+                    // Single-base orgs never need to think about it — auto-select.
+                    if (basesData.length === 1) setSelectedBaseId(basesData[0].id);
+                    // Hide CI seed crew (seed-*-oid) from the picker — test inputs,
+                    // not real assignable people. Structural rows stay in the DB for CI.
+                    setUls(ulsData.filter((u) => !u.id.startsWith("seed-")));
                 } catch (err: any) {
                     setError(err.message || "Failed to load options");
                 } finally {
@@ -96,6 +107,18 @@ export function useCreateRoute({ onCreated }: UseCreateRouteOptions = {}) {
         setPreview(null);
         setError(null);
     }, []);
+
+    // Selecting a pool defaults the base to that pool's pre-attached base (if any),
+    // preserving the old KCM behavior where base was implied by the route. When the
+    // pool has none (district pools), the base picker stays for Dispatch to choose.
+    const setPool = useCallback((poolId: string) => {
+        setSelectedPoolId(poolId);
+        setPreview(null);
+        const pool = pools.find((p) => p.id === poolId);
+        if (pool?.baseId) {
+            setSelectedBaseId(pool.baseId);
+        }
+    }, [pools]);
 
     const searchStops = async () => {
         if (!stopSearch.trim()) return;
@@ -134,7 +157,7 @@ export function useCreateRoute({ onCreated }: UseCreateRouteOptions = {}) {
     }, []);
 
     const generatePreview = async () => {
-        if (!selectedPoolId || !selectedUlId) return;
+        if (!selectedPoolId || !selectedUlId || !selectedBaseId) return;
         if (mode === "adhoc" && selectedStops.length < 2) return;
         setLoadingPreview(true);
         setError(null);
@@ -147,6 +170,7 @@ export function useCreateRoute({ onCreated }: UseCreateRouteOptions = {}) {
                 ulId: selectedUlId,
                 runDate,
                 shiftType,
+                ...(selectedBaseId ? { baseId: selectedBaseId } : {}),
                 ...(mode === "adhoc"
                     ? { stopIds: selectedStops.map((s) => s.stopId) }
                     : {}),
@@ -171,6 +195,7 @@ export function useCreateRoute({ onCreated }: UseCreateRouteOptions = {}) {
                 ulId: selectedUlId,
                 runDate,
                 shiftType,
+                ...(selectedBaseId ? { baseId: selectedBaseId } : {}),
                 // is_adhoc travels ONLY from this explicit picker mode.
                 ...(mode === "adhoc"
                     ? { stopIds: selectedStops.map((s) => s.stopId), isAdhoc: true }
@@ -185,23 +210,29 @@ export function useCreateRoute({ onCreated }: UseCreateRouteOptions = {}) {
         }
     };
 
+    // Base is required to preview too: it's the trip origin, so without it the
+    // preview miles would be stop-to-stop and then jump on save. Requiring it up
+    // front keeps the previewed distance identical to the saved route.
     const canPreview =
-        !!selectedPoolId && !!selectedUlId && !loadingOptions &&
+        !!selectedPoolId && !!selectedUlId && !!selectedBaseId && !loadingOptions &&
         (mode === "pool" || selectedStops.length >= 2);
-    const canSave = !!preview && !savingRoute;
+    const canSave = !!preview && !!selectedBaseId && !savingRoute;
 
     return {
         isOpen,
         open,
         close,
         selectedPoolId,
-        setPool: setSelectedPoolId,
+        setPool,
+        selectedBaseId,
+        setBase: setSelectedBaseId,
         selectedUlId,
         setUl: setSelectedUlId,
         shiftType,
         setShiftType,
         runDate,
         pools,
+        bases,
         uls,
         preview,
         loadingOptions,

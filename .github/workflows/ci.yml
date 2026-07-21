@@ -161,34 +161,37 @@ jobs:
   # Enforces S1-10 done-criteria: both backend/ and frontend/ workspaces must be clean
   # before merging to main. LOW and MODERATE findings do not block CI (documented in
   # docs/security/dependency-audit-2026-05-13.md).
+  #
+  # Scanner: osv-scanner (reads the pnpm lockfiles against the OSV database). It
+  # replaced `pnpm audit --audit-level=high`, which broke repo-wide when npm retired
+  # the legacy audit endpoint pnpm calls (HTTP 410 — "use the bulk advisory endpoint").
+  # osv-scanner has no dependency on npm's audit endpoint, but its own exit code fails
+  # on ANY advisory (Low/Medium included); .github/scripts/osv-severity-gate.py
+  # re-imposes the exact HIGH/CRITICAL-only posture on top of its JSON output.
   dependency-audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.14.0
+      - name: Install osv-scanner
+        run: |
+          curl -sSfL "https://github.com/google/osv-scanner/releases/download/v2.4.0/osv-scanner_linux_amd64" -o /usr/local/bin/osv-scanner
+          chmod +x /usr/local/bin/osv-scanner
+          osv-scanner --version
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+      - name: Scan lockfiles (backend + frontend)
+        # osv-scanner exits non-zero when it finds ANY advisory; capture the JSON
+        # regardless and let the severity gate decide. `|| true` swallows only that
+        # any-advisory exit — a genuine tool/network failure leaves no report, which
+        # the gate treats as exit 2 (fail loud), so this never silently passes.
+        run: |
+          osv-scanner scan \
+            --lockfile=backend/pnpm-lock.yaml \
+            --lockfile=frontend/pnpm-lock.yaml \
+            --format=json > osv-report.json || true
 
-      - name: Install backend dependencies
-        run: pnpm install --frozen-lockfile
-        working-directory: backend
-
-      - name: Audit backend (fail on HIGH or CRITICAL)
-        run: pnpm audit --audit-level=high
-        working-directory: backend
-
-      - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile
-        working-directory: frontend
-
-      - name: Audit frontend (fail on HIGH or CRITICAL)
-        run: pnpm audit --audit-level=high
-        working-directory: frontend
+      - name: Gate on HIGH or CRITICAL (S1-10 policy)
+        run: python3 .github/scripts/osv-severity-gate.py osv-report.json
 
   build-docker-images:
     needs: [test-backend, build-frontend]
