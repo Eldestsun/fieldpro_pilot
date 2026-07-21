@@ -54,3 +54,25 @@ The dispatch wrote `ceil = min(2^n * 1000ms, 30000ms)`. Implemented as
 `min(2^(n-1) * 1000ms, 30000ms)` so the FIRST retry ceiling is 1s, matching
 the demo curve the same ruling specified (`1→2→4→8→…→30s`). Same cap, same
 jitter, same no-give-up semantics; the sequence just starts at 1s not 2s.
+
+## Merge reconciliation with `main` (2026-07-20 — DS overhaul)
+`main` advanced 21 commits (design-system overhaul, PRs #88/#89) while this
+branch was open. Git merged cleanly, but the `Bar` component in
+`OfflineStatusBar.tsx` was rewritten on `main` to a **token-driven, state-only
+API** (`state: BarState`) — the freeform `color`/`bg` props this branch's
+reconnecting branch used no longer exist. That was a *silent* semantic conflict:
+zero textual conflict markers, but `tsc -b` failed the frontend CI build with
+`TS2322: Property 'color' does not exist on type BarProps`.
+
+Reconciled by adopting the new API rather than the old one:
+- Added a `"reconnecting"` member to `BarState` + a `STATE_CLASSES` entry using
+  warning tokens (`--color-warning` / `--color-warning-tint`, pulsing dot) —
+  amber, mirroring the original intent, now token-based.
+- Reconnecting branch now renders `<Bar state="reconnecting">Reconnecting to
+  server…</Bar>` — **emoji dropped** to honor the DS StatusBar spec ("a solid
+  colored dot + text label — never emoji"). The existing test asserts
+  `/Reconnecting to server/i`, so coverage is unaffected.
+
+Post-merge verification: `pnpm install --frozen-lockfile` clean; `tsc -b && vite
+build` exit 0; frontend suite **70/70** (was 60/60 pre-DS-merge); osv dependency
+gate exit 0 (carries the #93 axios/brace-expansion fix from `main`).
