@@ -8,10 +8,11 @@ import { ConflictResolutionModal } from "./ConflictResolutionModal";
 // States per the design-system StatusBar spec (components/feedback/StatusBar.jsx):
 // a solid colored dot + text label — never emoji. Semantic colors carry sync /
 // operational meaning; the conflict orange pair is hardcoded there too (no token).
-type BarState = "offline" | "syncing" | "synced" | "conflict" | "failed";
+type BarState = "offline" | "reconnecting" | "syncing" | "synced" | "conflict" | "failed";
 
 const STATE_CLASSES: Record<BarState, { bar: string; dot: string }> = {
-    offline:  { bar: "text-(--color-danger) bg-(--color-danger-tint) border-(--color-danger)/20",   dot: "bg-(--color-danger)" },
+    offline:      { bar: "text-(--color-danger) bg-(--color-danger-tint) border-(--color-danger)/20",   dot: "bg-(--color-danger)" },
+    reconnecting: { bar: "text-(--color-warning) bg-(--color-warning-tint) border-(--color-warning)/20", dot: "bg-(--color-warning) animate-pulse" },
     syncing:  { bar: "text-(--color-warning) bg-(--color-warning-tint) border-(--color-warning)/20", dot: "bg-(--color-warning) animate-pulse" },
     synced:   { bar: "text-(--color-success) bg-(--color-success-tint) border-(--color-success)/20", dot: "bg-(--color-success)" },
     conflict: { bar: "text-[#9a3412] bg-[#fff7ed] border-[#ea580c]/20",                              dot: "bg-[#ea580c]" },
@@ -20,7 +21,7 @@ const STATE_CLASSES: Record<BarState, { bar: string; dot: string }> = {
 
 export function OfflineStatusBar() {
     const { pendingCount, conflictCount, failedCount, syncStatus, conflictActions, isOfflineMode } = useOfflineSync();
-    const { account } = useAuth();
+    const { account, isReconnecting } = useAuth();
     const [modalOpen, setModalOpen] = useState(false);
 
     const tenantId = account?.tenantId;
@@ -31,13 +32,22 @@ export function OfflineStatusBar() {
         dismissConflict(tenantId, oid, actionId);
     };
 
-    // Priority order: offline > syncing > success > conflict > failed > clear
+    // Priority order: offline > reconnecting > syncing > success > conflict > failed > clear
     let content: React.ReactNode = null;
 
     if (isOfflineMode) {
         content = (
             <Bar state="offline">
                 Offline — {pendingCount} action{pendingCount !== 1 ? 's' : ''} queued
+            </Bar>
+        );
+    } else if (isReconnecting) {
+        // PING-RETRY: the session ping (/api/secure/ping) is failing and retries
+        // are being scheduled with backoff (AuthContext). Device is "online" but
+        // the server is unreachable — distinct from device-offline above.
+        content = (
+            <Bar state="reconnecting">
+                Reconnecting to server…
             </Bar>
         );
     } else if (syncStatus === 'syncing') {
