@@ -16,6 +16,7 @@ import * as AdminDashboardMod from "./components/admin/AdminDashboard";
 import * as AdminPoolsPanelMod from "./components/admin/AdminPoolsPanel";
 import * as AdminStopsPanelMod from "./components/admin/AdminStopsPanel";
 import * as AdminControlCenterMod from "./components/admin/AdminControlCenter";
+import * as AdminAuditLogPanelMod from "./components/admin/AdminAuditLogPanel";
 import * as LoginPageMod from "./auth/LoginPage";
 import { OfflineSyncManager } from "./offline/OfflineSyncManager";
 import { OfflineStatusBar } from "./components/ui/OfflineStatusBar";
@@ -31,6 +32,7 @@ const AdminDashboard = resolveComponent(AdminDashboardMod, "AdminDashboard");
 const AdminPoolsPanel = resolveComponent(AdminPoolsPanelMod, "AdminPoolsPanel");
 const AdminStopsPanel = resolveComponent(AdminStopsPanelMod, "AdminStopsPanel");
 const AdminControlCenter = resolveComponent(AdminControlCenterMod, "AdminControlCenter");
+const AdminAuditLogPanel = resolveComponent(AdminAuditLogPanelMod, "AdminAuditLogPanel");
 const LoginPage = resolveComponent(LoginPageMod, "LoginPage");
 
 function DefaultRedirect() {
@@ -132,6 +134,7 @@ export default function App() {
                   <NavLink to="/admin/pools" end className={navLinkClass}>Pools</NavLink>
                   <NavLink to="/admin/stops" end className={navLinkClass}>Stops</NavLink>
                   <NavLink to="/ops/control-center" end className={navLinkClass}>Control Center</NavLink>
+                  <NavLink to="/admin/audit-log" end className={navLinkClass}>Audit Log</NavLink>
                 </>
               )}
             </div>
@@ -223,6 +226,7 @@ export default function App() {
                   <NavLink to="/admin/pools" end className={mobileNavLinkClass} onClick={closeMenu}>Pools</NavLink>
                   <NavLink to="/admin/stops" end className={mobileNavLinkClass} onClick={closeMenu}>Stops</NavLink>
                   <NavLink to="/ops/control-center" end className={mobileNavLinkClass} onClick={closeMenu}>Control Center</NavLink>
+                  <NavLink to="/admin/audit-log" end className={mobileNavLinkClass} onClick={closeMenu}>Audit Log</NavLink>
                 </>
               )}
               <div className="mt-2 pt-2 border-t border-gray-100">
@@ -269,6 +273,9 @@ export default function App() {
             } />
             <Route path="/ops/control-center" element={
               <RequireRole roles={["Dispatch", "Admin"]}><AdminControlCenter /></RequireRole>
+            } />
+            <Route path="/admin/audit-log" element={
+              <RequireRole roles={["Admin"]}><AdminAuditLogPanel /></RequireRole>
             } />
             <Route path="/ops/dashboard" element={
               <RequireRole roles={["Dispatch", "Admin"]}><AdminDashboard scope="ops" /></RequireRole>
