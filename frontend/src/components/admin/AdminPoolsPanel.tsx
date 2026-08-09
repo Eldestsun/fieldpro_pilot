@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { getPoolsScoped, createAdminPool, disableAdminPool, type Pool } from "../../api/routeRuns";
 import { OpsLayout } from "../ui/OpsLayout";
+import { OpsCard } from "../ui/OpsCard";
 import { OpsButton } from "../ui/OpsButton";
 import { OpsBadge } from "../ui/OpsBadge";
 import { DataTable, type DataTableColumn } from "../ui/DataTable";
@@ -71,14 +72,14 @@ export function AdminPoolsPanel({ scope = "admin" }: AdminPoolsPanelProps) {
       header: "ID",
       sortable: true,
       getValue: p => String(p.id),
-      render: p => <span className="font-mono text-gray-500 text-xs">{p.id}</span>,
+      render: p => <span className="font-mono text-(--text-muted) text-xs">{p.id}</span>,
     },
     {
       key: "name",
       header: "Name",
       sortable: true,
       getValue: p => p.name,
-      render: p => <span className="font-semibold text-gray-900">{p.name}</span>,
+      render: p => <span className="font-semibold text-(--text-heading)">{p.name}</span>,
     },
     {
       key: "status",
@@ -113,24 +114,24 @@ export function AdminPoolsPanel({ scope = "admin" }: AdminPoolsPanelProps) {
       }
     >
       {isCreating && (
-        <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6 mb-6">
-          <h3 className="mt-0 mb-4 text-base font-semibold text-gray-800">Create New Pool</h3>
+        <OpsCard className="mb-6">
+          <h3 className="mt-0 mb-4 text-base font-semibold text-(--text-heading)">Create New Pool</h3>
           <div className="flex gap-4 items-end flex-wrap">
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Pool Name</label>
+              <label className="block text-sm font-semibold text-(--text-body) mb-1">Pool Name</label>
               <input
                 type="text"
                 value={newPoolName}
                 onChange={(e) => setNewPoolName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleCreate()}
                 placeholder="e.g. Downtown Core"
-                className="w-full px-3 py-2 rounded-md border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                className="w-full px-3 py-2 rounded-md border border-(--border-strong) text-sm focus:outline-none focus:ring-2 focus:ring-(--color-brand) min-h-[44px]"
               />
             </div>
             <OpsButton variant="primary" onClick={handleCreate}>Save</OpsButton>
             <OpsButton variant="secondary" onClick={() => setIsCreating(false)}>Cancel</OpsButton>
           </div>
-        </div>
+        </OpsCard>
       )}
 
       <DataTable<Pool>

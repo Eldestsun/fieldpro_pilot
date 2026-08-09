@@ -1,5 +1,6 @@
 import { pool, withOrgContext } from "../../db";
 import { loadRouteRunById } from "./loaders/loadRouteRunById";
+import { encrypt as encryptOid } from "../../lib/oidCipher";
 import { planRouteWithOsrm, OsrmStop } from "../../osrmClient";
 import { makeLegCostCache } from "../../routing/routeCost";
 import { postOptimizeCurbsideOrder } from "../../routing/curbsidePostOptimize";
@@ -173,9 +174,10 @@ export async function createRouteRun(
     base_id: string;
     run_date?: string | Date;
     shift_type?: string;        // 'day' | 'night' | 'all_day'. Defaults to 'day'.
+    is_adhoc?: boolean;         // SEAM-D D3: run-level ad-hoc tag. Explicit flag only; defaults false.
   }
 ) {
-  const { stops, user_id, assigned_user_oid, created_by_oid, route_pool_id, base_id, run_date, shift_type } = params;
+  const { stops, user_id, assigned_user_oid, created_by_oid, route_pool_id, base_id, run_date, shift_type, is_adhoc } = params;
 
   let stopsToPlan = stops;
 
@@ -340,9 +342,9 @@ export async function createRouteRun(
     const insertRunText = `
       INSERT INTO route_runs (
         user_id, route_pool_id, base_id, run_date, status, total_distance_m, total_duration_s,
-        assigned_user_oid, created_by_oid, shift_type
+        assigned_user_oid, created_by_oid, shift_type, is_adhoc
       )
-      VALUES ($1, $2, $3, $4, 'planned', $5, $6, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, 'planned', $5, $6, $7, $8, $9, $10)
       RETURNING id
     `;
     // Default to today if run_date is missing
@@ -358,6 +360,7 @@ export async function createRouteRun(
       assigned_user_oid ?? null,
       created_by_oid ?? null,
       shift_type ?? 'day',
+      is_adhoc === true,
     ]);
     const routeRunId = runRes.rows[0].id;
 
@@ -440,15 +443,22 @@ export async function createRouteRun(
 
     // Identity sidecar for the assignments just created (RETURNING yields only the
     // rows actually inserted, so ON CONFLICT-skipped duplicates get no sidecar row).
+    // ISSUE-058: actor_ref holds the non-identifying sentinel for every batch row;
+    // the real creator OID lives only in actor_ref_ciphertext. One encrypt for the
+    // batch (same creator across all assignments). Never write an identifying value
+    // into actor_ref.
     if (assignRes.rows.length > 0) {
+      const { ciphertext: oidCiphertext, keyId: oidKeyId } =
+        await encryptOid(effectiveCreatedByOid, "assignment_create");
       await client.query(`
-        INSERT INTO core.assignment_actor_audit (assignment_id, org_id, actor_ref)
-        SELECT UNNEST($1::bigint[]), UNNEST($2::bigint[]), $3
+        INSERT INTO core.assignment_actor_audit
+          (assignment_id, org_id, actor_ref, actor_ref_ciphertext, actor_ref_key_id)
+        SELECT UNNEST($1::bigint[]), UNNEST($2::bigint[]), $3, $4, $5
         ON CONFLICT (assignment_id) DO NOTHING
       `, [
         assignRes.rows.map((r: any) => r.id),
         assignRes.rows.map((r: any) => r.org_id),
-        effectiveCreatedByOid,
+        'encrypted', oidCiphertext, oidKeyId,
       ]);
     }
 

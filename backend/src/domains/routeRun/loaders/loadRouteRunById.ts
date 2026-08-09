@@ -18,11 +18,11 @@ export async function loadRouteRunById(id: number | string, orgId: number | stri
     const query = `
     SELECT
       rr.id                  AS route_run_id,
-      rr.user_id,
       rr.route_pool_id,
       rr.base_id,
       rr.run_date,
       rr.status,
+      rr.is_adhoc,
       rr.started_at,
       rr.finished_at,
       rr.total_distance_m,
@@ -60,11 +60,11 @@ export async function loadRouteRunById(id: number | string, orgId: number | stri
       s.lon,
       s.lat,
       s.notes,
-      cl.picked_up_litter,
-      cl.emptied_trash,
-      cl.washed_shelter,
-      cl.washed_pad,
-      cl.washed_can
+      COALESCE(cl.picked_up_litter, false) AS picked_up_litter,
+      COALESCE(cl.emptied_trash, false)    AS emptied_trash,
+      COALESCE(cl.washed_shelter, false)   AS washed_shelter,
+      COALESCE(cl.washed_pad, false)       AS washed_pad,
+      COALESCE(cl.washed_can, false)       AS washed_can
     FROM route_runs rr
     LEFT JOIN route_pools rp ON rp.id = rr.route_pool_id
     -- CONTROLLED EXCEPTION — identity_directory JOIN
@@ -78,7 +78,34 @@ export async function loadRouteRunById(id: number | string, orgId: number | stri
     LEFT JOIN identity_directory creator ON creator.oid = rr.created_by_oid
     JOIN route_run_stops rrs ON rrs.route_run_id = rr.id
     JOIN stops s ON s.stop_id = rrs.stop_id
-    LEFT JOIN clean_logs cl ON cl.route_run_stop_id = rrs.id
+    -- SEAM-C: the 5 cleaning booleans derive from canonical action observations, not
+    -- the clipped public.clean_logs adapter. Per stop, resolve its visit(s) via the
+    -- canonical spine (visit → assignment.source_ref = route_run, visit.location →
+    -- stop_id through core.location_external_ids) and pivot obs_kind='action' rows.
+    -- Absence ⇒ false (COALESCE above) — no manufactured state. Not filtered on
+    -- v.outcome so an in-progress stop reflects actions as they are recorded.
+    LEFT JOIN LATERAL (
+      -- keys off o.intervention (the stable action identifier, = the type key for
+      -- action rows) to match buildCleanLogsCanonicalQueries, the canonical pivot.
+      SELECT
+        BOOL_OR(o.intervention = 'picked_up_litter') AS picked_up_litter,
+        BOOL_OR(o.intervention = 'emptied_trash')    AS emptied_trash,
+        BOOL_OR(o.intervention = 'washed_shelter')   AS washed_shelter,
+        BOOL_OR(o.intervention = 'washed_pad')       AS washed_pad,
+        BOOL_OR(o.intervention = 'washed_can')       AS washed_can
+      FROM core.visits v
+      JOIN core.assignments a
+        ON a.id = v.assignment_id
+        AND a.source_system = 'route_runs'
+        AND a.source_ref = rr.id::text
+      JOIN core.location_external_ids lei
+        ON lei.location_id = v.location_id
+        AND lei.source_system = 'metro_stop'
+        AND lei.external_id = rrs.stop_id
+      LEFT JOIN core.observations o
+        ON o.visit_id = v.id
+        AND o.obs_kind = 'action'
+    ) cl ON true
     WHERE rr.id = $1
     ORDER BY rrs.sequence;
   `;
@@ -136,14 +163,18 @@ export async function loadRouteRunById(id: number | string, orgId: number | stri
     const first = result.rows[0];
     return {
         id: first.route_run_id,
-        user_id: first.user_id,
+        // SEAM-A A4: the dead user_id sentinel (LEGACY_TRANSIT_USER_ID = 0) is dropped
+        // from the detail payload — zero frontend consumers (A4-rider proof).
+        // SEAM-C item 4 (founder-ruled 2026-07-08): the R11 controlled exception
+        // surfaces the assigned worker's NAME/ROLE (operational reassignment need) —
+        // never the raw OID. The identity_directory JOIN stays (it sources the names);
+        // only the oid is trimmed from the payload. Presence is still gated on whether
+        // an assigned/creating user exists.
         assigned_user: first.assigned_user_oid ? {
-            oid: first.assigned_user_oid,
             display_name: first.assigned_user_name,
             role: first.assigned_user_role
         } : undefined,
         created_by: first.created_by_oid ? {
-            oid: first.created_by_oid,
             display_name: first.created_by_name
         } : undefined,
         route_pool_id: first.route_pool_id,
@@ -151,6 +182,7 @@ export async function loadRouteRunById(id: number | string, orgId: number | stri
         base_id: first.base_id,
         run_date: first.run_date,
         status: first.status,
+        is_adhoc: first.is_adhoc,
         started_at: first.started_at,
         finished_at: first.finished_at,
         total_distance_m: first.total_distance_m,

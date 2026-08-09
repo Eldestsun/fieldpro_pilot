@@ -14,17 +14,17 @@ export function LoginPage({ onSignIn, isLoading }: Props) {
         display: "grid",
         placeItems: "center",
         padding: "2rem",
-        background: "#f8fafc",
+        background: "var(--surface-app)",
       }}
     >
       <div
         style={{
           width: "100%",
           maxWidth: 520,
-          background: "#ffffff",
-          border: "1px solid #e2e8f0",
-          borderRadius: 12,
-          boxShadow: "0 8px 24px rgba(15, 23, 42, 0.08)",
+          background: "var(--surface-card)",
+          border: "1px solid var(--border-default)",
+          borderRadius: "var(--radius-xl)",
+          boxShadow: "var(--shadow-modal)",
           padding: "2rem",
         }}
       >
@@ -37,7 +37,7 @@ export function LoginPage({ onSignIn, isLoading }: Props) {
         </div>
 
         <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
-          <div style={{ marginTop: 6, fontSize: 14, color: "#64748b" }}>
+          <div style={{ marginTop: 6, fontSize: 14, color: "var(--text-muted)" }}>
             Sign in with your organization account to continue.
           </div>
         </div>
@@ -52,7 +52,7 @@ export function LoginPage({ onSignIn, isLoading }: Props) {
           {isLoading ? "Signing in..." : "Sign in"}
         </OpsButton>
 
-        <div style={{ marginTop: "1.25rem", fontSize: 12, color: "#64748b", textAlign: "center" }}>
+        <div style={{ marginTop: "1.25rem", fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--font-mono)", textAlign: "center" }}>
           v0.9.6
         </div>
       </div>

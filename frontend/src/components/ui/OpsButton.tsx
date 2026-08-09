@@ -14,13 +14,16 @@ interface OpsButtonProps {
     /** @deprecated Use className instead. Kept for backward compat. */
     style?: React.CSSProperties;
     type?: "button" | "submit" | "reset";
+    "aria-label"?: string;
 }
 
+// Variants per the design-system Button spec (components/core/Button.jsx).
+// The danger hover (#c81e1e) is hardcoded there too — no token exists for it.
 const VARIANT_CLASSES: Record<OpsButtonVariant, string> = {
-    primary:   "bg-blue-700 text-white border-0 hover:bg-blue-800",
-    secondary: "bg-gray-100 text-gray-800 border-0 hover:bg-gray-200",
-    danger:    "bg-red-500 text-white border-0 hover:bg-red-600",
-    outline:   "bg-transparent text-gray-600 border border-gray-300 hover:bg-gray-50",
+    primary:   "bg-(--color-brand-700) text-(--text-on-brand) border-0 hover:bg-(--color-brand-800)",
+    secondary: "bg-(--gray-100) text-(--gray-800) border-0 hover:bg-(--gray-200)",
+    danger:    "bg-(--color-danger) text-(--text-on-brand) border-0 hover:bg-[#c81e1e]",
+    outline:   "bg-transparent text-(--gray-600) border border-(--border-strong) hover:bg-(--gray-50)",
 };
 
 const SIZE_CLASSES: Record<OpsButtonSize, string> = {
@@ -38,17 +41,19 @@ export function OpsButton({
     className,
     style,
     type = "button",
+    "aria-label": ariaLabel,
 }: OpsButtonProps) {
     return (
         <button
             type={type}
             onClick={onClick}
             disabled={disabled}
+            aria-label={ariaLabel}
             className={cn(
                 "inline-flex items-center justify-center font-semibold rounded-md transition-colors",
                 VARIANT_CLASSES[variant],
                 SIZE_CLASSES[size],
-                disabled && "opacity-60 cursor-not-allowed",
+                disabled && "opacity-55 cursor-not-allowed",
                 !disabled && "cursor-pointer",
                 className
             )}

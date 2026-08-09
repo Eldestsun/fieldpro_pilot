@@ -1,0 +1,62 @@
+/* Invaria BASELINE — Color tokens
+   Synced from Claude Design project "Invaria BASELINE Design System"
+   (38ee63fc-c984-4f50-979d-7eb24132ef23), tokens/colors.css — verbatim.
+   Cool, restrained, institutional. A graphite/slate neutral foundation with a single
+   confident signal-blue accent. Semantic status (green/amber/red) is reserved strictly
+   for asset condition and operational exceptions — never decorative.
+   Base values are lifted from the product's tokens.css and its Tailwind usage;
+   semantic aliases are layered on top. */
+:root {
+  /* ── Brand / signal accent ───────────────────────────────── */
+  --color-brand: #1a56db;        /* signal blue — primary accent */
+  --color-brand-dark: #1e429f;   /* pressed / emphasis */
+  --color-brand-700: #1d4ed8;    /* button fill used across the app */
+  --color-brand-800: #1e40af;    /* button hover */
+  --color-brand-50: #eff6ff;     /* accent tint surface */
+  --color-brand-100: #dbeafe;    /* accent tint (badge) */
+
+  /* ── Status — asset condition & operations ONLY ──────────── */
+  --color-success: #057a55;      /* good / done / synced */
+  --color-success-tint: #f0fdf4;
+  --color-warning: #c27803;      /* attention / pending / degraded */
+  --color-warning-tint: #fffbeb;
+  --color-danger: #e02424;       /* hazard / failed / critical */
+  --color-danger-tint: #fef2f2;
+  --color-amber: #b45309;        /* queued / pending field state */
+  --color-amber-tint: #fffbeb;
+
+  /* ── Neutral scale — graphite → paper ────────────────────── */
+  --gray-900: #111827;   /* headings / near-black */
+  --gray-800: #1f2937;
+  --gray-700: #374151;   /* body text */
+  --gray-600: #4b5563;
+  --gray-500: #6b7280;   /* muted / secondary text */
+  --gray-400: #9ca3af;   /* placeholder / disabled */
+  --gray-300: #d1d5db;   /* strong border */
+  --gray-200: #e5e7eb;   /* default border */
+  --gray-100: #f3f4f6;   /* subtle fill */
+  --gray-50:  #f9fafb;   /* app background / table head */
+  --white:    #ffffff;
+
+  /* ── Semantic surface aliases ────────────────────────────── */
+  --surface-app: var(--gray-50);
+  --surface-card: var(--white);
+  --surface-sunken: var(--gray-50);
+  --surface-fill: var(--gray-100);
+  --border-default: var(--gray-200);
+  --border-strong: var(--gray-300);
+  --border-subtle: var(--gray-100);
+
+  /* ── Semantic text aliases ───────────────────────────────── */
+  --text-heading: var(--gray-900);
+  --text-body: var(--gray-700);
+  --text-muted: var(--gray-500);
+  --text-disabled: var(--gray-400);
+  --text-on-brand: var(--white);
+  --text-link: var(--color-brand);
+  --text-link-hover: var(--color-brand-dark);
+
+  /* ── Condition band tints (Control Center difficulty) ────── */
+  --band-heavy-bg: #ffedd5;   --band-heavy-fg: #9a3412;
+  --band-very-heavy-bg: #fee2e2; --band-very-heavy-fg: #b91c1c;
+}

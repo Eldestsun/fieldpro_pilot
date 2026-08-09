@@ -17,6 +17,9 @@ type AuthCtx = {
   me: Me;
   refreshMe: () => Promise<void>;
   isLoading: boolean;
+  /** PING-RETRY: true while /api/secure/ping is failing and retries are being
+   *  scheduled with backoff. Surfaced by the existing OfflineStatusBar. */
+  isReconnecting: boolean;
 };
 
 const AuthContext = createContext<AuthCtx | undefined>(undefined);
@@ -31,6 +34,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [me, setMe] = useState<Me>(() => devBypass?.me ?? null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const inflightToken = useRef<{ accountId: string; promise: Promise<string> } | null>(null);
+  // PING-RETRY (freeze exception 2026-07-11, additive): consecutive /secure/ping
+  // failure count + reconnecting flag. Without a gate, the auto-fetch effect
+  // below re-fired immediately on failure (setMe(null) + isLoading toggle
+  // restore its precondition), retrying ~1000x/sec while the backend was
+  // unreachable. The count drives the jittered exponential backoff in the
+  // effect; it lives in a ref (not state) so incrementing it never adds a
+  // render loop of its own.
+  const pingFailsRef = useRef(0);
+  const [isReconnecting, setIsReconnecting] = useState<boolean>(false);
 
   const account = devBypass?.account ?? ((accounts && accounts[0]) || null);
   const isSignedIn = !!account;
@@ -91,19 +103,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const r = await fetch("/api/secure/ping", { headers: { Authorization: `Bearer ${token}` } });
       if (r.ok) {
         setMe(await r.json());
+        // PING-RETRY: success resets the backoff to the floor.
+        pingFailsRef.current = 0;
+        setIsReconnecting(false);
       } else {
         setMe(null);
+        pingFailsRef.current += 1;
+        setIsReconnecting(true);
       }
     } catch {
       setMe(null);
+      pingFailsRef.current += 1;
+      setIsReconnecting(true);
     }
   }, [getAccessToken]);
 
   // Auto-fetch identity when signed in but me is missing
   useEffect(() => {
     if (isSignedIn && !me && !isLoading) {
-      setIsLoading(true);
-      fetchMe().finally(() => setIsLoading(false));
+      const fails = pingFailsRef.current;
+      if (fails === 0) {
+        // First attempt (or first after a success): fire immediately — the
+        // pre-existing behavior, unchanged.
+        setIsLoading(true);
+        fetchMe().finally(() => setIsLoading(false));
+        return;
+      }
+      // PING-RETRY backoff gate (freeze exception 2026-07-11, additive):
+      // exponential backoff with FULL jitter in front of the existing re-fire.
+      // After the nth consecutive failure the ceiling is min(2^(n-1)*1000ms,
+      // 30000ms) — 1s, 2s, 4s, 8s, 16s, then capped at 30s — and the actual
+      // delay is uniform random in [0, ceiling] (full jitter, so a yard full
+      // of devices doesn't thundering-herd the backend the moment it returns).
+      // No give-up: attempts continue forever at the 30s cap; a device that
+      // regains signal reconnects without a manual reload, and the next
+      // success resets the count to the immediate-fire floor.
+      const ceilingMs = Math.min(Math.pow(2, fails - 1) * 1000, 30000);
+      const delayMs = Math.random() * ceilingMs;
+      const timer = setTimeout(() => {
+        setIsLoading(true);
+        fetchMe().finally(() => setIsLoading(false));
+      }, delayMs);
+      return () => clearTimeout(timer);
     }
   }, [isSignedIn, me, isLoading, fetchMe]);
 
@@ -146,8 +187,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchMe]);
 
   const value = useMemo<AuthCtx>(() => ({
-    account, isSignedIn, signIn, signOut, getAccessToken, me, refreshMe, isLoading,
-  }), [account, isSignedIn, signIn, signOut, getAccessToken, me, refreshMe, isLoading]);
+    account, isSignedIn, signIn, signOut, getAccessToken, me, refreshMe, isLoading, isReconnecting,
+  }), [account, isSignedIn, signIn, signOut, getAccessToken, me, refreshMe, isLoading, isReconnecting]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -166,6 +207,7 @@ export function useAuth() {
     me: null,
     refreshMe: async () => { /* no-op */ },
     isLoading: false,
+    isReconnecting: false,
   };
   return missing;
 }

@@ -2,6 +2,7 @@ import { PoolClient } from "pg";
 import { withOrgContext } from "../../db";
 import { loadRegistryRules, normalizeObservation } from "./observationNormalizer";
 import { toNumericSeverity } from "../routeRunStop/hazardService";
+import { encrypt as encryptOid } from "../../lib/oidCipher";
 
 // Raw UI payload from UL
 export type StopUiPayload = {
@@ -256,20 +257,42 @@ function normalizeInfraKey(k: string): string {
     return key;
 }
 
+// Write-path presence maps: normalized UI key → observation_type. Exported (SEAM-C)
+// as the SINGLE SOURCE of the presence taxonomy — `presenceTaxonomy.ts` derives the
+// SAFETY/INFRA count sets from these values, so the CC-read classification cannot
+// drift from what this write path actually emits. A drift-guard test pins the
+// derived membership (presenceTaxonomy.test.ts).
+export const SAFETY_HAZARD_TYPE_MAP: Record<string, string> = {
+    encampment: "encampment_present",
+    fire: "fire_present",
+    dangerous_activity: "dangerous_activity_present",
+    drug_use: "drug_use_present",
+    violence: "violence_present",
+    biohazard: "biohazard_present",
+    access_blocked: "access_blocked",
+    other: "other_safety_concern_present",
+};
+
+export const INFRA_ISSUE_TYPE_MAP: Record<string, string> = {
+    glass_damage: "glass_damage_present",
+    graffiti: "graffiti_present",
+    receptacle_damage: "receptacle_damage_present",
+    shelter_panel_damage: "shelter_panel_damage_present",
+    lighting_failure: "lighting_failure_present",
+    landscape_obstruction: "access_obstructed_by_landscape",
+    structural_damage: "structural_damage_present",
+    // The infra-modal "Contaminated waste (biohazard)" checkbox is the same fact as
+    // the safety hazard biohazard_present — feces, urine, needles, other infectious
+    // material. It's a SAFETY presence regardless of which capture surface emitted
+    // it, so presenceTaxonomy attributes it to hazards, not infra. Hazard presence
+    // is decoupled from skip. (Canonical state layer 2026-05-25 cleanup; design §2.1.)
+    contaminated_waste: "biohazard_present",
+    other: "other_infrastructure_issue_present",
+};
+
 function mapSafetyHazard(h: string) {
     const norm = normalizeSafetyKey(h);
-    const map: Record<string, string> = {
-        encampment: "encampment_present",
-        fire: "fire_present",
-        dangerous_activity: "dangerous_activity_present",
-        drug_use: "drug_use_present",
-        violence: "violence_present",
-        biohazard: "biohazard_present",
-        access_blocked: "access_blocked",
-        other: "other_safety_concern_present"
-    };
-
-    const mapped = map[norm];
+    const mapped = SAFETY_HAZARD_TYPE_MAP[norm];
     if (!mapped) {
         console.warn("Unmapped safety hazard key", { key: h, normalized: norm });
         return "other_safety_concern_present";
@@ -279,26 +302,7 @@ function mapSafetyHazard(h: string) {
 
 function mapInfraIssue(i: string) {
     const norm = normalizeInfraKey(i);
-    const map: Record<string, string> = {
-        glass_damage: "glass_damage_present",
-        graffiti: "graffiti_present",
-        receptacle_damage: "receptacle_damage_present",
-        shelter_panel_damage: "shelter_panel_damage_present",
-        lighting_failure: "lighting_failure_present",
-        landscape_obstruction: "access_obstructed_by_landscape",
-        structural_damage: "structural_damage_present",
-        // The infra-modal "Contaminated waste (biohazard)" checkbox is the same
-        // fact as the safety hazard biohazard_present — feces, urine, needles,
-        // other infectious material. It's a SAFETY presence regardless of which
-        // capture surface emitted it. Hazard presence is decoupled from skip:
-        // a worker who finds a biohazard, cleans it, and continues still
-        // records biohazard_present with NO skip. (Canonical state layer
-        // 2026-05-25 cleanup; design doc §2.1.)
-        contaminated_waste: "biohazard_present",
-        other: "other_infrastructure_issue_present"
-    };
-
-    const mapped = map[norm];
+    const mapped = INFRA_ISSUE_TYPE_MAP[norm];
     if (!mapped) {
         console.warn("Unmapped infra issue key", { key: i, normalized: norm });
         return "other_infrastructure_issue_present";
@@ -319,6 +323,12 @@ async function insertObservations(
         context.orgId,
         observations.map(o => o.observation_type)
     );
+
+    // ISSUE-058: encrypt the actor OID once for the whole batch (same actor for
+    // every observation in this call). The sentinel 'encrypted' goes to actor_ref;
+    // the real OID lives only in actor_ref_ciphertext.
+    const { ciphertext: oidCiphertext, keyId: oidKeyId } =
+        await encryptOid(context.actorOid, "observation_create");
 
     for (const o of observations) {
         // Derive the normalized columns from the registry rule. A missing rule
@@ -362,13 +372,16 @@ async function insertObservations(
                 norm.type_id
             ]
         );
+        // ISSUE-058: actor_ref holds the non-identifying sentinel; the OID lives
+        // only in actor_ref_ciphertext. Never write an identifying value here.
         await client.query(
             `
-      INSERT INTO core.observation_actor_audit (observation_id, org_id, actor_ref)
-      VALUES ($1, $2, $3)
+      INSERT INTO core.observation_actor_audit
+        (observation_id, org_id, actor_ref, actor_ref_ciphertext, actor_ref_key_id)
+      VALUES ($1, $2, $3, $4, $5)
       ON CONFLICT (observation_id) DO NOTHING
       `,
-            [res.rows[0].id, context.orgId, context.actorOid]
+            [res.rows[0].id, context.orgId, 'encrypted', oidCiphertext, oidKeyId]
         );
     }
 }
@@ -420,12 +433,17 @@ export async function emitSpotCheckObservation(params: {
             spotNorm.type_id
         ]
     );
+    // ISSUE-058: actor_ref holds the non-identifying sentinel; the OID lives only
+    // in actor_ref_ciphertext. Never write an identifying value here.
+    const { ciphertext: oidCiphertext, keyId: oidKeyId } =
+        await encryptOid(actorOid, "observation_spotcheck");
     await client.query(
         `
-    INSERT INTO core.observation_actor_audit (observation_id, org_id, actor_ref)
-    VALUES ($1, $2, $3)
+    INSERT INTO core.observation_actor_audit
+      (observation_id, org_id, actor_ref, actor_ref_ciphertext, actor_ref_key_id)
+    VALUES ($1, $2, $3, $4, $5)
     ON CONFLICT (observation_id) DO NOTHING
     `,
-        [res.rows[0].id, orgId, actorOid]
+        [res.rows[0].id, orgId, 'encrypted', oidCiphertext, oidKeyId]
     );
 }

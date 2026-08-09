@@ -11,7 +11,13 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        globPatterns: [
+          '**/*.{js,css,html,ico,png,svg}',
+          // Latin subsets of the brand fonts (Inter + IBM Plex Mono): the field
+          // surface is offline-first, so typography must not depend on having
+          // fetched fonts while online. Other unicode subsets load on demand.
+          'assets/*-latin-{400,500,600,700,800}-normal-*.woff2',
+        ],
         navigateFallback: 'index.html',
       },
       manifest: {

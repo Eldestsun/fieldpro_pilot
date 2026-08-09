@@ -11,8 +11,12 @@ vi.mock('../../../offline/OfflineSyncContext', () => ({
   useOfflineSync: vi.fn(),
 }))
 
+// PING-RETRY: overridable auth mock so tests can flip isReconnecting.
+const authState = vi.hoisted(() => ({
+  current: { account: null as unknown, isReconnecting: false },
+}))
 vi.mock('../../../auth/AuthContext', () => ({
-  useAuth: () => ({ account: null }),
+  useAuth: () => authState.current,
 }))
 
 vi.mock('../../../offline/offlineQueue', () => ({
@@ -42,6 +46,7 @@ function setup(state: Partial<OfflineSyncState> = {}) {
 describe('OfflineStatusBar', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    authState.current = { account: null, isReconnecting: false }
   })
 
   it('is hidden when queue is empty and device is online', () => {
@@ -75,5 +80,18 @@ describe('OfflineStatusBar', () => {
   it('shows offline mode banner when manual offline mode is active', () => {
     setup({ isOfflineMode: true, pendingCount: 5 })
     expect(screen.getByText(/Offline.*5 action/i)).toBeInTheDocument()
+  })
+
+  it('shows reconnecting banner while the session ping is backing off (PING-RETRY)', () => {
+    authState.current = { account: null, isReconnecting: true }
+    setup()
+    expect(screen.getByText(/Reconnecting to server/i)).toBeInTheDocument()
+  })
+
+  it('device-offline banner outranks reconnecting (PING-RETRY priority)', () => {
+    authState.current = { account: null, isReconnecting: true }
+    setup({ isOfflineMode: true, pendingCount: 1 })
+    expect(screen.getByText(/Offline.*1 action/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Reconnecting to server/i)).not.toBeInTheDocument()
   })
 })

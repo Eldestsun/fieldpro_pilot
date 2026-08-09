@@ -8,7 +8,7 @@ interface OpsCardProps {
 
 export function OpsCard({ children, className }: OpsCardProps) {
     return (
-        <div className={cn("bg-white border border-gray-200 rounded-lg shadow-sm p-6", className)}>
+        <div className={cn("bg-(--surface-card) border border-(--border-default) rounded-lg shadow-(--shadow-card) p-6", className)}>
             {children}
         </div>
     );

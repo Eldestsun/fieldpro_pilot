@@ -12,6 +12,7 @@ import {
 } from "../setup";
 import { ensureVisitForRouteRunStop } from "../../src/domains/visit/visitService";
 import { createStopPhotos } from "../../src/domains/routeRunStop/stopPhotosService";
+import { decrypt } from "../../src/lib/oidCipher";
 
 // Tier 1 — Evidence done-criteria
 
@@ -80,16 +81,24 @@ test("evidence (ISSUE-031 Stage 2): createStopPhotos no longer writes the stop_p
     );
     assertEqual(ev.rowCount, 1, "canonical core.evidence row written");
 
+    // ISSUE-058: actor_ref is now the non-identifying sentinel; the real capture
+    // OID lives only in actor_ref_ciphertext and round-trips through the audited
+    // decrypt path.
     const aud = await client.query(
-      `SELECT actor_ref FROM core.evidence_actor_audit WHERE evidence_id = $1`,
+      `SELECT actor_ref, actor_ref_ciphertext, actor_ref_key_id
+       FROM core.evidence_actor_audit WHERE evidence_id = $1`,
       [ev.rows[0].id]
     );
-    assertEqual(aud.rowCount, 1, "capture OID written to the grant-walled sidecar");
-    assertEqual(
-      aud.rows[0].actor_ref,
-      FIXTURE_ACTOR_OID,
-      "sidecar carries the real capture OID"
+    assertEqual(aud.rowCount, 1, "capture identity written to the grant-walled sidecar");
+    assertEqual(aud.rows[0].actor_ref, "encrypted", "actor_ref is the sentinel, not the OID");
+    assert(aud.rows[0].actor_ref_ciphertext !== null, "actor_ref_ciphertext populated");
+    const recovered = await decrypt(
+      aud.rows[0].actor_ref_ciphertext,
+      aud.rows[0].actor_ref_key_id,
+      "test: evidence sidecar roundtrip",
+      { user: { oid: "test-oid-cipher-suite", tid: "00000000-0000-0000-0000-000000000099" } }
     );
+    assertEqual(recovered, FIXTURE_ACTOR_OID, "decrypt(ciphertext) recovers the real capture OID");
   } finally {
     await releaseFixture(client, f);
   }

@@ -156,9 +156,12 @@ export async function ensureVisitForRouteRunStop(client: PoolClient, params: Ens
     visitId = after.rows[0].id as number;
   }
 
-  // 5) Identity sidecar — worker OID (plaintext + S1-13 envelope) lives here,
-  //    never on core.visits. intelligence_reader has no grant on this table; the
+  // 5) Identity sidecar — worker OID lives here ONLY as ciphertext, never on
+  //    core.visits. intelligence_reader has no grant on this table; the
   //    labor-safety boundary (invariant #1) is structural here, not in query code.
+  //    ISSUE-058: actor_ref holds the non-identifying sentinel 'encrypted'; the
+  //    real OID lives only in actor_ref_ciphertext. Never write an identifying
+  //    value into actor_ref.
   await client.query(
     `
     INSERT INTO core.visit_actor_audit
@@ -166,7 +169,7 @@ export async function ensureVisitForRouteRunStop(client: PoolClient, params: Ens
     VALUES ($1, $2, $3, $4, $5)
     ON CONFLICT (visit_id) DO NOTHING
     `,
-    [visitId, orgId, params.actorOid, oidCiphertext, oidKeyId]
+    [visitId, orgId, 'encrypted', oidCiphertext, oidKeyId]
   );
 
   return visitId;

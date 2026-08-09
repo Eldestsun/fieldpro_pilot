@@ -421,11 +421,11 @@ export function StopDetail({
             className={cn(
                 "inline-flex items-center px-4 py-2 rounded-full text-sm font-medium min-h-[44px] transition-colors",
                 stop.is_hotspot
-                    ? "bg-green-50 border border-green-600 text-green-700"
-                    : "bg-amber-50 border border-amber-400 text-amber-800",
+                    ? "bg-(--color-success-tint) border border-(--color-success) text-(--color-success)"
+                    : "bg-(--color-warning-tint) border border-(--color-warning)/60 text-(--color-warning)",
             )}
         >
-            {stop.is_hotspot ? "🔥 Hotspot" : "Mark Hotspot"}
+            {stop.is_hotspot ? "✓ Hotspot" : "Mark Hotspot"}
         </button>
     );
 
@@ -435,7 +435,7 @@ export function StopDetail({
             <UlLayout>
                 <button
                     onClick={onBack}
-                    className="mb-4 text-blue-600 font-medium hover:text-blue-800 transition-colors min-h-[44px] flex items-center"
+                    className="mb-4 text-(--text-link) font-medium hover:text-(--text-link-hover) transition-colors min-h-[44px] flex items-center"
                 >
                     ← Back to Route
                 </button>
@@ -477,7 +477,7 @@ export function StopDetail({
                     };
 
                     return (
-                        <div className="bg-white rounded-xl shadow-md overflow-hidden mb-6">
+                        <div className="bg-(--surface-card) rounded-lg shadow-(--shadow-card) border border-(--border-default) overflow-hidden mb-6">
                             {/* MAP HERO */}
                             <div className="relative w-full h-60 bg-gray-50">
                                 {hasCoords ? (
@@ -505,7 +505,7 @@ export function StopDetail({
                                 <div className="absolute top-3.5 left-3.5 flex items-center gap-2.5 px-3.5 py-2.5 rounded-full bg-white/90 shadow-lg backdrop-blur-sm">
                                     <span className={cn(
                                         "w-2.5 h-2.5 rounded-full",
-                                        normalizedStatus === "in_progress" ? "bg-blue-500" : "bg-amber-400"
+                                        normalizedStatus === "in_progress" ? "bg-(--color-brand)" : "bg-(--color-warning)"
                                     )} />
                                     <div className="flex items-baseline gap-1.5">
                                         <span className="font-bold text-gray-900">Status:</span>
@@ -532,14 +532,14 @@ export function StopDetail({
                             {/* CONTENT */}
                             <div className="p-6">
                                 <div className="mb-2.5">
-                                    <p className="text-sm text-gray-500 font-bold mb-1.5">Stop {stop.stopNumber}</p>
+                                    <p className="text-sm text-(--text-muted) font-bold font-mono mb-1.5">Stop {stop.stopNumber}</p>
                                     <h2 className="text-3xl font-extrabold text-gray-900 leading-tight">{locationString}</h2>
                                 </div>
 
                                 <div className="flex items-center gap-2.5 mb-5 flex-wrap">
                                     {renderHotspotToggle()}
                                     {stop.compactor && (
-                                        <span className="bg-sky-100 text-sky-800 px-3 py-1 rounded-full text-sm font-bold">
+                                        <span className="bg-(--color-brand-50) text-(--color-brand-700) px-3 py-1 rounded-full text-sm font-bold">
                                             Compactor
                                         </span>
                                     )}
@@ -551,8 +551,8 @@ export function StopDetail({
                                     className={cn(
                                         "w-full py-4 rounded-xl text-lg font-bold text-white min-h-[44px] transition-colors",
                                         (isCompletingStop || isStartQueued)
-                                            ? "bg-blue-300 cursor-not-allowed"
-                                            : "bg-blue-700 hover:bg-blue-800 cursor-pointer"
+                                            ? "bg-(--color-brand-700) opacity-55 cursor-not-allowed"
+                                            : "bg-(--color-brand-700) hover:bg-(--color-brand-800) cursor-pointer"
                                     )}
                                 >
                                     {isStartQueued ? "Start Queued…" : "Start Stop"}
@@ -572,11 +572,11 @@ export function StopDetail({
             <UlLayout>
                 <button
                     onClick={onBack}
-                    className="mb-4 bg-transparent border-0 text-blue-600 cursor-pointer font-medium min-h-[44px] flex items-center"
+                    className="mb-4 bg-transparent border-0 text-(--text-link) cursor-pointer font-medium min-h-[44px] flex items-center"
                 >
                     ← Back to Route
                 </button>
-                <div className="bg-white rounded-xl shadow-md p-6">
+                <div className="bg-(--surface-card) rounded-lg shadow-(--shadow-card) border border-(--border-default) p-6">
                     <h2 className="mt-0 mb-4 text-xl font-bold text-gray-900">
                         Stop {stop.stopNumber} — {locationString}
                     </h2>
@@ -585,18 +585,18 @@ export function StopDetail({
                     <div className={cn(
                         "my-4 p-4 rounded-lg border",
                         isSkipped
-                            ? "bg-red-50 border-red-200"
-                            : "bg-green-50 border-green-200"
+                            ? "bg-(--color-danger-tint) border-(--color-danger)/20"
+                            : "bg-(--color-success-tint) border-(--color-success)/30"
                     )}>
                         <h3 className={cn(
                             "mt-0 mb-1 font-semibold flex items-center gap-2",
-                            isSkipped ? "text-red-700" : "text-green-700"
+                            isSkipped ? "text-(--color-danger)" : "text-(--color-success)"
                         )}>
-                            {isSkipped ? "⚠ Skipped" : "✓ Completed"}
+                            {isSkipped ? "Skipped" : "✓ Completed"}
                             {renderHotspotToggle()}
                         </h3>
                         {isSkipped && (
-                            <p className="m-0 text-sm text-red-700">
+                            <p className="m-0 text-sm text-(--color-danger)">
                                 Reason: {safety?.hazardTypes?.join(", ") || "Safety Concern"}
                             </p>
                         )}
@@ -624,7 +624,7 @@ export function StopDetail({
                                     </div>
                                 )}
                                 {isSkipped && (
-                                    <div className="text-xs text-red-600 mt-1">
+                                    <div className="text-xs text-(--color-danger) mt-1">
                                         This stop was skipped for safety.
                                     </div>
                                 )}
@@ -666,7 +666,7 @@ export function StopDetail({
                             <div className="flex flex-col gap-2">
                                 {CHECKLIST_ITEMS.map((item) => (
                                     <div key={item.key} className="flex items-center gap-2">
-                                        <span className={checklist[item.key] ? "text-green-500" : "text-gray-500"}>
+                                        <span className={checklist[item.key] ? "text-(--color-success)" : "text-gray-500"}>
                                             {checklist[item.key] ? "✓" : "○"}
                                         </span>
                                         <span className={cn(
@@ -795,11 +795,11 @@ export function StopDetail({
             <h2 className="mt-0 mb-2 text-center text-xl font-bold text-gray-900">{locationString}</h2>
 
             {showResumeBanner && (
-                <div className="flex items-center justify-between px-4 py-2.5 mb-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                <div className="flex items-center justify-between px-4 py-2.5 mb-3 bg-(--color-brand-50) border border-(--color-brand-100) rounded-lg text-sm text-(--color-brand-700)">
                     <span>↩ Resume from where you left off</span>
                     <button
                         onClick={handleDismissResumeBanner}
-                        className="bg-transparent border-0 text-blue-700 cursor-pointer font-bold text-base px-1 min-h-[44px] flex items-center"
+                        className="bg-transparent border-0 text-(--color-brand-700) cursor-pointer font-bold text-base px-1 min-h-[44px] flex items-center"
                     >
                         ✕
                     </button>
@@ -807,18 +807,18 @@ export function StopDetail({
             )}
 
             {(stop as any).syncState === "queued" && (
-                <div className="text-amber-600 text-sm mb-2 text-center">
+                <div className="text-(--color-warning) text-sm mb-2 text-center">
                     This stop will sync when you're back online.
                 </div>
             )}
             {(stop as any).syncState === "conflict" && (
-                <div className="text-red-600 text-sm mb-2 text-center">
+                <div className="text-(--color-danger) text-sm mb-2 text-center">
                     There was an issue syncing this stop. Server truth will reload when online.
                 </div>
             )}
             {queuedUploadCount > 0 && (
-                <div className="text-orange-600 text-sm mb-2 text-center font-medium">
-                    📷 {queuedUploadCount} photo{queuedUploadCount > 1 ? 's' : ''} queued for upload
+                <div className="text-(--color-amber) text-sm mb-2 text-center font-medium">
+                    {queuedUploadCount} photo{queuedUploadCount > 1 ? 's' : ''} queued for upload
                 </div>
             )}
 
@@ -826,30 +826,30 @@ export function StopDetail({
             <div className="flex gap-3 mb-4">
                 <button
                     onClick={() => setIsReportSafetyOpen(!isReportSafetyOpen)}
-                    className="flex-1 py-3 px-3 bg-orange-50 border border-orange-400 text-orange-700 rounded-lg font-bold flex justify-center items-center gap-2 min-h-[44px] cursor-pointer"
+                    className="flex-1 py-3 px-3 bg-(--color-warning-tint) border border-(--color-warning)/60 text-(--color-warning) rounded-lg font-bold flex justify-center items-center gap-2 min-h-[44px] cursor-pointer"
                 >
-                    ⚠️ REPORT SAFETY
+                    REPORT SAFETY
                 </button>
                 <button
                     onClick={() => setIsReportInfraOpen(!isReportInfraOpen)}
-                    className="flex-1 py-3 px-3 bg-blue-50 border border-blue-400 text-blue-700 rounded-lg font-bold flex justify-center items-center gap-2 min-h-[44px] cursor-pointer"
+                    className="flex-1 py-3 px-3 bg-(--color-brand-50) border border-(--color-brand)/60 text-(--color-brand-700) rounded-lg font-bold flex justify-center items-center gap-2 min-h-[44px] cursor-pointer"
                 >
-                    🏗 REPORT INFRASTRUCTURE
+                    REPORT INFRASTRUCTURE
                 </button>
             </div>
 
             {/* Safety Modal */}
             {isReportSafetyOpen && (
-                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-[2000] p-4">
+                <div className="fixed inset-0 bg-[rgba(17,24,39,0.6)] flex items-center justify-center z-[2000] p-4">
                     <div
                         role="dialog"
                         aria-modal="true"
                         aria-labelledby="safety-modal-title"
-                        className="bg-white w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden rounded-xl shadow-2xl"
+                        className="bg-(--surface-card) w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden rounded-xl shadow-(--shadow-overlay)"
                     >
                         {/* Header */}
                         <div className="px-4 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-                            <h3 id="safety-modal-title" className="m-0 text-orange-700 font-bold text-lg">Report Safety Concern</h3>
+                            <h3 id="safety-modal-title" className="m-0 text-(--color-warning) font-bold text-lg">Report Safety Concern</h3>
                             <button
                                 onClick={() => setIsReportSafetyOpen(false)}
                                 className="bg-transparent border-0 text-2xl text-gray-500 cursor-pointer px-2 min-h-[44px] flex items-center"
@@ -859,9 +859,9 @@ export function StopDetail({
                         </div>
 
                         <div className="p-6 flex-1 overflow-y-auto">
-                            <div className="mb-4 bg-red-50 p-4 rounded-lg border border-red-200">
-                                <p className="mt-0 text-red-700 font-bold">Is there a safety issue preventing work?</p>
-                                <p className="m-0 text-sm text-red-600">Select hazards below. If unsafe to work, you can Skip Stop.</p>
+                            <div className="mb-4 bg-(--color-danger-tint) p-4 rounded-lg border border-(--color-danger)/20">
+                                <p className="mt-0 text-(--color-danger) font-bold">Is there a safety issue preventing work?</p>
+                                <p className="m-0 text-sm text-(--color-danger)">Select hazards below. If unsafe to work, you can Skip Stop.</p>
                             </div>
 
                             <label className="block mb-2 font-bold text-gray-700">Hazards (Required):</label>
@@ -883,8 +883,8 @@ export function StopDetail({
                                             className={cn(
                                                 "flex items-center p-3 rounded-lg text-sm transition-colors min-h-[44px] cursor-pointer",
                                                 isChecked
-                                                    ? "bg-red-50 border border-red-600"
-                                                    : "bg-white border border-gray-200"
+                                                    ? "bg-(--color-danger-tint) border border-(--color-danger)"
+                                                    : "bg-(--surface-card) border border-(--border-default)"
                                             )}
                                         >
                                             <input
@@ -895,7 +895,7 @@ export function StopDetail({
                                                     const next = e.target.checked ? [...current, opt.val] : current.filter((h) => h !== opt.val);
                                                     setLocalSafety(prev => ({ ...prev, hazardTypes: next }));
                                                 }}
-                                                className="w-5 h-5 mr-3 shrink-0 accent-red-600"
+                                                className="w-5 h-5 mr-3 shrink-0 accent-(--color-danger)"
                                             />
                                             {opt.label}
                                         </label>
@@ -911,11 +911,11 @@ export function StopDetail({
                                             const isSelected = localSafety.severity === level;
                                             const colorClass = isSelected
                                                 ? level === "low"
-                                                    ? "bg-yellow-100 border-yellow-500 text-yellow-800"
+                                                    ? "bg-(--color-warning-tint) border-(--color-warning) text-(--color-warning)"
                                                     : level === "medium"
-                                                        ? "bg-orange-100 border-orange-500 text-orange-800"
-                                                        : "bg-red-100 border-red-600 text-red-800"
-                                                : "bg-white border-gray-300 text-gray-600";
+                                                        ? "bg-(--color-amber-tint) border-(--color-amber) text-(--color-amber)"
+                                                        : "bg-(--color-danger-tint) border-(--color-danger) text-(--color-danger)"
+                                                : "bg-(--surface-card) border-(--border-strong) text-(--gray-600)";
                                             return (
                                                 <button
                                                     key={level}
@@ -956,11 +956,11 @@ export function StopDetail({
                                     className={cn(
                                         "w-full p-4 rounded-lg font-bold min-h-[44px] cursor-pointer",
                                         localSafety.safetyPhotoKey
-                                            ? "bg-green-100 border border-green-400 text-green-800"
-                                            : "bg-white border border-dashed border-gray-300 text-gray-500"
+                                            ? "bg-(--color-success-tint) border border-(--color-success)/50 text-(--color-success)"
+                                            : "bg-(--surface-card) border border-dashed border-(--border-strong) text-(--text-muted)"
                                     )}
                                 >
-                                    {localSafety.safetyPhotoKey ? "✓ Photo Attached (Click to Replace)" : "📷 Add Safety Photo"}
+                                    {localSafety.safetyPhotoKey ? "✓ Photo Attached (Click to Replace)" : "Add Safety Photo"}
                                 </button>
                             </div>
 
@@ -1009,8 +1009,8 @@ export function StopDetail({
                                             className={cn(
                                                 "flex-1 py-4 rounded-lg border-0 font-bold min-h-[44px] cursor-pointer",
                                                 (isContentValid && hasPhoto)
-                                                    ? "bg-red-700 text-white"
-                                                    : "bg-red-100 text-red-400"
+                                                    ? "bg-(--color-danger) text-(--text-on-brand)"
+                                                    : "bg-(--color-danger-tint) text-(--color-danger) opacity-60"
                                             )}
                                         >
                                             Skip Stop
@@ -1026,8 +1026,8 @@ export function StopDetail({
                                             className={cn(
                                                 "flex-1 py-4 rounded-lg border-0 font-bold min-h-[44px]",
                                                 isContentValid
-                                                    ? "bg-orange-500 text-white cursor-pointer"
-                                                    : "bg-orange-200 text-orange-400 cursor-not-allowed"
+                                                    ? "bg-(--color-warning) text-(--text-on-brand) cursor-pointer"
+                                                    : "bg-(--color-warning-tint) text-(--color-warning) opacity-60 cursor-not-allowed"
                                             )}
                                         >
                                             Save Hazards
@@ -1042,16 +1042,16 @@ export function StopDetail({
 
             {/* Infra Modal */}
             {isReportInfraOpen && (
-                <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-[2000] p-4">
+                <div className="fixed inset-0 bg-[rgba(17,24,39,0.6)] flex items-center justify-center z-[2000] p-4">
                     <div
                         role="dialog"
                         aria-modal="true"
                         aria-labelledby="infra-modal-title"
-                        className="bg-white w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden rounded-xl shadow-2xl"
+                        className="bg-(--surface-card) w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden rounded-xl shadow-(--shadow-overlay)"
                     >
                         {/* Header */}
                         <div className="px-4 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-                            <h3 id="infra-modal-title" className="m-0 text-blue-700 font-bold text-lg">Report Infrastructure</h3>
+                            <h3 id="infra-modal-title" className="m-0 text-(--color-brand-700) font-bold text-lg">Report Infrastructure</h3>
                             <button
                                 onClick={() => setIsReportInfraOpen(false)}
                                 className="bg-transparent border-0 text-2xl text-gray-500 cursor-pointer px-2 min-h-[44px] flex items-center"
@@ -1071,8 +1071,8 @@ export function StopDetail({
                                             className={cn(
                                                 "flex items-center gap-2 p-3 rounded-lg text-sm transition-colors min-h-[44px] cursor-pointer",
                                                 isSelected
-                                                    ? "bg-blue-50 border border-blue-300"
-                                                    : "bg-white border border-gray-200"
+                                                    ? "bg-(--color-brand-50) border border-(--color-brand)/50"
+                                                    : "bg-(--surface-card) border border-(--border-default)"
                                             )}
                                         >
                                             <input
@@ -1082,7 +1082,7 @@ export function StopDetail({
                                                     if (e.target.checked) setSelectedInfraKeys([...selectedInfraKeys, key]);
                                                     else setSelectedInfraKeys(selectedInfraKeys.filter(k => k !== key));
                                                 }}
-                                                className="w-5 h-5 shrink-0 accent-blue-600"
+                                                className="w-5 h-5 shrink-0 accent-(--color-brand-700)"
                                             />
                                             {meta.label}
                                         </label>
@@ -1116,17 +1116,17 @@ export function StopDetail({
                                     className={cn(
                                         "w-full p-4 rounded-lg font-bold border min-h-[44px] cursor-pointer",
                                         localInfraPhotoKey
-                                            ? "bg-green-100 border-green-400 text-green-800"
-                                            : "bg-white border-gray-300 text-gray-500"
+                                            ? "bg-(--color-success-tint) border-(--color-success)/50 text-(--color-success)"
+                                            : "bg-(--surface-card) border-(--border-strong) text-(--text-muted)"
                                     )}
                                 >
-                                    {localInfraPhotoKey ? "✓ Infra Photo Attached" : "📷 Add Photo"}
+                                    {localInfraPhotoKey ? "✓ Infra Photo Attached" : "Add Photo"}
                                 </button>
                             </div>
 
                             <button
                                 onClick={handleSaveInfra}
-                                className="w-full p-4 bg-blue-600 text-white border-0 rounded-lg font-bold text-lg min-h-[44px] cursor-pointer hover:bg-blue-700"
+                                className="w-full p-4 bg-(--color-brand-700) text-(--text-on-brand) border-0 rounded-lg font-bold text-lg min-h-[44px] cursor-pointer hover:bg-(--color-brand-800)"
                             >
                                 Save Infrastructure
                             </button>
@@ -1150,16 +1150,16 @@ export function StopDetail({
                             }
                         }}
                         className={cn(
-                            "w-full py-4 px-4 border-2 border-blue-400 rounded-lg font-bold text-base flex items-center justify-center gap-2 cursor-pointer transition-colors min-h-[44px]",
+                            "w-full py-4 px-4 border-2 border-(--color-brand)/50 rounded-lg font-bold text-base flex items-center justify-center gap-2 cursor-pointer transition-colors min-h-[44px]",
                             checklist.spotCheck
-                                ? "bg-blue-500 text-white"
-                                : "bg-white text-blue-700"
+                                ? "bg-(--color-brand-700) text-(--text-on-brand)"
+                                : "bg-(--surface-card) text-(--color-brand-700)"
                         )}
                     >
-                        {checklist.spotCheck ? "✅ SPOT CHECK ENABLED" : "🔍 PERFORM SPOT CHECK"}
+                        {checklist.spotCheck ? "✓ SPOT CHECK ENABLED" : "PERFORM SPOT CHECK"}
                     </button>
                     {checklist.spotCheck && (
-                        <div className="text-center text-sm text-blue-500 mt-1">
+                        <div className="text-center text-sm text-(--color-brand) mt-1">
                             Cleaning tasks are disabled. Photo required.
                         </div>
                     )}
@@ -1167,7 +1167,7 @@ export function StopDetail({
 
                 {/* Cleaning Tasks */}
                 <div className={cn(
-                    "flex-1 min-w-[300px] bg-white rounded-xl shadow-md p-4 transition-opacity",
+                    "flex-1 min-w-[300px] bg-(--surface-card) rounded-lg shadow-(--shadow-card) border border-(--border-default) p-4 transition-opacity",
                     checklist.spotCheck ? "opacity-50 pointer-events-none" : "opacity-100"
                 )}>
                     <h3 className="mt-0 mb-3 text-base font-semibold text-gray-600 uppercase tracking-wide">Cleaning Tasks</h3>
@@ -1178,15 +1178,15 @@ export function StopDetail({
                                 className={cn(
                                     "flex items-center p-3 rounded-lg transition-colors min-h-[44px] cursor-pointer",
                                     checklist[item.key]
-                                        ? "bg-green-50 border border-green-300"
-                                        : "bg-white border border-gray-200"
+                                        ? "bg-(--color-success-tint) border border-(--color-success)/40"
+                                        : "bg-(--surface-card) border border-(--border-default)"
                                 )}
                             >
                                 <input
                                     type="checkbox"
                                     checked={!!checklist[item.key]}
                                     onChange={(e) => onSetChecklist(item.key, e.target.checked)}
-                                    className="w-5 h-5 mr-3 shrink-0 accent-green-600"
+                                    className="w-5 h-5 mr-3 shrink-0 accent-(--color-success)"
                                 />
                                 <span className={cn("text-base", checklist[item.key] ? "font-semibold text-gray-900" : "text-gray-700")}>
                                     {item.label}
@@ -1198,7 +1198,7 @@ export function StopDetail({
 
                 {/* Trash Volume */}
                 <div className={cn(
-                    "flex-1 min-w-[300px] bg-white rounded-xl shadow-md p-4 transition-opacity",
+                    "flex-1 min-w-[300px] bg-(--surface-card) rounded-lg shadow-(--shadow-card) border border-(--border-default) p-4 transition-opacity",
                     checklist.spotCheck ? "opacity-50 pointer-events-none" : "opacity-100"
                 )}>
                     <h3 className="mt-0 mb-3 text-base font-semibold text-gray-600 uppercase tracking-wide">
@@ -1236,7 +1236,7 @@ export function StopDetail({
 
             {/* Photos & Finish Action Area */}
             {(existingPhotos.length > 0 || selectedFiles.length > 0) && (
-                <div className="bg-white rounded-xl shadow-md p-4 mb-4">
+                <div className="bg-(--surface-card) rounded-lg shadow-(--shadow-card) border border-(--border-default) p-4 mb-4">
                     <h4 className="m-0 mb-2 text-sm text-gray-500 font-medium">Attached Photos</h4>
                     <div className="flex gap-2 overflow-x-auto pb-2">
                         {existingPhotos.map(p => (
@@ -1271,13 +1271,13 @@ export function StopDetail({
                         <div className="mt-2 flex gap-2">
                             <button
                                 onClick={handleConfirmUpload}
-                                className="flex-1 py-2 bg-green-500 text-white rounded-lg border-0 font-bold min-h-[44px] cursor-pointer"
+                                className="flex-1 py-2 bg-(--color-success) text-(--text-on-brand) rounded-lg border-0 font-bold min-h-[44px] cursor-pointer"
                             >
                                 Upload Now
                             </button>
                             <button
                                 onClick={handleDiscardSelection}
-                                className="flex-1 py-2 bg-white border border-red-300 text-red-700 rounded-lg font-medium min-h-[44px] cursor-pointer"
+                                className="flex-1 py-2 bg-(--surface-card) border border-(--color-danger)/40 text-(--color-danger) rounded-lg font-medium min-h-[44px] cursor-pointer"
                             >
                                 Discard
                             </button>
@@ -1301,11 +1301,11 @@ export function StopDetail({
                     onClick={() => document.getElementById("main-photo-upload")?.click()}
                     disabled={isUploadingPhoto}
                     className={cn(
-                        "py-4 bg-blue-600 text-white border-0 rounded-lg text-base font-bold flex justify-center items-center gap-2 min-h-[44px]",
-                        isUploadingPhoto ? "opacity-60 cursor-not-allowed" : "cursor-pointer hover:bg-blue-700"
+                        "py-4 bg-(--color-brand-700) text-(--text-on-brand) border-0 rounded-lg text-base font-bold flex justify-center items-center gap-2 min-h-[44px]",
+                        isUploadingPhoto ? "opacity-55 cursor-not-allowed" : "cursor-pointer hover:bg-(--color-brand-800)"
                     )}
                 >
-                    📸 Document Conditions (Optional)
+                    Document Conditions (Optional)
                 </button>
 
                 {/* After photo is the final accountability gate before completion. */}
@@ -1342,11 +1342,11 @@ export function StopDetail({
                                     onClick={() => document.getElementById("after-photo-upload")?.click()}
                                     disabled={isUploadingPhoto}
                                     className={cn(
-                                        "py-4 bg-blue-900 text-white border-0 rounded-lg text-base font-bold flex justify-center items-center gap-2 min-h-[44px]",
-                                        isUploadingPhoto ? "opacity-60 cursor-not-allowed" : "cursor-pointer hover:bg-blue-950"
+                                        "py-4 bg-(--color-brand-dark) text-(--text-on-brand) border-0 rounded-lg text-base font-bold flex justify-center items-center gap-2 min-h-[44px]",
+                                        isUploadingPhoto ? "opacity-55 cursor-not-allowed" : "cursor-pointer hover:bg-[#1e3a8a]"
                                     )}
                                 >
-                                    📷 Take After Photo
+                                    Take After Photo
                                 </button>
                             </>
                         );
@@ -1358,8 +1358,8 @@ export function StopDetail({
                             onClick={onCompleteStop}
                             disabled={!canComplete}
                             className={cn(
-                                "py-4 bg-blue-900 text-white border-0 rounded-lg text-base font-bold min-h-[44px]",
-                                canComplete ? "cursor-pointer hover:bg-blue-950" : "opacity-60 cursor-not-allowed"
+                                "py-4 bg-(--color-brand-dark) text-(--text-on-brand) border-0 rounded-lg text-base font-bold min-h-[44px]",
+                                canComplete ? "cursor-pointer hover:bg-[#1e3a8a]" : "opacity-55 cursor-not-allowed"
                             )}
                         >
                             {isCompletingStop ? "FINISHING..." : "Finish"}

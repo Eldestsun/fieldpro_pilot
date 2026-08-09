@@ -12,12 +12,12 @@ export function OpsTable({ headers, children, numericColumns = [] }: OpsTablePro
         <div className="overflow-x-auto" tabIndex={0}>
             <table className="w-full border-collapse text-left">
                 <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
+                    <tr className="bg-(--surface-sunken) border-b border-(--border-default)">
                         {headers.map((header, idx) => (
                             <th
                                 key={idx}
                                 className={cn(
-                                    "px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-600",
+                                    "px-4 py-3 text-xs font-semibold uppercase tracking-wide text-(--text-muted)",
                                     numericColumns.includes(idx) ? "text-right" : "text-left"
                                 )}
                             >
@@ -26,7 +26,7 @@ export function OpsTable({ headers, children, numericColumns = [] }: OpsTablePro
                         ))}
                     </tr>
                 </thead>
-                <tbody className="text-sm text-gray-800 divide-y divide-gray-100">
+                <tbody className="text-sm text-(--text-body) divide-y divide-(--border-subtle)">
                     {children}
                 </tbody>
             </table>
@@ -48,7 +48,7 @@ export function OpsTableRow({
             onClick={onClick}
             className={cn(
                 "transition-colors",
-                onClick ? "cursor-pointer hover:bg-gray-50" : "cursor-default",
+                onClick ? "cursor-pointer hover:bg-(--surface-sunken)" : "cursor-default",
                 className
             )}
         >

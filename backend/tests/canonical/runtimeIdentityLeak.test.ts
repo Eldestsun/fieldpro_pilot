@@ -53,16 +53,18 @@ const ORG = "1"; // single-tenant dev/test org (matches tests/setup FIXTURE_ORG_
 const isOidKey = (k: string) => k.toLowerCase() === "oid" || /_oid$/i.test(k);
 // Always-hard keys that don't collide with anything benign.
 const ALWAYS_HARD = new Set(["employee_id", "worker_name"]);
-// Person-adjacent keys — a worker's NAME and ROLE. These are flagged ONLY when they
-// sit in the same object as an OID (i.e. a person object like
-// `assigned_user: {oid, display_name, role}`). Flagging `display_name` / `name` /
-// `role` globally would false-positive on benign labels — asset-type and
-// observation-type config rows carry a `display_name` LABEL, pools/stops carry
-// names, and endpoints echo a role SCOPE. Worker identity in this codebase always
-// travels next to its OID (the CONTROLLED EXCEPTION JOIN in loadRouteRunById is the
-// only identity_directory join), so OID co-occurrence is the precise discriminator
-// between a person and a label. Precision keeps the gate trustworthy and un-disabled.
+// Person-adjacent keys — a worker's NAME and ROLE. These are flagged only inside a
+// "person object". Flagging `display_name` / `name` / `role` globally would
+// false-positive on benign labels — asset-type and observation-type config rows carry
+// a `display_name` LABEL, pools/stops carry names, and endpoints echo a role SCOPE.
+// A person object is identified by an OID sibling OR by a known person-object parent
+// key. Historically OID co-occurrence was the sole discriminator, but SEAM-C item 4
+// deliberately trimmed the raw OID from the route-detail R11 exposure while KEEPING the
+// worker's display_name/role — so `assigned_user`/`created_by` are now name-only person
+// objects. PERSON_OBJECT_PARENTS keeps those flagged (the gate must still see the name
+// as identity) without re-flagging labels elsewhere.
 const PERSON_ADJACENT = new Set(["display_name", "name", "role"]);
+const PERSON_OBJECT_PARENTS = new Set(["assigned_user", "created_by"]);
 // `user_id` is the legacy integer column on route_runs (LEGACY_TRANSIT_USER_ID = 0,
 // no FK, no canonical worker reference). Value-aware: a leak only if it ever carries
 // a non-sentinel value. Catches reintroduction of integer worker identity without
@@ -83,7 +85,10 @@ function scanIdentity(body: unknown): Hit[] {
     }
     if (typeof node === "object") {
       const keys = Object.keys(node as Record<string, unknown>);
-      const hasOid = keys.some(isOidKey); // is this a person object?
+      // Is this a person object? OID sibling, or a known person-object parent key
+      // (SEAM-C item 4 decoupled the route-detail name from its OID).
+      const lastSeg = path.split(/[.[\]]/).filter(Boolean).pop() ?? "";
+      const isPersonObject = keys.some(isOidKey) || PERSON_OBJECT_PARENTS.has(lastSeg);
       for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
         const here = path ? `${path}.${key}` : key;
         const lk = key.toLowerCase();
@@ -91,7 +96,7 @@ function scanIdentity(body: unknown): Hit[] {
           if (!LEGACY_SENTINELS.has(value as any)) hits.push({ path: here, key, value });
         } else if (isOidKey(key) || ALWAYS_HARD.has(lk)) {
           if (populated(value)) hits.push({ path: here, key, value });
-        } else if (hasOid && PERSON_ADJACENT.has(lk)) {
+        } else if (isPersonObject && PERSON_ADJACENT.has(lk)) {
           if (populated(value)) hits.push({ path: here, key, value });
         }
         visit(value, here);
@@ -210,11 +215,16 @@ type Endpoint = {
 
 function buildEndpoints(): Endpoint[] {
   return [
-    // ── Control Center (Admin) — operational dashboards, must be identity-free ──
-    { method: "GET", route: "/overview", probe: "/admin/control-center/overview", kind: "clean", authorized: "Admin" },
-    { method: "GET", route: "/routes", probe: "/admin/control-center/routes", kind: "clean", authorized: "Admin" },
-    { method: "GET", route: "/exceptions", probe: "/admin/control-center/exceptions", kind: "clean", authorized: "Admin" },
-    { method: "GET", route: "/difficulty", probe: "/admin/control-center/difficulty", kind: "clean", authorized: "Admin" },
+    // ── Control Center (Dispatch+Admin) — operational dashboards, must be
+    // identity-free. SEAM-B relocated these Admin-only surfaces to /ops and widened
+    // the guard to Dispatch+Admin. The audience-widening re-scan runs the clean probe
+    // as the NEW lower-privilege audience (Dispatch) and proves the Specialist floor
+    // (underPriv) is still blocked — a widened surface must not leak to the widened
+    // audience, and the floor beneath it must stay shut. ──
+    { method: "GET", route: "/overview", probe: "/ops/control-center/overview", kind: "clean", authorized: "Dispatch", underPriv: "Specialist" },
+    { method: "GET", route: "/routes", probe: "/ops/control-center/routes", kind: "clean", authorized: "Dispatch", underPriv: "Specialist" },
+    { method: "GET", route: "/exceptions", probe: "/ops/control-center/exceptions", kind: "clean", authorized: "Dispatch", underPriv: "Specialist" },
+    { method: "GET", route: "/difficulty", probe: "/ops/control-center/difficulty", kind: "clean", authorized: "Dispatch", underPriv: "Specialist" },
     // ── Admin dashboards / lists ──
     { method: "GET", route: "/admin/dashboard", probe: "/admin/dashboard", kind: "clean", authorized: "Admin" },
     { method: "GET", route: "/admin/pools", probe: "/admin/pools", kind: "clean", authorized: "Admin" },
@@ -231,12 +241,20 @@ function buildEndpoints(): Endpoint[] {
     { method: "GET", route: "/lead/todays-runs", probe: "/lead/todays-runs", kind: "clean", authorized: "Dispatch" },
     // ── Resource + config reads ──
     { method: "GET", route: "/pools", probe: "/pools", kind: "clean", authorized: "Dispatch" },
+    // /bases returns depot {id, name} only (NORTH/SOUTH facilities) — no worker
+    // identity. Same shape/role as /pools. Used by the Create Route base picker.
+    { method: "GET", route: "/bases", probe: "/bases", kind: "clean", authorized: "Dispatch" },
     // tenant config uses its own org convention (?org_id= / X-Org-Id), not the
     // dev-bypass org header — supply org_id so the authorized probe reaches 200.
     { method: "GET", route: "/asset-types", probe: "/admin/tenant/asset-types?org_id=1", kind: "clean", authorized: "Admin" },
     // asset_type_id=1 (transit_stop) is seeded by tests/fixtures/seed.sql.
     { method: "GET", route: "/observation-types", probe: "/admin/tenant/observation-types?org_id=1&asset_type_id=1", kind: "clean", authorized: "Admin" },
     { method: "GET", route: "/by-pool/:pool_id", probe: `/route-overrides/by-pool/${FIX_POOL}`, kind: "clean", authorized: "Dispatch" },
+    // ── Stop history (SEAM-D D5a) — per-STOP intelligence chronology. History
+    // attaches to the asset; worker identity must never appear. New
+    // Dispatch-reachable read surface → probe as Dispatch AND prove the
+    // Specialist floor stays shut (audience-widening rider). ──
+    { method: "GET", route: "/stops/:stop_id/history", probe: `/stops/${FIXTURE_STOP_ID}/history`, kind: "clean", authorized: "Dispatch", underPriv: "Specialist" },
 
     // ── SANCTIONED: identity legitimately behind a gate; prove the gate blocks ──
     // The gated assignment detail view — the surviving twin from ISSUE-043.
@@ -316,6 +334,23 @@ for (const ep of buildEndpoints().filter((e) => e.kind === "clean")) {
       hits.length === 0,
       `${ep.probe}: identity leaked to ${ep.authorized}: ${JSON.stringify(hits)}`,
     );
+
+    // Audience floor: when a clean surface declares an under-privileged role
+    // (SEAM-B widened the CC guard to Dispatch+Admin — the floor beneath is
+    // Specialist), prove that floor is shut. A widened operational read must still
+    // fail-closed for a role below its guard, and must never carry identity there.
+    if (ep.underPriv) {
+      const under = await req(ep.method, ep.probe, ep.underPriv);
+      assert(
+        isBlocked(under.status),
+        `${ep.probe}: under-privileged ${ep.underPriv} returned ${under.status}, expected 401/403 — the widened guard's floor is not enforced`,
+      );
+      assertEqual(
+        scanIdentity(under.body).length,
+        0,
+        `${ep.probe}: under-privileged ${ep.underPriv} response carried identity`,
+      );
+    }
   });
 }
 

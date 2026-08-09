@@ -3,28 +3,10 @@ import { useAuth } from "../../auth/AuthContext";
 import { getDashboard, type AdminDashboardStats } from "../../api/routeRuns";
 import { OpsLayout } from "../ui/OpsLayout";
 import { OpsCard } from "../ui/OpsCard";
+import { StatCard } from "../ui/StatCard";
 
 interface AdminDashboardProps {
   scope?: "admin" | "ops";
-}
-
-interface StatCardProps {
-  label: string;
-  value: number | string;
-  valueClassName?: string;
-}
-
-function StatCard({ label, value, valueClassName }: StatCardProps) {
-  return (
-    <OpsCard>
-      <div className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
-        {label}
-      </div>
-      <div className={valueClassName ?? "text-4xl font-bold text-gray-800"}>
-        {value}
-      </div>
-    </OpsCard>
-  );
 }
 
 export function AdminDashboard({ scope = "admin" }: AdminDashboardProps) {
@@ -66,8 +48,8 @@ export function AdminDashboard({ scope = "admin" }: AdminDashboardProps) {
   if (error) {
     return (
       <OpsLayout title="Operations Dashboard" subtitle="Error loading stats">
-        <OpsCard className="border-red-200 bg-red-50">
-          <p className="text-red-600 text-sm">{error}</p>
+        <OpsCard className="border-(--color-danger)/20 bg-(--color-danger-tint)">
+          <p className="text-(--color-danger) text-sm">{error}</p>
         </OpsCard>
       </OpsLayout>
     );
@@ -87,12 +69,12 @@ export function AdminDashboard({ scope = "admin" }: AdminDashboardProps) {
         <StatCard
           label="Active Runs Today"
           value={stats?.active_runs_today ?? 0}
-          valueClassName="text-4xl font-bold text-blue-700"
+          tone="brand"
         />
         <StatCard
           label="Completed Runs Today"
           value={stats?.completed_runs_today ?? 0}
-          valueClassName="text-4xl font-bold text-green-700"
+          tone="success"
         />
       </div>
     </OpsLayout>

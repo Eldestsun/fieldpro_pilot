@@ -23,12 +23,43 @@ export function RouteCreatePanel({ isOpen, onClose, hook }: RouteCreatePanelProp
                 className="w-[480px] max-w-full bg-white h-full p-8 flex flex-col shadow-2xl overflow-y-auto"
                 onClick={(e) => e.stopPropagation()}
             >
-                <header className="mb-8">
+                <header className="mb-6">
                     <h2 className="m-0 text-2xl font-bold text-gray-900">Create Route</h2>
                     <p className="mt-2 mb-0 text-gray-500 text-base">
                         Configure and preview a new route run.
                     </p>
                 </header>
+
+                {/* D3b — creation mode. Pool = risk-ranked selection from the pool;
+                    Ad-hoc = hand-picked stops (explicit is_adhoc flag on create). */}
+                <div className="flex gap-2 mb-6" role="tablist" aria-label="Creation mode">
+                    <button
+                        type="button"
+                        role="tab"
+                        aria-selected={hook.mode === "pool"}
+                        onClick={() => hook.switchMode("pool")}
+                        className={
+                            hook.mode === "pool"
+                                ? "flex-1 px-3 py-2 rounded-md text-sm font-semibold bg-blue-700 text-white"
+                                : "flex-1 px-3 py-2 rounded-md text-sm font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        }
+                    >
+                        From Pool
+                    </button>
+                    <button
+                        type="button"
+                        role="tab"
+                        aria-selected={hook.mode === "adhoc"}
+                        onClick={() => hook.switchMode("adhoc")}
+                        className={
+                            hook.mode === "adhoc"
+                                ? "flex-1 px-3 py-2 rounded-md text-sm font-semibold bg-blue-700 text-white"
+                                : "flex-1 px-3 py-2 rounded-md text-sm font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        }
+                    >
+                        Ad-hoc Stops
+                    </button>
+                </div>
 
                 {hook.error && (
                     <OpsCard className="bg-red-50 border-red-200 mb-6 p-3">
@@ -52,6 +83,26 @@ export function RouteCreatePanel({ isOpen, onClose, hook }: RouteCreatePanelProp
                                 <option key={p.id} value={p.id}>{p.name}</option>
                             ))}
                         </select>
+                    </div>
+
+                    <div>
+                        <label className="block mb-2 font-semibold text-sm text-gray-700">
+                            Dispatch Base <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                            value={hook.selectedBaseId}
+                            onChange={(e) => hook.setBase(e.target.value)}
+                            disabled={hook.loadingOptions || hook.loadingPreview || hook.savingRoute}
+                            className="w-full px-3 py-2.5 rounded-md border border-gray-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px] disabled:bg-gray-50 disabled:text-gray-400"
+                        >
+                            <option value="">-- Select Base --</option>
+                            {hook.bases.map((b) => (
+                                <option key={b.id} value={b.id}>{b.name}</option>
+                            ))}
+                        </select>
+                        <p className="mt-1 mb-0 text-xs text-gray-400">
+                            The depot the route is dispatched from. Defaults to the pool's base when it has one.
+                        </p>
                     </div>
 
                     <div>
@@ -95,6 +146,77 @@ export function RouteCreatePanel({ isOpen, onClose, hook }: RouteCreatePanelProp
                         </select>
                     </div>
 
+                    {hook.mode === "adhoc" && (
+                        <div>
+                            <label htmlFor="adhoc-stop-search" className="block mb-2 font-semibold text-sm text-gray-700">
+                                Stops <span className="text-red-500">*</span>{" "}
+                                <span className="font-normal text-gray-500">(pick at least 2)</span>
+                            </label>
+                            <div className="flex gap-2">
+                                <input
+                                    id="adhoc-stop-search"
+                                    type="text"
+                                    placeholder="Search stop number or street…"
+                                    value={hook.stopSearch}
+                                    onChange={(e) => hook.setStopSearch(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                            e.preventDefault();
+                                            hook.searchStops();
+                                        }
+                                    }}
+                                    className="flex-1 px-3 py-2.5 rounded-md border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+                                />
+                                <OpsButton
+                                    variant="secondary"
+                                    onClick={hook.searchStops}
+                                    disabled={hook.searchingStops || !hook.stopSearch.trim()}
+                                >
+                                    {hook.searchingStops ? "Searching…" : "Search"}
+                                </OpsButton>
+                            </div>
+
+                            {hook.stopResults.length > 0 && (
+                                <OpsCard className="p-0 max-h-[180px] overflow-y-auto mt-2">
+                                    <ul className="m-0 p-0 list-none divide-y divide-gray-100">
+                                        {hook.stopResults.map((s) => (
+                                            <li key={s.stopId}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => hook.addStop(s)}
+                                                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-blue-50"
+                                                >
+                                                    + {s.label}
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </OpsCard>
+                            )}
+
+                            {hook.selectedStops.length > 0 && (
+                                <div className="flex flex-wrap gap-2 mt-3" aria-label="Selected stops">
+                                    {hook.selectedStops.map((s) => (
+                                        <span
+                                            key={s.stopId}
+                                            className="inline-flex items-center gap-1 bg-blue-50 text-blue-800 text-xs font-semibold px-2 py-1 rounded"
+                                        >
+                                            {s.stopId}
+                                            <button
+                                                type="button"
+                                                aria-label={`Remove stop ${s.stopId}`}
+                                                onClick={() => hook.removeStop(s.stopId)}
+                                                className="bg-transparent border-0 cursor-pointer text-blue-800 font-bold px-0.5"
+                                            >
+                                                ×
+                                            </button>
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     <OpsButton
                         onClick={hook.generatePreview}
                         disabled={!hook.canPreview || hook.loadingPreview}
@@ -132,10 +254,13 @@ export function RouteCreatePanel({ isOpen, onClose, hook }: RouteCreatePanelProp
 
                         <OpsCard className="p-0 max-h-[300px] overflow-y-auto mb-6">
                             <OpsTable headers={["#", "Location"]}>
-                                {hook.preview.ordered_stops.map((s) => (
+                                {hook.preview.ordered_stops.map((s, i) => (
                                     <OpsTableRow key={s.stop_id}>
-                                        <OpsTableCell className="text-gray-500">{s.sequence + 1}</OpsTableCell>
-                                        <OpsTableCell>{s.location || s.stop_id.slice(0, 8)}</OpsTableCell>
+                                        {/* Optimized order is the array order; the planner
+                                            emits no `sequence` field, so index it here (was
+                                            `s.sequence + 1` → NaN). */}
+                                        <OpsTableCell className="text-gray-500">{i + 1}</OpsTableCell>
+                                        <OpsTableCell>{s.on_street_name || s.location || s.stop_id}</OpsTableCell>
                                     </OpsTableRow>
                                 ))}
                             </OpsTable>

@@ -218,11 +218,27 @@ in a separate, access-controlled table that the intelligence layer has no grant 
 CREATE TABLE core.visit_actor_audit (
     visit_id    uuid PRIMARY KEY REFERENCES core.visits(id),
     org_id      bigint NOT NULL REFERENCES core.organizations(id),
-    actor_ref   text NOT NULL,        -- opaque external identity (e.g. Entra OID)
+    -- ISSUE-058: actor_ref holds a fixed NON-IDENTIFYING sentinel ('encrypted').
+    -- The worker OID is NEVER stored here in the clear. (It historically was —
+    -- that was the CASE-1 plaintext-at-rest leak; see the correction note below.)
+    actor_ref              text  NOT NULL,
+    -- The real Entra OID lives ONLY here: an S1-13 AES-256-GCM envelope,
+    -- recoverable solely through the single audited decrypt() path.
+    actor_ref_ciphertext   bytea,
+    actor_ref_key_id       text,
     recorded_at timestamptz NOT NULL DEFAULT now()
 );
 -- GRANT SELECT ON core.visit_actor_audit TO audit_role;   -- and ONLY audit_role
 ```
+
+> **Correction (2026-07-06 truthing — ISSUE-058 / CASE-1).** An earlier revision of
+> this DDL commented `actor_ref` as "opaque external identity (e.g. Entra OID)."
+> That was false and load-bearing: the CASE-1 forensic proved `actor_ref` held the
+> **raw Entra OID in plaintext**, byte-identical to the JWT claim and resolvable to
+> a name via a keyless join — the misnomer that hid the leak for months. ISSUE-058
+> Phase 1 fixed it: `actor_ref` now carries the fixed sentinel `'encrypted'` and the
+> OID lives only in `actor_ref_ciphertext`. `actor_ref` must never again be described
+> as carrying identity.
 
 The intelligence layer is given a DB role with **no grant** on `visit_actor_audit`.
 A signal that tried to attribute a metric to a worker would fail at the permission
@@ -235,11 +251,14 @@ layer, not at code review. That is the guarantee made structural.
 > - Identity was extracted into no-grant sidecars
 >   `core.{visit,observation,evidence,assignment}_actor_audit`, each following one
 >   template: `<entity>_id` PK FK `ON DELETE CASCADE`, `org_id` (RLS-forced,
->   guarded `org_isolation`), `actor_ref text NOT NULL`, optional
->   `actor_ref_ciphertext`/`actor_ref_key_id` (the relocated S1-13 envelope —
->   **populated only on `visit_actor_audit`** today; extending encryption to the
->   other three is a tracked follow-on, a backfill not a schema change since the
->   columns already exist), `recorded_at`.
+>   guarded `org_isolation`), `actor_ref text NOT NULL` (post-ISSUE-058 a fixed
+>   non-identifying sentinel `'encrypted'` — **never** the OID), the S1-13 envelope
+>   pair `actor_ref_ciphertext`/`actor_ref_key_id` (which hold the real OID), and
+>   `recorded_at`. **ISSUE-058 Phase 1 (2026-07-06):** all **four** sidecar write
+>   paths now write the sentinel to `actor_ref` and populate the ciphertext — the
+>   earlier "populated only on `visit_actor_audit`" state is closed. Pre-Phase-1
+>   historical rows may still carry a plaintext `actor_ref` until the Phase 2
+>   backfill, which is gated on the Azure Key Vault key custodian (see ISSUE-058).
 > - The plaintext (and visit cipher) identity columns —
 >   `core.visits.actor_oid`/`captured_by_oid_ciphertext`/`captured_by_oid_key_id`,
 >   `core.observations.created_by_oid`, `core.evidence.captured_by_oid`,

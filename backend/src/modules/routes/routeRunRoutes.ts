@@ -112,12 +112,12 @@ routeRunRoutes.get(
             const query = `
         SELECT
           rr.id,
-          rr.user_id,
           rr.route_pool_id,
           rr.base_id,
           rr.status,
           rr.run_date,
           rr.created_at,
+          rr.is_adhoc,
           COALESCE(rs.stop_count, 0) AS stop_count,
           COALESCE(rs.completed_stop_count, 0) AS completed_stops
         FROM route_runs rr
@@ -215,7 +215,10 @@ routeRunRoutes.get(
 // NAMING (ISSUE-043): "lead" is historical — it predates the Dispatch-role rename
 // (Lead → Dispatch) and is now an identifier only, not a description of who may call
 // it. This is the SURVIVING gated route-run detail view: auth-required, Dispatch/Admin
-// only, and the identity fields in its payload are Admin-gated by loadRouteRunById.
+// only. Its payload exposes the assigned worker's and assigning Lead's NAME and ROLE
+// (never their OID — SEAM-C item 4) as the R11 controlled reassignment exception; this
+// is operational, not intelligence, and is NOT role-gated below Dispatch (loadRouteRunById
+// applies no role gate — the earlier "Admin-gated" note was inaccurate).
 // The ungated identity-bearing twin GET /route-runs/:id was removed per ISSUE-043;
 // this gated route is the single detail endpoint. Do not rename (names are
 // identifiers — the frontend calls /api/lead/route-runs/:id); document, don't rename.
@@ -433,15 +436,16 @@ routeRunRoutes.post(
     requireAnyRole(["Dispatch", "Admin"]),
     async (req: Request, res: Response) => {
     try {
-        const { stop_ids, pool_id, ul_id, run_date } = req.body;
+        const { stop_ids, pool_id, ul_id, run_date, base_id } = req.body;
+
+        // Resolve org once (fail-closed, ISSUE-013) — both stop lookups and the
+        // base/pool reads below are FORCE-RLS and must be org-scoped (PATTERN-001).
+        const numericOrgId = await resolveNumericOrgId(req);
 
         let stopsToPlan: OsrmStop[] = [];
 
         // Option A: Explicit stop_ids provided
         if (Array.isArray(stop_ids) && stop_ids.length >= 2) {
-            // PATTERN-001: same as /routes/plan — a bare read of `stops`
-            // returns 0 rows under fail-closed RLS; scope to the resolved org.
-            const numericOrgId = await resolveNumericOrgId(req);
             const query = `
         SELECT stop_id, lon, lat, on_street_name, bearing_code
         FROM stops
@@ -467,8 +471,11 @@ routeRunRoutes.post(
         }
         // Option B: pool_id provided -> fetch with risk logic
         else if (pool_id) {
-            // We need a pool client to call the helper, or we can use the pool directly (helper takes 'any')
-            stopsToPlan = await getCandidateStopsForPoolWithRisk(pool_id, MAX_OSRM_STOPS, pool);
+            // PATTERN-001: the candidate query reads `stops` / `stop_pool_memberships`,
+            // both FORCE RLS. Scope to the resolved org via withOrgContext.
+            stopsToPlan = await withOrgContext(numericOrgId, (client) =>
+                getCandidateStopsForPoolWithRisk(pool_id, MAX_OSRM_STOPS, client),
+            );
 
             if (stopsToPlan.length < 2) {
                 return res.status(400).json({
@@ -482,30 +489,82 @@ routeRunRoutes.post(
             });
         }
 
-        // 2) Ask OSRM for an optimized trip
-        // Note: stopsToPlan is already limited by MAX_OSRM_STOPS if it came from the helper.
-        // If it came from Option A (explicit list), it might be longer, so we still slice for OSRM limit safety.
-        const osrmStops =
+        // Resolve the dispatch base: explicit base_id, else the pool's pre-attached
+        // base. When a base resolves, the trip is planned FROM it (a prepended
+        // __BASE__ waypoint + source=first), so the preview distance reflects the
+        // real depot-anchored drive and MATCHES the saved route (createRouteRun does
+        // the same). Without a base (e.g. a district pool with none picked yet), we
+        // fall back to stop-to-stop so preview never hard-fails.
+        let resolvedBaseId: string | null = base_id ?? null;
+        if (!resolvedBaseId && pool_id) {
+            const poolBaseRes = await withOrgContext(numericOrgId, (client) =>
+                client.query(
+                    `SELECT base_id FROM route_pools WHERE id = $1 AND active = true`,
+                    [pool_id],
+                ),
+            );
+            resolvedBaseId = poolBaseRes.rows[0]?.base_id ?? null;
+        }
+
+        let baseWaypoint: OsrmStop | null = null;
+        if (resolvedBaseId) {
+            const baseRes = await withOrgContext(numericOrgId, (client) =>
+                client.query(
+                    `SELECT id, lon, lat FROM bases WHERE id = $1 AND active = true`,
+                    [resolvedBaseId],
+                ),
+            );
+            if (baseRes.rows.length > 0) {
+                baseWaypoint = {
+                    stop_id: "__BASE__",
+                    lon: baseRes.rows[0].lon,
+                    lat: baseRes.rows[0].lat,
+                };
+            } else {
+                // base_id given but not a real active base for this org — don't
+                // silently anchor to nothing; surface it.
+                resolvedBaseId = null;
+            }
+        }
+
+        // 2) Ask OSRM for an optimized trip. Slice real stops to the OSRM limit,
+        // then prepend the base sentinel (it doesn't count against the stop budget).
+        const realStops =
             stopsToPlan.length > MAX_OSRM_STOPS
                 ? stopsToPlan.slice(0, MAX_OSRM_STOPS)
                 : stopsToPlan;
+        const osrmStops = baseWaypoint ? [baseWaypoint, ...realStops] : realStops;
 
-        const planned = await planRouteWithOsrm(osrmStops);
+        const planned = await planRouteWithOsrm(
+            osrmStops,
+            baseWaypoint ? { source: "first" } : undefined,
+        );
+
+        // Drop the base sentinel from the displayed stop list — it's the origin,
+        // not a work stop — but KEEP its contribution to distance_m/duration_s.
+        const orderedRealStops = planned.ordered_stops.filter(
+            (s) => s.stop_id !== "__BASE__",
+        );
 
         // 3) Return the planned route
         return res.json({
             ok: true,
             truncated: stopsToPlan.length > MAX_OSRM_STOPS, // approximate check
             total_stops: stopsToPlan.length,
-            used_stops: osrmStops.length,
+            used_stops: realStops.length,
+            base_id: resolvedBaseId, // which base anchored the plan (null = stop-to-stop)
+            base_anchored: baseWaypoint !== null,
             distance_m: planned.distance_m,
             duration_s: planned.duration_s,
-            ordered_stops: planned.ordered_stops,
+            ordered_stops: orderedRealStops,
             legs: planned.legs,
         });
     } catch (err: any) {
         console.error("Error in /api/route-runs/preview:", err);
-        return res.status(500).json({ error: err.message || "Internal server error" });
+        // Honor a typed status (e.g. OrgResolutionError → 403) instead of masking as 500.
+        return res
+            .status(err.status ?? 500)
+            .json({ error: err.message || "Internal server error" });
     }
 });
 
@@ -592,7 +651,7 @@ routeRunRoutes.post(
     requireAuth,
     requireAnyRole(["Dispatch", "Admin"]),
     async (req: any, res: Response) => {
-        const { stop_ids, base_id, route_pool_id, pool_id, run_date, ul_id, shift_type } = req.body;
+        const { stop_ids, base_id, route_pool_id, pool_id, run_date, ul_id, shift_type, is_adhoc } = req.body;
 
         const createdByOid = req.user?.oid;
         if (!createdByOid) {
@@ -604,6 +663,19 @@ routeRunRoutes.post(
 
         if (!targetPoolId) {
             return res.status(400).json({ error: "Missing required field: pool_id" });
+        }
+
+        // SEAM-D D3: is_adhoc is an EXPLICIT flag from the picker UI — the server
+        // never infers it. An ad-hoc run must name its stops (the >=2 floor is the
+        // existing OSRM planning floor below). stop_ids WITHOUT the flag remains
+        // the legal, untagged legacy primitive (operator ruling).
+        if (is_adhoc !== undefined && typeof is_adhoc !== "boolean") {
+            return res.status(400).json({ error: "is_adhoc must be a boolean" });
+        }
+        if (is_adhoc === true && !(Array.isArray(stop_ids) && stop_ids.length >= 2)) {
+            return res
+                .status(400)
+                .json({ error: "is_adhoc requires an explicit stop_ids array (min 2)" });
         }
 
         try {
@@ -663,6 +735,7 @@ routeRunRoutes.post(
                     base_id: resolvedBaseId,
                     run_date,
                     shift_type: shift_type ?? 'day',
+                    is_adhoc: is_adhoc === true,
                 });
             });
 
@@ -672,7 +745,11 @@ routeRunRoutes.post(
                 action: 'assignment.create',
                 resource_type: 'route',
                 resource_id: String(routeRunId),
-                detail: { assigned_user_oid: assignedUserOid ?? null, pool_id: targetPoolId },
+                // Labor safety: worker OID is intentionally NOT recorded in the audit
+                // detail. The accountable actor is in actor_oid and the route in
+                // resource_id; the worker↔route fact lives (encrypted) in the
+                // assignment sidecar. Do not reintroduce assigned_user_oid here.
+                detail: { pool_id: targetPoolId },
                 ip_address: req.ip,
             });
 
@@ -701,7 +778,10 @@ routeRunRoutes.post(
 // (loadRouteRunById.ts) with resolveNumericOrgId falling back to org #1 for anonymous
 // callers — a direct worker-identity leak on an open endpoint. The gated twin
 // GET /lead/route-runs/:id (above) is the sole route-run detail endpoint: auth-required,
-// Dispatch/Admin only, identity fields Admin-gated. Phase 0 caller recon confirmed the
+// Dispatch/Admin only. Its payload carries the assigned worker's/assigning Lead's NAME
+// and ROLE (never OID — SEAM-C item 4) as the R11 reassignment exception; loadRouteRunById
+// applies no role gate (Dispatch reads it), so the prior "Admin-gated" note was wrong.
+// Phase 0 caller recon confirmed the
 // frontend reads only the gated twin (getLeadRouteRunById → /api/lead/route-runs/:id)
 // and no test/script/UI path depended on this ungated route.
 
@@ -1037,7 +1117,10 @@ routeRunRoutes.patch(
                     action: 'assignment.cancel',
                     resource_type: 'route',
                     resource_id: String(id),
-                    detail: { previous_assigned_user_oid: prevOid },
+                    // Labor safety: worker OID intentionally omitted from detail
+                    // (actor in actor_oid, route in resource_id). Do not reintroduce
+                    // previous_assigned_user_oid.
+                    detail: {},
                     ip_address: req.ip,
                 });
             } else {
@@ -1047,10 +1130,12 @@ routeRunRoutes.patch(
                     action: prevOid ? 'assignment.reassign' : 'assignment.create',
                     resource_type: 'route',
                     resource_id: String(id),
-                    detail: {
-                        previous_assigned_user_oid: prevOid,
-                        new_assigned_user_oid: assigned_user_oid,
-                    },
+                    // Labor safety: worker OIDs (previous + new) intentionally omitted
+                    // from detail. The reassignment is fully audited by actor_oid +
+                    // action + resource_id; the worker↔route fact lives (encrypted) in
+                    // the assignment sidecar. Do not reintroduce the *_assigned_user_oid
+                    // fields here.
+                    detail: {},
                     ip_address: req.ip,
                 });
             }

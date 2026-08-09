@@ -7,6 +7,7 @@ import { routeRunStopRoutes } from "./modules/work/routeRunStopRoutes";
 import { uploadRoutes } from "./modules/work/uploadRoutes";
 import { devRoutes } from "./routes/devRoutes";
 import { adminRoutes } from "./modules/admin/adminRoutes";
+import { controlCenterRoutes } from "./modules/admin/controlCenterRoutes";
 import { stopRoutes } from "./modules/work/stopRoutes";
 import { resourceRoutes } from "./modules/admin/resourceRoutes";
 import { tenantRoutes } from "./modules/admin/tenantRoutes";
@@ -49,6 +50,7 @@ if (process.env.NODE_ENV !== 'production') {
   app.use("/api", devRoutes);
 }
 app.use("/api", adminRoutes);
+app.use("/api/ops/control-center", controlCenterRoutes);
 app.use("/api", stopRoutes);
 app.use("/api", resourceRoutes);
 app.use("/api", opsRoutes);

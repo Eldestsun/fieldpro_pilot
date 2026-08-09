@@ -2,8 +2,11 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { getStopsScoped, bulkUpdateAdminStops, updateAdminStop, fetchPools, type Pool } from "../../api/routeRuns";
 import { OpsLayout } from "../ui/OpsLayout";
+import { OpsCard } from "../ui/OpsCard";
 import { OpsButton } from "../ui/OpsButton";
+import { OpsBadge } from "../ui/OpsBadge";
 import { DataTable, type DataTableColumn } from "../ui/DataTable";
+import { StopHistoryDrawer } from "../StopHistoryDrawer";
 import { cn } from "../../lib/utils";
 
 interface AdminStopsPanelProps {
@@ -39,6 +42,9 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
   const [selectedStopIds, setSelectedStopIds] = useState<string[]>([]);
   const [rowEdits, setRowEdits] = useState<Record<string, { pool_id?: string; notes?: string }>>({});
   const [savingRow, setSavingRow] = useState<Record<string, boolean>>({});
+  // D5b — read-only per-stop history drawer; a read control, so it renders in
+  // BOTH the ops (read-only) and admin (edit) scopes.
+  const [historyStopId, setHistoryStopId] = useState<string | null>(null);
 
   const isReadOnly = scope === "ops";
 
@@ -144,7 +150,7 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
             type="checkbox"
             checked={stopId ? selectedStopIds.includes(stopId) : false}
             onChange={() => stopId && toggleSelection(stopId)}
-            className="w-4 h-4 accent-blue-600 cursor-pointer"
+            className="w-4 h-4 accent-(--color-brand-700) cursor-pointer"
           />
         );
       },
@@ -153,9 +159,10 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
       key: "stop_id",
       header: "Stop #",
       sortable: true,
+      mono: true,
       getValue: (stop: any) => normalizeText(getStopField(stop, "stop_id")),
       render: (stop: any) => (
-        <span className="font-semibold text-gray-900">
+        <span className="font-semibold text-(--text-heading)">
           {normalizeText(getStopField(stop, "stop_id")) || "—"}
         </span>
       ),
@@ -164,6 +171,7 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
       key: "bearing",
       header: "Bearing",
       sortable: true,
+      mono: true,
       getValue: (stop: any) => normalizeText(getStopField(stop, "bearing_code")),
       render: (stop: any) => normalizeText(getStopField(stop, "bearing_code")) || "—",
     },
@@ -173,7 +181,7 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
       sortable: true,
       getValue: (stop: any) => buildLocation(stop),
       render: (stop: any) => (
-        <span className="text-gray-700">{buildLocation(stop)}</span>
+        <span className="text-(--text-body)">{buildLocation(stop)}</span>
       ),
     },
     {
@@ -200,7 +208,7 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
               ...prev,
               [stopId]: { ...prev[stopId], pool_id: e.target.value },
             }))}
-            className="max-w-[150px] px-2 py-1 rounded border border-gray-200 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"
+            className="max-w-[150px] px-2 py-1 rounded border border-(--border-default) text-sm bg-(--surface-card) focus:outline-none focus:ring-1 focus:ring-(--color-brand)"
           >
             <option value="">Unassigned</option>
             {pools.map(p => (
@@ -220,7 +228,7 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
         const currentNotes = editState.notes !== undefined ? editState.notes : existingNotes;
 
         if (isReadOnly) {
-          return <span className="text-gray-500 text-sm">{existingNotes || "—"}</span>;
+          return <span className="text-(--text-muted) text-sm">{existingNotes || "—"}</span>;
         }
         return (
           <input
@@ -231,7 +239,7 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
               [stopId]: { ...prev[stopId], notes: e.target.value },
             }))}
             placeholder="Add notes…"
-            className="w-full px-2 py-1 rounded border border-gray-200 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+            className="w-full px-2 py-1 rounded border border-(--border-default) text-sm focus:outline-none focus:ring-1 focus:ring-(--color-brand)"
           />
         );
       },
@@ -241,46 +249,58 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
       header: "Flags",
       render: (stop: any) => {
         const stopId = normalizeText(getStopField(stop, "stop_id"));
-        const isHotspot = !!(stop?.is_hotspot ?? stop?.IS_HOTSPOT);
-        const isCompactor = !!(stop?.compactor ?? stop?.COMPACTOR);
-        const hasTrash = !!(stop?.has_trash ?? stop?.HAS_TRASH);
+        // Text pills, not emoji, per the DS iconography rules
+        const flags: Array<{ field: string; label: string; active: boolean }> = [
+          { field: "is_hotspot", label: "Hotspot", active: !!(stop?.is_hotspot ?? stop?.IS_HOTSPOT) },
+          { field: "compactor", label: "Compactor", active: !!(stop?.compactor ?? stop?.COMPACTOR) },
+          { field: "has_trash", label: "Trash", active: !!(stop?.has_trash ?? stop?.HAS_TRASH) },
+        ];
 
         if (isReadOnly) {
+          const active = flags.filter(f => f.active);
+          if (active.length === 0) return <span className="text-(--text-muted)">—</span>;
           return (
-            <div className="flex gap-1">
-              {isHotspot && <span title="Hotspot">🔥</span>}
-              {isCompactor && <span title="Compactor">📦</span>}
-              {hasTrash && <span title="Has Trash">🗑️</span>}
+            <div className="flex gap-1 flex-wrap">
+              {active.map(f => <OpsBadge key={f.field} variant="neutral" value={f.label} />)}
             </div>
           );
         }
         return (
-          <div className="flex gap-1">
-            <button
-              onClick={() => handleToggle(stopId, "is_hotspot", isHotspot)}
-              className={cn(
-                "bg-transparent border-0 cursor-pointer text-xl transition-opacity p-0.5 rounded",
-                isHotspot ? "opacity-100" : "opacity-25 hover:opacity-50"
-              )}
-              title="Toggle Hotspot"
-            >🔥</button>
-            <button
-              onClick={() => handleToggle(stopId, "compactor", isCompactor)}
-              className={cn(
-                "bg-transparent border-0 cursor-pointer text-xl transition-opacity p-0.5 rounded",
-                isCompactor ? "opacity-100" : "opacity-25 hover:opacity-50"
-              )}
-              title="Toggle Compactor"
-            >📦</button>
-            <button
-              onClick={() => handleToggle(stopId, "has_trash", hasTrash)}
-              className={cn(
-                "bg-transparent border-0 cursor-pointer text-xl transition-opacity p-0.5 rounded",
-                hasTrash ? "opacity-100" : "opacity-25 hover:opacity-50"
-              )}
-              title="Toggle Has Trash"
-            >🗑️</button>
+          <div className="flex gap-1 flex-wrap">
+            {flags.map(f => (
+              <button
+                key={f.field}
+                onClick={() => handleToggle(stopId, f.field, f.active)}
+                title={`Toggle ${f.label}`}
+                className={cn(
+                  "rounded-full border px-2 py-0.5 text-xs font-semibold cursor-pointer transition-colors whitespace-nowrap",
+                  f.active
+                    ? "bg-(--gray-100) text-(--gray-800) border-(--border-strong)"
+                    : "bg-transparent text-(--text-disabled) border-(--border-default) hover:bg-(--gray-50)"
+                )}
+              >
+                {f.label}
+              </button>
+            ))}
           </div>
+        );
+      },
+    },
+    {
+      key: "history",
+      header: "History",
+      render: (stop: any) => {
+        const stopId = normalizeText(getStopField(stop, "stop_id"));
+        if (!stopId) return null;
+        return (
+          <OpsButton
+            size="sm"
+            variant="outline"
+            aria-label={`History for stop ${stopId}`}
+            onClick={() => setHistoryStopId(stopId)}
+          >
+            History
+          </OpsButton>
         );
       },
     },
@@ -306,7 +326,7 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
   return (
     <OpsLayout title="All Stops" subtitle="Search and filter stops.">
       {/* Search / filter toolbar */}
-      <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 mb-6">
+      <OpsCard className="p-4 mb-6">
         <form onSubmit={handleSearch} className="flex gap-3 flex-wrap items-end">
           <div className="flex-1 min-w-[200px]">
             <input
@@ -314,14 +334,14 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
               placeholder="Search stop number, street…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full px-3 py-2 rounded-md border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+              className="w-full px-3 py-2 rounded-md border border-(--border-strong) text-sm focus:outline-none focus:ring-2 focus:ring-(--color-brand) min-h-[44px]"
             />
           </div>
           <div>
             <select
               value={selectedPoolId}
               onChange={(e) => setSelectedPoolId(e.target.value)}
-              className="px-3 py-2 rounded-md border border-gray-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+              className="px-3 py-2 rounded-md border border-(--border-strong) text-sm bg-(--surface-card) focus:outline-none focus:ring-2 focus:ring-(--color-brand) min-h-[44px]"
             >
               <option value="">— All Pools —</option>
               {pools.map(p => (
@@ -331,12 +351,12 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
           </div>
           <OpsButton type="submit" variant="secondary">Filter</OpsButton>
         </form>
-      </div>
+      </OpsCard>
 
       {/* Bulk selection toolbar */}
       {!isReadOnly && selectedStopIds.length > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 flex gap-4 items-center flex-wrap">
-          <span className="text-sm font-semibold text-blue-800">
+        <div className="bg-(--color-brand-50) border border-(--color-brand-100) rounded-lg p-4 mb-6 flex gap-4 items-center flex-wrap">
+          <span className="text-sm font-semibold text-(--color-brand-dark)">
             {selectedStopIds.length} stop{selectedStopIds.length !== 1 ? "s" : ""} selected
           </span>
           <div className="flex gap-2 flex-wrap">
@@ -366,6 +386,10 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
         isLoading={loading}
         emptyMessage="No stops found. Try adjusting your search or filter."
       />
+
+      {historyStopId && (
+        <StopHistoryDrawer stopId={historyStopId} onClose={() => setHistoryStopId(null)} />
+      )}
     </OpsLayout>
   );
 }

@@ -15,6 +15,8 @@
   "dependencies": {
     "@azure/msal-browser": "^4.21.0",
     "@azure/msal-react": "^3.0.19",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/inter": "^5.2.8",
     "@tailwindcss/vite": "^4.3.0",
     "clsx": "^2.1.1",
     "maplibre-gl": "^5.14.0",
@@ -52,11 +54,16 @@
       "protocol-buffers-schema": ">=3.6.1",
       "postcss": ">=8.5.10",
       "esbuild": ">=0.28.1",
-      "js-yaml": ">=4.1.1",
+      "js-yaml": "^4.2.0",
       "ajv": "^6.14.0",
       "picomatch": ">=4.0.4",
       "form-data": ">=4.0.6",
-      "ws": ">=8.21.0"
+      "ws": ">=8.21.0",
+      "@babel/core": "^7.29.6",
+      "react-router": "^7.15.1",
+      "brace-expansion@1": "1.1.16",
+      "brace-expansion@2": "2.1.2",
+      "brace-expansion@5": "5.0.7"
     }
   }
 }

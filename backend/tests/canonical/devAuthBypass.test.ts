@@ -231,9 +231,22 @@ test('devAuthBypass: audit_log entry written for every bypass use', async () => 
 
   assertEqual(result.rowCount, 1, 'exactly one audit_log row must be written');
   assertEqual(result.rows[0].action, 'auth.dev_bypass', 'action must be auth.dev_bypass');
+  // Labor-safety scrub (Phase 3): the OID is recorded in the actor_oid COLUMN
+  // (the query above matched on it), never copied into detail. The redundant
+  // org header is likewise dropped; only the non-identity roles header remains.
   assertEqual(
     result.rows[0].detail?.['x-dev-user-oid'],
-    uniqueOid,
-    'detail must record the x-dev-user-oid header verbatim'
+    undefined,
+    'detail must NOT carry the worker OID (it lives in actor_oid)'
+  );
+  assertEqual(
+    result.rows[0].detail?.['x-dev-user-org-id'],
+    undefined,
+    'detail must NOT carry the org header (it lives in org_id)'
+  );
+  assertEqual(
+    result.rows[0].detail?.['x-dev-user-roles'],
+    'UL',
+    'detail retains only the non-identity roles header'
   );
 });
