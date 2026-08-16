@@ -1,114 +1,38 @@
-# Planning Orchestrator
+# Planning Workspace — Context
 
-This file is the control layer for task execution.
-It tells the agent what to read, what to skip, and what to produce.
-
-Planning is used for:
-- analysis
-- architecture alignment
-- spec creation
-- coordination before implementation
-
-Planning is NOT the final execution layer for code changes.
+(Thinned 2026-08-15, HYG-3. The old version of this file carried its own routing table
+and workspace map — both went stale and contradicted `CLAUDE.md` after the 2026-06-16
+rules-index restructure. Routing now lives in ONE place: `CLAUDE.md § Task Routing`.
+Active work selection lives in ONE place: the Notion BASELINE Work Tracker. This file
+keeps only what is unique to it: how to write planning artifacts.)
 
 ---
 
-## Active Work
+## What This Workspace Is
 
-Two parallel tracks are in progress. Check both before speccing or building anything.
+Analysis, architecture alignment, spec creation, and coordination **before**
+implementation. Planning is never the execution layer for code changes.
 
-**Refactor track** — canonical-model migration (DB-level, backend write paths):
-Read `planning/REFACTOR_INDEX.md` for tier status. Do not design around tables a pending tier is about to change.
-
-**Refinement track** — product-level improvements (UX, auth, offline UX, UI rebuild, CI):
-Read `planning/REFINEMENT_INDEX.md` for item status. Do not build UI surfaces that R5 is about to replace.
-
----
-
-## Workspace Map
-
-- `/planning/REFACTOR_INDEX.md` → canonical-model migration (Tiers 1–6, tier status + ordering)
-- `/planning/TIER_N_*.md` → per-tier handoff files (files to touch, done-criteria, agent launch blocks)
-- `/planning/REFINEMENT_INDEX.md` → product refinement track (R1–R10, item status + ordering)
-- `/planning/REFINEMENT_R*.md` → per-item handoff files
-- `/planning/architecture` → system truth + constraints
-- `/planning/specs` → analysis artifacts (one problem per file)
-- `/planning/decisions` → architectural decisions
-
----
-
-## Task Routing Table
-
-| Task | Read These | Skip These | Output |
-|------|-----------|-----------|--------|
-| Analysis | architecture files + relevant state | implementation rules | spec in `/planning/specs` |
-| Refactor | `REFACTOR_INDEX.md` → relevant `TIER_N_*.md` | unrelated tiers | code changes per tier done-criteria |
-| Refinement | `REFINEMENT_INDEX.md` → relevant `REFINEMENT_R*.md` | unrelated items | code changes per item done-criteria |
-| Feature / Bug | `REFACTOR_INDEX.md` + `REFINEMENT_INDEX.md` → architecture + state | unrelated specs | plan OR handoff to code workspace |
-| Architecture | architecture files | specs + implementation | updated architecture docs |
-
----
-
-## Workflow Pipelines
-
-### Analysis Pipeline
-
-1. Read architecture + constraints
-2. Read relevant state (pg_state, repo_state, BE/FE behavior)
-3. Identify gap
-4. Write spec
-5. Stop
-
----
-
-### Implementation Coordination Pipeline
-
-1. Read architecture + constraints
-2. Read relevant state
-3. Determine execution surface:
-   - `frontend/CONTEXT.md`
-   - `backend/CONTEXT.md`
-   - or both
-4. Produce:
-   - Plan OR
-   - Handoff instructions for code workspace
-5. Define verification requirements
-
----
-
-### Architecture Pipeline
-
-1. Modify architecture files
-2. Validate against constraints
-3. Keep minimal and precise
-
----
+- `planning/architecture/` — system truth + constraints (authoritative design docs)
+- `planning/specs/` — analysis artifacts, one problem per file
+- `planning/capability-build/` — the active build track's index + specs
+- Track indexes at `planning/` root (REFACTOR / REFINEMENT / SECURITY_SPRINT) are
+  **closed historical records** — see their banners; do not pick work from them.
 
 ## Spec Rules
 
-- One problem per file
-- Store in `/planning/specs/`
-- Keep scoped and actionable
-
-Each spec must include:
-- Problem
-- Current State
-- Desired State
-- Gap
-- Proposed Change
-
----
+- One problem per file, stored in `planning/specs/`, named `YYYY-MM-DD-{slug}.md`.
+- Keep scoped and actionable. Each spec includes:
+  - **Problem**
+  - **Current State**
+  - **Desired State**
+  - **Gap**
+  - **Proposed Change**
 
 ## Boundaries
 
-- Do not write code during Analysis
-- Do not skip required reads
-- Do not expand scope
-- Do not execute code changes in planning when task is clearly frontend/backend scoped
-
----
-
-## Stop Conditions
-
-- Analysis → stop after spec
-- Implementation → stop after plan/handoff + verification
+- Do not write code during Analysis — stop after the spec.
+- Do not expand scope beyond the dispatched question.
+- Do not restate build status in planning docs — status lives in
+  `current_state.md`, the changelog, and the board. (Status prose in planning files
+  is the primary way this workspace has gone stale.)
