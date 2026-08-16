@@ -4,6 +4,7 @@ import {
   assert,
   assertEqual,
   FIXTURE_ORG_ID,
+  FIXTURE_LOCATION_ID,
   acquireRouteRunFixture,
   releaseFixture,
 } from "../setup";
@@ -60,9 +61,53 @@ test("Q-C: linkage index exists, is UNIQUE, and covers (source_system, source_re
   const def = res.rows[0].indexdef as string;
   assert(/CREATE UNIQUE INDEX/i.test(def), "linkage index must be UNIQUE");
   assert(
-    def.includes("source_system") && def.includes("source_ref") && def.includes("COALESCE"),
-    `linkage index must cover (source_system, source_ref, COALESCE(location_id, -1)) — got: ${def}`,
+    def.includes("source_system") && def.includes("source_ref") && def.includes("location_id"),
+    `linkage index must cover (source_system, source_ref, location_id) — got: ${def}`,
   );
+  assert(
+    !def.includes("COALESCE"),
+    "linkage index must NOT collapse NULL locations (COALESCE key regression — CI sparse-seed adhoc failure): " + def,
+  );
+});
+
+test("Q-C: NULL-location assignments never collapse — a run with 2+ spine-unresolved stops keeps all assignments", async () => {
+  // Regression for the CI failure this index design went through: a
+  // COALESCE(location_id, -1) unique key made two NULL-location stops of the
+  // same run conflict, ON CONFLICT swallowed one, and createRouteRun's Q-C
+  // validation 500'd the ad-hoc create. NULLs must be DISTINCT under the
+  // index. Direct-row test — no stop fixtures needed.
+  const client = await pool.connect();
+  try {
+    await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(FIXTURE_ORG_ID)]);
+    await client.query("BEGIN");
+
+    const insertNullLoc = `
+      INSERT INTO core.assignments (org_id, assignment_type, status, location_id, source_system, source_ref, meta)
+      VALUES ($1, 'transit_stop_clean', 'planned', NULL, 'qc_nulltest', 'qc-run-x', '{}'::jsonb)
+      ON CONFLICT DO NOTHING RETURNING id`;
+    const a = await client.query(insertNullLoc, [FIXTURE_ORG_ID]);
+    const b = await client.query(insertNullLoc, [FIXTURE_ORG_ID]);
+    assertEqual(a.rowCount, 1, "first NULL-location assignment inserts");
+    assertEqual(b.rowCount, 1, "second NULL-location assignment for the SAME run must ALSO insert (NULLs distinct — no collapse)");
+
+    // And the real-location case still conflicts (the uniqueness that matters).
+    const insertRealLoc = `
+      INSERT INTO core.assignments (org_id, assignment_type, status, location_id, source_system, source_ref, meta)
+      VALUES ($1, 'transit_stop_clean', 'planned', $2, 'qc_nulltest', 'qc-run-y', '{}'::jsonb)
+      ON CONFLICT DO NOTHING RETURNING id`;
+    const c = await client.query(insertRealLoc, [FIXTURE_ORG_ID, FIXTURE_LOCATION_ID]);
+    const d = await client.query(insertRealLoc, [FIXTURE_ORG_ID, FIXTURE_LOCATION_ID]);
+    assertEqual(c.rowCount, 1, "real-location assignment inserts");
+    assertEqual(d.rowCount, 0, "duplicate real-location assignment must conflict to zero");
+
+    await client.query("ROLLBACK"); // leave no residue — this test owns no fixture
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch { /* best-effort */ }
+    throw err;
+  } finally {
+    try { await client.query(`SELECT set_config('app.current_org_id', '', false)`); } catch { /* best-effort */ }
+    client.release();
+  }
 });
 
 test("Q-C: ON CONFLICT DO NOTHING is now a real idempotency guarantee (second insert = 0 rows)", async () => {

@@ -9,18 +9,27 @@
   `(source_system, source_ref)` (loadRouteRunById lateral, visitService,
   cleanLogsCanonicalQuery, Control Center) get a prefix index — the table
   previously had only `(id)` and `(org_id, status)`; (b) linkage uniqueness is
-  enforced at its true grain (one assignment per run×location). The COALESCE leg
-  is the PG14 workaround for nullable `location_id` (no `NULLS NOT DISTINCT`
-  until PG15 — ISSUE-029).
+  enforced at its true grain (one assignment per run×location). NULLs are
+  DISTINCT under the index (PG14 default) — deliberately: a first-cut
+  `COALESCE(location_id, -1)` key collapsed every NULL-location stop of a run
+  onto one value, so a run with 2+ spine-unresolved stops lost assignments to
+  `ON CONFLICT` and the write-time validation 500'd. **CI caught it** (the
+  sparse-seed ad-hoc test: `SEAMD_ADHOC_A/B` carry no `location_external_ids`
+  rows; dev's fully-populated spine masked it locally). Reverted to a plain
+  column key; NULL-location rows are not dedup-protected (acceptable — NULL
+  location is already a warned spine gap; PG15 `NULLS NOT DISTINCT` is the
+  clean upgrade, ISSUE-029). A dedicated regression test pins the
+  no-collapse semantics.
 - `routeRunService.createRouteRun`: write-time linkage validation — throws (full
   rollback) if the assignment INSERT resolves fewer rows than the run has stops;
   warns (never silently) when a stop resolves but its location spine does not
   (NULL `location_id`, §5.1-adjacent).
-- New canonical tests (`qcAssignmentLinkage.test.ts`, 4 tests, registered in
-  `run.ts`): index present+UNIQUE+prefix-covering; double-fire inserts zero
-  (idempotency); no dangling and no cross-org `source_ref` resolution; **no FK
-  from `core.assignments` into `route_runs`** (the string-translation rule made
-  a structural assertion).
+- New canonical tests (`qcAssignmentLinkage.test.ts`, 5 tests, registered in
+  `run.ts`): index present+UNIQUE+prefix-covering+no-COALESCE; NULL-location
+  no-collapse regression (2 NULL-loc rows same run both insert; real-loc dup
+  conflicts to zero); double-fire inserts zero (idempotency); no dangling and
+  no cross-org `source_ref` resolution; **no FK from `core.assignments` into
+  `route_runs`** (the string-translation rule made a structural assertion).
 
 ## Why
 - Board card ISSUE-031/Q-C; migration-sequence Phase 3 Step 3.1.
@@ -36,8 +45,12 @@
 
 ## Verification
 - Runner applied + recorded on dev (`schema_migrations` row confirmed); re-run
-  skips (idempotent). Live dup-precheck passed (table currently empty).
-- Backend canonical suite: **186 passed / 0 failed** (182 prior + 4 new Q-C).
+  skips (idempotent). Live dup-precheck passed (table currently empty). After
+  the CI-caught COALESCE revert, dev's index was hand-aligned to the edited
+  (already-recorded, unmerged) migration in one step — file and DB consistent,
+  no ledger drift (ISSUE-038 discipline; PR unmerged so no other environment
+  had applied the old form).
+- Backend canonical suite: **187 passed / 0 failed** (182 prior + 5 new Q-C).
 - Clean-room gate note: a full empty-DB rebuild is not executable on the local
   dev cluster — it has **no superuser role at all** (initdb superuser `fieldpro`
   was permanently downgraded by the ISSUE-041 bootstrap; no `postgres` role), so

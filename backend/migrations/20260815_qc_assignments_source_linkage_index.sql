@@ -21,11 +21,16 @@
 --      grain, not run-grain; surfaced (not masked) per the artifact's own
 --      pre-condition rule. See the Q-C changelog entry.
 --
---   The COALESCE(location_id, -1) leg exists because location_id is nullable
---   (the create path LEFT JOINs the location spine) and this cluster runs
---   PG14, which lacks UNIQUE NULLS NOT DISTINCT (PG15+, ISSUE-029). Without
---   it, duplicate NULL-location assignments would slip the uniqueness net.
---   -1 is impossible as a real core.locations id (bigserial ≥ 1).
+--   location_id is nullable (the create path LEFT JOINs the location spine),
+--   and NULLs are DISTINCT under this index (PG14 default). That is
+--   deliberate: a COALESCE(location_id, -1) leg was tried first and REVERTED —
+--   it collapses every NULL-location stop of a run onto one key, so a run
+--   with 2+ spine-unresolved stops loses assignments to ON CONFLICT (caught
+--   by CI's sparse-seed ad-hoc test: SEAMD_ADHOC_A/B carry no
+--   location_external_ids rows, run 500'd on the write-time validation).
+--   Consequence: NULL-location rows are not dedup-protected — acceptable, as
+--   NULL location is already a warned spine gap (see createRouteRun's Q-C
+--   warn) and PG15's NULLS NOT DISTINCT is the clean upgrade (ISSUE-029).
 --
 -- WHY THIS MAKES ON CONFLICT REAL
 --   createRouteRun's assignment INSERT has carried `ON CONFLICT DO NOTHING`
@@ -55,13 +60,15 @@ BEGIN;
 DO $$
 DECLARE dup_report text;
 BEGIN
+  -- NULL-location rows are excluded: NULLs are distinct under the index, so
+  -- they cannot violate it and must not block creation.
   SELECT string_agg(format('(%s, %s, loc=%s) ×%s', source_system, source_ref,
-                           COALESCE(location_id::text, 'NULL'), n), '; ')
+                           location_id, n), '; ')
   INTO dup_report
   FROM (
     SELECT source_system, source_ref, location_id, COUNT(*) AS n
     FROM core.assignments
-    WHERE source_system IS NOT NULL
+    WHERE source_system IS NOT NULL AND location_id IS NOT NULL
     GROUP BY source_system, source_ref, location_id
     HAVING COUNT(*) > 1
     LIMIT 20
@@ -73,9 +80,9 @@ BEGIN
 END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_core_assignments_source_linkage
-  ON core.assignments (source_system, source_ref, (COALESCE(location_id, -1)));
+  ON core.assignments (source_system, source_ref, location_id);
 
 COMMENT ON INDEX core.idx_core_assignments_source_linkage IS
-  'Q-C (ISSUE-031): canonical↔vertical linkage. Unique per (source_system, source_ref, location) — one assignment per run×stop; run→assignments is deliberately 1:N. Prefix serves (source_system, source_ref) spine joins. COALESCE leg = PG14 NULL-distinct workaround (ISSUE-029). Never replace with an FK into a vertical table.';
+  'Q-C (ISSUE-031): canonical↔vertical linkage. Unique per (source_system, source_ref, location) — one assignment per run×stop; run→assignments is deliberately 1:N. Prefix serves (source_system, source_ref) spine joins. NULLs distinct on PG14: NULL-location rows are not dedup-protected (deliberate — a COALESCE key collapsed multi-NULL runs; PG15 NULLS NOT DISTINCT is the upgrade path, ISSUE-029). Never replace with an FK into a vertical table.';
 
 COMMIT;
