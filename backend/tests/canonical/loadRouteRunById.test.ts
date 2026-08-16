@@ -132,6 +132,22 @@ test("loadRouteRunById: cross-tenant request returns null (fail-closed)", async 
     const sameTenant = await loadRouteRunById(routeRunId, orgBId);
     assert(sameTenant !== null, "same-tenant load must return the row");
     assertEqual(Number(sameTenant!.id), routeRunId, "same-tenant load returns the correct route_run id");
+
+    // D5 guardrail tripwire (ISSUE-031): the live route-detail payload must not
+    // carry per-stop service timing. Per-stop completed_at (or any actual
+    // per-stop duration) on a single-assignee route re-identifies the worker by
+    // adjacency — the schema-layer non-attribution guarantee defeated at the
+    // presentation layer. planned_* (OSRM estimates) and run-level aggregates
+    // are sanctioned; deep-scan every stop row for the forbidden keys.
+    const forbiddenStopKeys = ["completed_at", "started_at", "ended_at", "duration_s", "service_time_s"];
+    for (const stop of (sameTenant as any).stops) {
+      for (const key of forbiddenStopKeys) {
+        assert(
+          !(key in stop),
+          `D5 guardrail: per-stop '${key}' must not appear in the live route-detail payload (found on stop ${stop.stop_id})`
+        );
+      }
+    }
   } finally {
     if (routeRunId !== null && stopId !== null) {
       await cleanupOrgBRouteRun(orgBId, routeRunId, stopId);

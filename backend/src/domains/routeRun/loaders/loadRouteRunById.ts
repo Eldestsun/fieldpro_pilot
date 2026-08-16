@@ -38,7 +38,13 @@ export async function loadRouteRunById(id: number | string, orgId: number | stri
       rrs.id                 AS route_run_stop_id,
       rrs.sequence,
       rrs.status             AS stop_status,
-      rrs.completed_at,
+      -- D5 guardrail (ISSUE-031): rrs.completed_at is NOT selected. Per-stop
+      -- service timing on a live, route-keyed, single-assignee surface
+      -- re-identifies the worker by adjacency (name + per-stop timeline in one
+      -- payload). Timing is still CAPTURED (route_run_stops.completed_at,
+      -- core.visits started_at/ended_at) — it is only never SURFACED here.
+      -- Route-level aggregates (rr.started_at/finished_at/total_duration_s)
+      -- are the sanctioned live grain. See calibration-decisions D4/D5.
       rrs.planned_distance_m,
       rrs.planned_duration_s,
       rrs.created_at         AS route_run_stop_created_at,
@@ -196,7 +202,7 @@ export async function loadRouteRunById(id: number | string, orgId: number | stri
             stopNumber: r.stop_number,
             sequence: r.sequence,
             status: r.stop_status,
-            completed_at: r.completed_at,
+            // D5: no completed_at / per-stop service time here — see SELECT comment.
             planned_distance_m: r.planned_distance_m,
             planned_duration_s: r.planned_duration_s,
             trash_volume: r.trash_volume,
