@@ -3,7 +3,7 @@
 Follows the same-day investigation
 (`planning/intelligence-layer/ARRIVAL_PHASE_DATA_PATH.md`, committed in this
 change) and the same-day write-path cleanup
-(`docs/changelog/2026-05-25-writepath-manufactured-state-cleanup.md`). The
+(`docs/changelog/refactor/2026-05-25-writepath-manufactured-state-cleanup.md`). The
 investigation found the arrival code path:
 - structurally manufactured state (canonical state layer §2 invariant #5 —
   hardcoded `state: 'dirty'` / `state: 'has_trash'` rows with no specialist
