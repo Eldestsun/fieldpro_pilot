@@ -745,8 +745,8 @@ alert.
    retired — the third tombstone, `infrastructure_issue_present`, was added
    2026-05-25 in the write-path cleanup that followed the ratification sprint),
    all of which fit the four-kind taxonomy. See
-   `docs/changelog/2026-05-25-state-layer-ratification-seeding.md` and
-   `docs/changelog/2026-05-25-writepath-manufactured-state-cleanup.md` for
+   `docs/changelog/refactor/2026-05-25-state-layer-ratification-seeding.md` and
+   `docs/changelog/refactor/2026-05-25-writepath-manufactured-state-cleanup.md` for
    the full mapping tables.
 
    **Manufactured-state status (write path):** As of the 2026-05-25 cleanup,
