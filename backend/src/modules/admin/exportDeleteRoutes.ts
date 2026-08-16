@@ -5,7 +5,7 @@ import * as path from "path";
 import * as zlib from "zlib";
 import { promisify } from "util";
 import { requireAuth, requireAnyRole } from "../../authz";
-import { pool } from "../../db";
+import { pool, withAuditOrgContext } from "../../db";
 import { auditWrite, reqOrgId, reqTenantUuid } from "../../middleware/auditWrite";
 
 const gzip = promisify(zlib.gzip);
@@ -118,48 +118,65 @@ exportDeleteRoutes.post(
 
       // Identity now lives in the per-table sidecars (§3.2). LEFT JOIN and alias
       // back to the original column names so the export bundle format is unchanged.
-      // core.assignments
-      const assignRes = await client.query(
-        `SELECT a.*, s.actor_ref AS created_by_oid
-         FROM core.assignments a
-         LEFT JOIN core.assignment_actor_audit s ON s.assignment_id = a.id
-         WHERE a.org_id = $1`,
-        [orgInt],
-      );
-      exportData.assignments = assignRes.rows;
+      //
+      // Q-F (ISSUE-031 / ISSUE-028): these four queries are the export channel's
+      // worker-identity reads — they run on the AUDIT CHANNEL (audit_reader), not
+      // the app role. Fail-closed: if the channel is unconfigured, the export
+      // fails visibly rather than silently reading sidecars as fieldpro.
+      const { assignRows, visitRows, obsRows, evRows } = await withAuditOrgContext(
+        orgInt,
+        async (audit) => {
+          // core.assignments
+          const assignRes = await audit.query(
+            `SELECT a.*, s.actor_ref AS created_by_oid
+             FROM core.assignments a
+             LEFT JOIN core.assignment_actor_audit s ON s.assignment_id = a.id
+             WHERE a.org_id = $1`,
+            [orgInt],
+          );
 
-      // core.visits — include both plaintext and KMS-ciphertext OID fields (relocated to sidecar)
-      const visitsRes = await client.query(
-        `SELECT v.*, s.actor_ref AS actor_oid,
-                s.actor_ref_ciphertext AS captured_by_oid_ciphertext,
-                s.actor_ref_key_id     AS captured_by_oid_key_id
-         FROM core.visits v
-         LEFT JOIN core.visit_actor_audit s ON s.visit_id = v.id
-         WHERE v.org_id = $1`,
-        [orgInt],
-      );
-      exportData.visits = visitsRes.rows;
-      const visitIds: bigint[] = visitsRes.rows.map((r: any) => BigInt(r.id));
+          // core.visits — include both plaintext and KMS-ciphertext OID fields (relocated to sidecar)
+          const visitsRes = await audit.query(
+            `SELECT v.*, s.actor_ref AS actor_oid,
+                    s.actor_ref_ciphertext AS captured_by_oid_ciphertext,
+                    s.actor_ref_key_id     AS captured_by_oid_key_id
+             FROM core.visits v
+             LEFT JOIN core.visit_actor_audit s ON s.visit_id = v.id
+             WHERE v.org_id = $1`,
+            [orgInt],
+          );
 
-      // core.observations
-      const obsRes = await client.query(
-        `SELECT o.*, s.actor_ref AS created_by_oid
-         FROM core.observations o
-         LEFT JOIN core.observation_actor_audit s ON s.observation_id = o.id
-         WHERE o.org_id = $1`,
-        [orgInt],
-      );
-      exportData.observations = obsRes.rows;
+          // core.observations
+          const obsRes = await audit.query(
+            `SELECT o.*, s.actor_ref AS created_by_oid
+             FROM core.observations o
+             LEFT JOIN core.observation_actor_audit s ON s.observation_id = o.id
+             WHERE o.org_id = $1`,
+            [orgInt],
+          );
 
-      // core.evidence (metadata only — storage_key references blobs, blobs not included)
-      const evRes = await client.query(
-        `SELECT e.*, s.actor_ref AS captured_by_oid
-         FROM core.evidence e
-         LEFT JOIN core.evidence_actor_audit s ON s.evidence_id = e.id
-         WHERE e.org_id = $1`,
-        [orgInt],
+          // core.evidence (metadata only — storage_key references blobs, blobs not included)
+          const evRes = await audit.query(
+            `SELECT e.*, s.actor_ref AS captured_by_oid
+             FROM core.evidence e
+             LEFT JOIN core.evidence_actor_audit s ON s.evidence_id = e.id
+             WHERE e.org_id = $1`,
+            [orgInt],
+          );
+
+          return {
+            assignRows: assignRes.rows,
+            visitRows: visitsRes.rows,
+            obsRows: obsRes.rows,
+            evRows: evRes.rows,
+          };
+        },
       );
-      exportData.evidence = evRes.rows;
+      exportData.assignments = assignRows;
+      exportData.visits = visitRows;
+      const visitIds: bigint[] = visitRows.map((r: any) => BigInt(r.id));
+      exportData.observations = obsRows;
+      exportData.evidence = evRows;
 
       // stop_effort_history and stop_condition_history — scoped via visit_id FK
       if (visitIds.length > 0) {
