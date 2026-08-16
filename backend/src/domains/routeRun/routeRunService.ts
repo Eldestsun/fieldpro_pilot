@@ -438,8 +438,33 @@ export async function createRouteRun(
       LEFT JOIN core.v_locations_transit loc ON loc.stop_id = rrs.stop_id
       WHERE rrs.route_run_id = $2::bigint
       ON CONFLICT DO NOTHING
-      RETURNING id, org_id
+      RETURNING id, org_id, location_id
     `, [runDateVal, routeRunId]);
+
+    // Q-C (ISSUE-031) write-time linkage validation — the linkage is one
+    // assignment PER STOP (1:N run→assignments; unique per run×location via
+    // idx_core_assignments_source_linkage). A shortfall here means a stop
+    // failed to resolve through the stops/assets joins (or a real uniqueness
+    // conflict swallowed a row) — either way the linkage did NOT resolve, and
+    // shipping a run with silently-missing assignment intent is exactly the
+    // invisible failure this system must never produce. Throw inside the
+    // transaction → full rollback, visible error.
+    if (assignRes.rows.length !== sanityCheckedStops.length) {
+      throw new Error(
+        `[createRouteRun] Q-C linkage validation failed for route_run ${routeRunId}: ` +
+        `expected ${sanityCheckedStops.length} assignments (one per stop), inserted ${assignRes.rows.length}. ` +
+        `A stop did not resolve through public.stops/public.assets, or a duplicate ` +
+        `(source_system, source_ref, location) conflicted. Transaction rolled back.`
+      );
+    }
+    // NULL location = the stop resolved but the location spine did not (LEFT
+    // JOIN miss). Tolerated (§5.1-adjacent spine gap), but never silent.
+    const nullLocCount = assignRes.rows.filter((r: any) => r.location_id == null).length;
+    if (nullLocCount > 0) {
+      console.warn(
+        `[createRouteRun] Q-C: ${nullLocCount}/${assignRes.rows.length} assignments for route_run ${routeRunId} have NULL location_id (v_locations_transit miss)`
+      );
+    }
 
     // Identity sidecar for the assignments just created (RETURNING yields only the
     // rows actually inserted, so ON CONFLICT-skipped duplicates get no sidecar row).

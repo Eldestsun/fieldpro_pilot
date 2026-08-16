@@ -105,6 +105,7 @@ import "./canonical/stopHistory.test";
 import "./canonical/adhocRouteRuns.test";
 import "./canonical/ccOverviewAccessBlockedDrift.test";
 import "./canonical/previewPoolOrgContext.test";
+import "./canonical/qcAssignmentLinkage.test";
 
 (async () => {
   console.log("canonical integration tests — real local DB, no mocking\n");
