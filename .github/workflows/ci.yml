@@ -108,6 +108,19 @@ jobs:
         env:
           DATABASE_URL: postgres://fieldpro_admin:ci_admin_pw@localhost:5432/fieldpro_test
 
+      # ISSUE-028 / Q-F: the audit/export identity channel connects as
+      # audit_reader. The migration chain owns the role's existence + grant
+      # posture (NOLOGIN in version control); the LOGIN credential is
+      # environment-owned. Like fieldpro_test above, a THROWAWAY per-run
+      # password is correct for the ephemeral CI Postgres.
+      - name: Enable audit_reader login (audit channel — ISSUE-028)
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -c "ALTER ROLE audit_reader WITH LOGIN PASSWORD 'ci_audit_reader_pass';"
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://fieldpro_admin:ci_admin_pw@localhost:5432/fieldpro_test
+
       # S1-13 env parity: the DEV/TEST cipher adapter (DevStaticKeyAdapter,
       # src/lib/oidCipher.ts) requires DEV_OID_KEY — a 32-byte hex key (64 hex
       # chars). Locally it lives in gitignored backend/.env; CI had nothing, so
@@ -129,6 +142,9 @@ jobs:
           # Connect as the non-superuser fieldpro_test so FORCE RLS is enforced
           # (see "Create non-superuser test role" above / ISSUE-025).
           DATABASE_URL: postgres://fieldpro_test:fieldpro_test_pass@localhost:5432/fieldpro_test
+          # ISSUE-028 / Q-F: audit channel credential (throwaway; matches the
+          # "Enable audit_reader login" step above).
+          AUDIT_READER_PASSWORD: ci_audit_reader_pass
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_API_AUDIENCE: ${{ secrets.AZURE_API_AUDIENCE }}
 

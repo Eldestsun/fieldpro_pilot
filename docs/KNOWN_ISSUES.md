@@ -635,7 +635,13 @@ This is the production half of **S1-13** (KMS-encrypted actor OID on the canonic
 ---
 
 ## ISSUE-028 — `audit_reader` role is NOLOGIN / unwired; export channel still reads sidecars as `fieldpro`
-**Status:** Open — filed 2026-06-11 (KNOWN_ISSUES 027–031 backfill)
+**Status:** Fixed 2026-08-16 (with ISSUE-031/Q-F) — grant posture version-controlled in
+`20260816_issue028_audit_reader_grant_provision.sql` (recon found the described grants had
+drifted away entirely — the role held NOTHING on the sidecars; ISSUE-040's class); export
+identity reads repointed onto a dedicated fail-closed `audit_reader` pool
+(`db.ts getAuditPool`/`withAuditOrgContext`); LOGIN credential environment-owned (dev
+`.env`, CI throwaway). Changelog:
+`docs/changelog/security/2026-08-16-issue028-qf-audit-reader-channel.md`.
 **Discovered:** 2026-06-11 (live repo audit §9d — `pg_roles` shows `audit_reader.rolcanlogin = false`)
 **Area:** backend — DB role provisioning + export read paths (`exportDeleteRoutes`, `sftpExport`); DB connection/role wiring (`backend/src/db.ts`)
 **Severity:** medium (latent — the correct grant boundary exists at the DB level but the export channel does not use it)
