@@ -1,5 +1,12 @@
 # BASELINE Security Hardening Sprint — Index
 
+> **SPRINTS CLOSED — HISTORICAL RECORD.** Sprint 1 (code gaps) and Sprint 2 (policy
+> docs) are complete; Sprint 3 items are founder tasks tracked outside this file.
+> Security work did not stop — later hardening (identity-at-rest encryption,
+> fail-closed org resolution, grant-posture migrations, 2026-06/07) was dispatched
+> from the Notion BASELINE Work Tracker and recorded in `docs/changelog/security/`,
+> not added here. Do not pick work from this index. (Banner added 2026-08-15.)
+>
 > Orchestration layer for the Security Hardening & Procurement Compliance track.
 > Based on: `BASELINE_Security_Hardening_Plan.docx` + `BASELINE_Gap_Analysis.docx`
 > Prerequisite: Refactor (Tiers 1–8) and Refinement (R1–R10) tracks complete or stable.

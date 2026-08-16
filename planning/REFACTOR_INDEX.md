@@ -1,5 +1,10 @@
 # BASELINE Refactor Index
 
+> **TRACK COMPLETE — HISTORICAL RECORD.** All tiers (1–8) shipped as of 2026-05-13.
+> This index is no longer live tracking; do not pick work from it. Active work is
+> dispatched from the Notion BASELINE Work Tracker (see CLAUDE.md § Work Tracking).
+> Kept for traceability of what each tier changed and why. (Banner added 2026-08-15.)
+>
 > Orchestration layer for the canonical-model migration.
 > Each tier has its own handoff file. This document tracks ordering, dependencies, and current status.
 > Last updated: 2026-05-13 (Tiers 1–8 complete)

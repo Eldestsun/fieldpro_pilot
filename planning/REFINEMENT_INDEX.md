@@ -1,5 +1,10 @@
 # BASELINE App Refinement Index
 
+> **TRACK COMPLETE — HISTORICAL RECORD.** All items (R1–R10) shipped; the Capability
+> Build track lists this as a satisfied prerequisite. This index is no longer live
+> tracking; do not pick work from it. Active work is dispatched from the Notion
+> BASELINE Work Tracker (see CLAUDE.md § Work Tracking). (Banner added 2026-08-15.)
+>
 > Orchestration layer for the product refinement track.
 > Runs alongside and after the DB Refactor (Tiers 1–6).
 > Each item has its own handoff file. This document tracks ordering, dependencies, and status.

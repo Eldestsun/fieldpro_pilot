@@ -35,7 +35,8 @@ captures truth as a byproduct of work, not as the work itself. (Full background:
 | Architecture | `planning/architecture/target_architecture.md` + `current_state.md` | specs, workspace files | updated architecture doc + changelog entry |
 | Refactor | `planning/REFACTOR_INDEX.md` → relevant `planning/refactor/TIER_N_*.md` | unrelated tiers, frontend files | code changes per tier done-criteria + changelog entry |
 | Refinement | `planning/REFINEMENT_INDEX.md` → relevant `planning/refinement/REFINEMENT_R*.md` | unrelated items, refactor tiers | code changes per item done-criteria + changelog entry |
-| Security hardening | `planning/REFINEMENT_INDEX.md` + `planning/REFACTOR_INDEX.md` → `planning/security/SECURITY_SPRINT_INDEX.md` → relevant sprint file | unrelated tracks | code/docs per sprint done-criteria + changelog entry |
+| Security hardening | `planning/REFINEMENT_INDEX.md` + `planning/REFACTOR_INDEX.md` → `planning/SECURITY_SPRINT_INDEX.md` → relevant `planning/security/` sprint file | unrelated tracks | code/docs per sprint done-criteria + changelog entry |
+| Capability build (Tn-XX) | `planning/capability-build/CAPABILITY_BUILD_INDEX.md` → relevant `planning/capability-build/specs/Tn-XX-*.md` | unrelated specs, closed refactor/refinement tiers | code changes per spec done-criteria + changelog entry |
 | Feature / Bug | `planning/REFACTOR_INDEX.md` + `planning/REFINEMENT_INDEX.md` (check both for in-flight work) → `frontend/CONTEXT.md` and/or `backend/CONTEXT.md` | unrelated workspaces | plan or code changes + changelog entry |
 | Documentation | `docs/CONTEXT.md` | all others | doc update |
 | Ops | `ops/CONTEXT.md` | all others | runbook or script + changelog entry |
@@ -274,6 +275,6 @@ to prefer it): see `docs/dev/mcp-tools.md`.
 
 These files are not routing artifacts. Do not load them unless explicitly instructed:
 
-- `docs/repo-tree.md` — stale tree snapshot
+- `repo-tree.md` (any location; gitignored, may exist locally) — stale tree snapshot
 - `docs/BUILD_LOG.md` — build history log
 - `docs/archive/` — superseded specs
