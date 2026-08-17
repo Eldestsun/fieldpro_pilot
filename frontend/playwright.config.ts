@@ -1,4 +1,19 @@
 import { defineConfig, devices } from '@playwright/test'
+import * as fs from 'fs'
+import * as path from 'path'
+
+// CRED-ENVLOCAL: load the gitignored .env.local so E2E_* credentials reach the
+// specs without shell exports — agent sessions (incl. mobile-driven Prompt3
+// runs) launch playwright directly and must find the saved test logins.
+// Hand-rolled parser (no dotenv dep in the frontend workspace); real env
+// always wins over the file.
+const envLocal = path.join(__dirname, '.env.local')
+if (fs.existsSync(envLocal)) {
+  for (const line of fs.readFileSync(envLocal, 'utf8').split('\n')) {
+    const m = line.match(/^([A-Z0-9_]+)=(.*)$/)
+    if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2]
+  }
+}
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:5173'
 

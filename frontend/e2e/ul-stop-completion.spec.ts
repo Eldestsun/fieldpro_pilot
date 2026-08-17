@@ -7,9 +7,11 @@ import path from 'path'
 // never hardcode credentials in this file.
 
 async function signInAsUL(page: Page) {
-  const email = process.env.E2E_UL_USER_EMAIL
-  const password = process.env.E2E_UL_USER_PASSWORD
-  if (!email || !password) throw new Error('E2E_UL_USER_EMAIL / E2E_UL_USER_PASSWORD not set')
+  // Post-rename key names (UL → Specialist); values live in gitignored
+  // frontend/.env.local, auto-loaded by playwright.config.ts.
+  const email = process.env.E2E_SPEC_USER_EMAIL
+  const password = process.env.E2E_SPEC_USER_PASSWORD
+  if (!email || !password) throw new Error('E2E_SPEC_USER_EMAIL / E2E_SPEC_USER_PASSWORD not set (fill frontend/.env.local — see .env.example)')
 
   await page.goto('/work')
 
