@@ -1,5 +1,5 @@
 
-import { pool } from "../db";
+
 import { rebuildStopRiskSnapshot } from "./riskMapService";
 
 /**
@@ -20,7 +20,7 @@ async function main() {
         console.log("Starting Risk Map Rebuild Job...");
         const start = Date.now();
 
-        const count = await rebuildStopRiskSnapshot(pool, orgId);
+        const count = await rebuildStopRiskSnapshot(orgId);
 
         const duration = ((Date.now() - start) / 1000).toFixed(2);
         console.log(`Success! Processed ${count} stops in ${duration}s.`);

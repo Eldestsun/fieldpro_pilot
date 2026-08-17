@@ -948,7 +948,7 @@ import { rebuildStopRiskSnapshot } from "../../intelligence/riskMapService";
 adminRoutes.post("/admin/intelligence/rebuild-risk-map", async (req: Request, res: Response) => {
   try {
     // PATTERN-001: the rebuild now requires an authoritative org (fail-closed).
-    const rows = await rebuildStopRiskSnapshot(pool, await resolveNumericOrgId(req));
+    const rows = await rebuildStopRiskSnapshot(await resolveNumericOrgId(req));
     res.json({ status: "ok", rows });
   } catch (err: any) {
     console.error("Error in /admin/intelligence/rebuild-risk-map:", err);

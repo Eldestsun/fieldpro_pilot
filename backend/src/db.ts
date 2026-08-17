@@ -109,3 +109,64 @@ export async function withAuditOrgContext<T>(
   const client = await getAuditPool().connect();
   return runWithOrgContext(client, orgId, fn);
 }
+
+// ── ISSUE-018 — the intelligence channel ─────────────────────────────────────
+// The risk-map rebuild (riskMapService) runs as `intelligence_reader` — the
+// no-identity-grant role (posture owned by
+// 20260816_issue018_intelligence_reader_grant_provision.sql). This is what
+// makes "labor-safe by structure, not policy" RUNTIME-BINDING: even if
+// intelligence code drifts, the connection itself cannot read a sidecar,
+// identity_directory, or route_runs (permission denied, proven by the channel
+// boundary test). FAIL-CLOSED like the audit channel: unconfigured ⇒ throw;
+// never a fieldpro fallback.
+let intelligencePool: Pool | null = null;
+
+export function getIntelligencePool(): Pool {
+  if (intelligencePool) return intelligencePool;
+
+  const explicitUrl = process.env.INTELLIGENCE_READER_DATABASE_URL;
+  if (explicitUrl) {
+    intelligencePool = new Pool({ connectionString: explicitUrl });
+    return intelligencePool;
+  }
+
+  const password = process.env.INTELLIGENCE_READER_PASSWORD;
+  if (!password) {
+    throw new Error(
+      "[intelligence channel] INTELLIGENCE_READER_PASSWORD (or INTELLIGENCE_READER_DATABASE_URL) is not set. " +
+      "Intelligence reads run ONLY as intelligence_reader (ISSUE-018) and never fall back " +
+      "to the app role. Set the credential (see backend/.env.example)."
+    );
+  }
+
+  if (process.env.DATABASE_URL) {
+    const u = new URL(process.env.DATABASE_URL);
+    u.username = "intelligence_reader";
+    u.password = password;
+    intelligencePool = new Pool({ connectionString: u.toString() });
+    return intelligencePool;
+  }
+
+  intelligencePool = new Pool({
+    host:     process.env.PGHOST     ?? "localhost",
+    port:     Number(process.env.PGPORT ?? 5432),
+    user:     "intelligence_reader",
+    password,
+    database: process.env.PGDATABASE ?? "fieldpro_db",
+  });
+  return intelligencePool;
+}
+
+// Org-scoped checkout on the intelligence channel (PATTERN-001: the derived
+// tables are FORCE RLS; a context-less rebuild would silently write/read
+// nothing).
+export async function withIntelligenceOrgContext<T>(
+  orgId: number | string | bigint,
+  fn: (client: PoolClient) => Promise<T>
+): Promise<T> {
+  if (orgId === null || orgId === undefined || orgId === "") {
+    throw new Error("withIntelligenceOrgContext: orgId is required");
+  }
+  const client = await getIntelligencePool().connect();
+  return runWithOrgContext(client, orgId, fn);
+}
