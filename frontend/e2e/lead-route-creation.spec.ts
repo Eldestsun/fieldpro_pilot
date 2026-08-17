@@ -3,9 +3,11 @@ import { test, expect, Page } from '@playwright/test'
 // ── auth helper ───────────────────────────────────────────────────────────────
 
 async function signInAsLead(page: Page) {
-  const email = process.env.E2E_LEAD_USER_EMAIL
-  const password = process.env.E2E_LEAD_USER_PASSWORD
-  if (!email || !password) throw new Error('E2E_LEAD_USER_EMAIL / E2E_LEAD_USER_PASSWORD not set')
+  // Post-rename key names (Lead → Dispatch); values live in gitignored
+  // frontend/.env.local, auto-loaded by playwright.config.ts.
+  const email = process.env.E2E_DISPATCH_USER_EMAIL
+  const password = process.env.E2E_DISPATCH_USER_PASSWORD
+  if (!email || !password) throw new Error('E2E_DISPATCH_USER_EMAIL / E2E_DISPATCH_USER_PASSWORD not set (fill frontend/.env.local — see .env.example)')
 
   await page.goto('/routes')
 
