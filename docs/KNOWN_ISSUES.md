@@ -405,7 +405,14 @@ Independent of the two deferred §9 migrations (normalized-columns backfill; act
 ---
 
 ## ISSUE-018 — Intelligence reads not yet routed through the `intelligence_reader` role — sidecar boundary not yet binding on the running app
-**Status:** Open — follow-on to the 2026-06-01 sidecar-extraction migration
+**Status:** Fixed 2026-08-16 — posture version-controlled
+(`20260816_issue018_intelligence_reader_grant_provision.sql`, identity wall asserted
+in-chain); risk-map job runs wholly on a dedicated fail-closed `intelligence_reader`
+pool (`db.ts getIntelligencePool`/`withIntelligenceOrgContext`); runtime boundary test
+proves every identity object is permission-denied on the live channel. ISSUE-025's
+reserved connection-routing decision resolved: pool-per-role (third instance).
+Phase-0 record: `planning/architecture/2026-06-06-issue-018-phase-0-context.md`.
+Changelog: `docs/changelog/security/2026-08-16-issue018-intelligence-channel.md`.
 **Discovered:** 2026-06-01 (sidecar extraction, `feat/sidecar-extraction`)
 **Area:** backend — DB connection/role wiring (`backend/src/db.ts` pool, intelligence read paths: `riskMapService`, MVs, any future intelligence consumer)
 **Severity:** medium (latent — the structural boundary exists at the DB level but the app does not yet use it)

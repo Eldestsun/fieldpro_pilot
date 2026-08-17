@@ -1,16 +1,23 @@
 
-import { Pool } from "pg";
+import { getIntelligencePool } from "../db";
 
 /**
- * Rebuilds the stop_risk_snapshot table from primary log tables.
- * Runs in a single transaction: TRUNCATE + INSERT ... SELECT.
+ * Rebuilds the stop_risk_snapshot table from the canonical state layer.
+ * Runs in a single transaction: DELETE + INSERT ... SELECT.
+ *
+ * ISSUE-018: this job IS the intelligence channel — it runs on the dedicated
+ * `intelligence_reader` pool (db.ts getIntelligencePool), the no-identity-grant
+ * role. The connection structurally cannot read a sidecar, identity_directory,
+ * or route_runs (permission denied at the DB), which is what makes the
+ * labor-safety claim runtime-binding rather than code-review discipline. The
+ * role holds DML only on this job's two derived outputs (stop_risk_snapshot,
+ * stop_condition_history). Do not pass an app-pool client into this file.
  *
  * Risk Scoring V1:
  * - Cleanliness: (Hotspot? HOTSPOT_BASE_WEIGHT:0) + L3_DAYS_WEIGHT*days + TRASH_VOL_WEIGHT*trash_avg
  * - Safety: 3.0 * hazard_severity
  * - Infrastructure: 2.0 * avg_infra_severity
  *
- * @param pool Postgres Pool instance
  * @returns Number of rows inserted
  */
 // Hotspot & scoring weights (tunable, must keep scores < 100 for numeric(4,2))
@@ -39,11 +46,12 @@ const HAZARD_MAX_DAYS_FOR_EFFECT = 7; // after this many days, hazard effect ≈
 // REQUIRED explicit parameter: callers resolve it authoritatively
 // (resolveNumericOrgId for routes, RISK_MAP_ORG_ID for the CLI job). There is
 // deliberately no default — an indeterminate org must refuse, never assume.
-export async function rebuildStopRiskSnapshot(pool: Pool, orgId: number | string): Promise<number> {
+export async function rebuildStopRiskSnapshot(orgId: number | string): Promise<number> {
     if (orgId === null || orgId === undefined || String(orgId) === "") {
         throw new Error("rebuildStopRiskSnapshot: orgId is required (fail-closed — never assumes a default org)");
     }
-    const client = await pool.connect();
+    // ISSUE-018: intelligence channel, never the app pool (see file header).
+    const client = await getIntelligencePool().connect();
     try {
         await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(orgId)]);
         await client.query("BEGIN");

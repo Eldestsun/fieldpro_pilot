@@ -163,7 +163,7 @@ test("org gate: the org-scoped scripts refuse to run without an explicit org (ri
   const { rebuildStopRiskSnapshot } = await import("../../src/intelligence/riskMapService");
   const { populate } = await import("../../src/scripts/populateEamBridge");
   for (const [name, call] of [
-    ["rebuildStopRiskSnapshot", () => rebuildStopRiskSnapshot(pool, "" as any)],
+    ["rebuildStopRiskSnapshot", () => rebuildStopRiskSnapshot("" as any)],
     ["populate (EAM bridge)", () => populate("" as any)],
   ] as const) {
     let threw = false;
