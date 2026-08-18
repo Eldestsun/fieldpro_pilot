@@ -289,17 +289,37 @@ ulRoutes.post(
                 kind,
             });
 
-            // 2. Persist to DB
+            // 2. Persist to DB — under org context, in one transaction.
+            // PATTERN-001/PHOTOS (2026-08-18): this used to pass the bare `pool`,
+            // so createStopPhotos' core.visits lookup ran with no
+            // app.current_org_id against FORCE RLS — the committed visit was
+            // invisible, core.evidence was silently skipped, and the route still
+            // returned ok:true. Org resolution fails closed (resolveNumericOrgId
+            // throws → 403 → no orphaned S3 objects presented as persisted).
+            // The explicit BEGIN/COMMIT is required: with a PoolClient,
+            // createStopPhotos joins the caller's transaction (Q-D atomicity —
+            // evidence + identity sidecar land together or not at all).
+            const numericOrgId = await resolveNumericOrgId(req);
             const s3Keys = uploadedKeys.map((u) => u.s3Key);
-            await createStopPhotos(pool, {
-                routeRunStopId: stopRunId,
-                userOid,
-                s3Keys,
-                kind,
+            const photos = await withOrgContext(numericOrgId, async (client) => {
+                await client.query("BEGIN");
+                try {
+                    await createStopPhotos(client, {
+                        routeRunStopId: stopRunId,
+                        userOid,
+                        s3Keys,
+                        kind,
+                    });
+                    await client.query("COMMIT");
+                } catch (err) {
+                    await client.query("ROLLBACK");
+                    throw err;
+                }
+                // 3. Updated list on the same org-scoped client. (Reads the frozen
+                // public.stop_photos adapter — repointing this reader onto
+                // core.evidence is the tracked P2 card ISSUE-035/036, not this fix.)
+                return listStopPhotosByRouteRunStop(client, stopRunId);
             });
-
-            // 3. Return updated list
-            const photos = await listStopPhotosByRouteRunStop(pool, stopRunId);
             return res.json({ ok: true, photos });
 
         } catch (err: any) {
