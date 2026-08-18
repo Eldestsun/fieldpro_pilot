@@ -167,7 +167,6 @@ export async function createRouteRun(
   client: any, // PoolClient
   params: {
     stops?: OsrmStop[]; // Optional: if missing, we fetch based on pool_id
-    user_id?: number;   // [LEGACY] OID is the preferred identity. If provided, inserted for back-compat.
     assigned_user_oid?: string; // Enterprise Assignment OID (UL)
     created_by_oid?: string;    // Enterprise Creator OID (Lead/Admin)
     route_pool_id: string;
@@ -177,7 +176,7 @@ export async function createRouteRun(
     is_adhoc?: boolean;         // SEAM-D D3: run-level ad-hoc tag. Explicit flag only; defaults false.
   }
 ) {
-  const { stops, user_id, assigned_user_oid, created_by_oid, route_pool_id, base_id, run_date, shift_type, is_adhoc } = params;
+  const { stops, assigned_user_oid, created_by_oid, route_pool_id, base_id, run_date, shift_type, is_adhoc } = params;
 
   let stopsToPlan = stops;
 
@@ -337,32 +336,38 @@ export async function createRouteRun(
       console.log(`[OSRM] Run Totals: Trip=${planned.duration_s}s, Final=${totalDur.toFixed(1)}s. Logic: Opt=${changedOpt}, Refine=${changedRefine}`);
     }
 
-    // Enterprise Identity: Insert OIDs.
-    // user_id is inserted only if provided. If undefined, we pass NULL.
+    // ISSUE-062: route_runs is the identity-free operational frame — no OID
+    // (or legacy user_id) columns. Assignment identity goes to the app-only
+    // sidecar public.route_run_assignment below, in the same transaction.
     const insertRunText = `
       INSERT INTO route_runs (
-        user_id, route_pool_id, base_id, run_date, status, total_distance_m, total_duration_s,
-        assigned_user_oid, created_by_oid, shift_type, is_adhoc
+        route_pool_id, base_id, run_date, status, total_distance_m, total_duration_s,
+        shift_type, is_adhoc
       )
-      VALUES ($1, $2, $3, $4, 'planned', $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, 'planned', $4, $5, $6, $7)
       RETURNING id
     `;
     // Default to today if run_date is missing
     const runDateVal = run_date || new Date();
 
     const runRes = await client.query(insertRunText, [
-      user_id ?? null, // Important: Explicitly null if undefined
       route_pool_id,
       base_id,
       runDateVal,
       totalDist,
       totalDur,
-      assigned_user_oid ?? null,
-      created_by_oid ?? null,
       shift_type ?? 'day',
       is_adhoc === true,
     ]);
     const routeRunId = runRes.rows[0].id;
+
+    // Operational assignment identity — app-only sidecar (ISSUE-062). One row
+    // per run; org_id copied from the frame row so RLS scopes both identically.
+    await client.query(
+      `INSERT INTO route_run_assignment (route_run_id, org_id, assigned_user_oid, created_by_oid)
+       SELECT id, org_id, $2, $3 FROM route_runs WHERE id = $1`,
+      [routeRunId, assigned_user_oid ?? null, created_by_oid ?? null]
+    );
 
     // -- NEW: Resolve asset_id for all stops --
     // Bulk lookup to avoid N+1
@@ -588,13 +593,19 @@ export async function checkAndCompleteRouteRun(
  * Assign a route run to a specific user (UL)
  */
 export async function assignRouteRun(client: any, routeRunId: number | string, assignedUserOid: string | null) {
-  const updateQuery = `
-    UPDATE route_runs
-    SET assigned_user_oid = $1,
-        updated_at = NOW()
-    WHERE id = $2
+  // ISSUE-062: assignment identity lives in the app-only sidecar, not on the
+  // route_runs frame. Upsert covers runs created before the sidecar existed
+  // (backfill only carried rows with a non-null OID). The INSERT..SELECT
+  // sources org_id from the frame row, so a missing/other-org run inserts
+  // nothing and rowCount 0 preserves the 404 contract.
+  const upsertQuery = `
+    INSERT INTO route_run_assignment (route_run_id, org_id, assigned_user_oid, assigned_at)
+    SELECT id, org_id, $1, NOW() FROM route_runs WHERE id = $2
+    ON CONFLICT (route_run_id) DO UPDATE
+      SET assigned_user_oid = EXCLUDED.assigned_user_oid,
+          assigned_at = NOW()
   `;
-  const result = await client.query(updateQuery, [assignedUserOid, routeRunId]);
+  const result = await client.query(upsertQuery, [assignedUserOid, routeRunId]);
 
   if (result.rowCount === 0) {
     // throw consistent error
@@ -602,4 +613,7 @@ export async function assignRouteRun(client: any, routeRunId: number | string, a
     error.status = 404;
     throw error;
   }
+
+  // Keep the frame's updated_at fresh — assignment is still a run-level event.
+  await client.query(`UPDATE route_runs SET updated_at = NOW() WHERE id = $1`, [routeRunId]);
 }

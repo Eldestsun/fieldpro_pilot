@@ -114,10 +114,12 @@ devRoutes.post("/dev/seed-axe-fixture", async (req: Request, res: Response) => {
         // fixture assumption, not a resolution fallback).
         await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(org_id)]);
         // Idempotent: return existing run if one already exists for this OID
+        // (ISSUE-062: assignment identity lives in the route_run_assignment sidecar)
         const existing = await client.query(
-            `SELECT id FROM route_runs
-             WHERE assigned_user_oid = $1 AND status IN ('planned', 'in_progress')
-             ORDER BY created_at DESC LIMIT 1`,
+            `SELECT rr.id FROM route_runs rr
+             JOIN route_run_assignment rra ON rra.route_run_id = rr.id
+             WHERE rra.assigned_user_oid = $1 AND rr.status IN ('planned', 'in_progress')
+             ORDER BY rr.created_at DESC LIMIT 1`,
             [oid]
         );
         if (existing.rows.length > 0) {
@@ -134,15 +136,21 @@ devRoutes.post("/dev/seed-axe-fixture", async (req: Request, res: Response) => {
             return res.status(500).json({ error: 'Not enough stops in SE pool to seed fixture' });
         }
 
-        // Insert route_run — trigger auto-fills base_id and org_id from pool
+        // Insert route_run — trigger auto-fills base_id and org_id from pool.
+        // ISSUE-062: the frame is identity-free; assignment goes to the sidecar.
         const runRes = await client.query(
             `INSERT INTO route_runs
-               (route_pool_id, run_date, status, org_id, assigned_user_oid, created_by_oid)
-             VALUES ('SE', CURRENT_DATE, 'in_progress', $1, $2, $2)
+               (route_pool_id, run_date, status, org_id)
+             VALUES ('SE', CURRENT_DATE, 'in_progress', $1)
              RETURNING id`,
-            [org_id, oid]
+            [org_id]
         );
         const routeRunId: number = runRes.rows[0].id;
+        await client.query(
+            `INSERT INTO route_run_assignment (route_run_id, org_id, assigned_user_oid, created_by_oid)
+             VALUES ($1, $2, $3, $3)`,
+            [routeRunId, org_id, oid]
+        );
 
         // Insert 3 stops in pending state
         for (let i = 0; i < stopsRes.rows.length; i++) {
@@ -216,10 +224,11 @@ devRoutes.post("/dev/generate-route-run", async (req: Request, res: Response) =>
             stop_id: r.stop_id,
         }));
 
-        // 3. Create Route Run using helper
+        // 3. Create Route Run using helper. ISSUE-062: the legacy integer
+        // user_id request param is still accepted/validated above for caller
+        // compatibility but no longer forwarded — the column is gone.
         const { routeRunId } = await createRouteRun(client, {
             stops,
-            user_id,
             route_pool_id: pool_id,
             base_id,
         });

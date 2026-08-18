@@ -19,10 +19,6 @@ import { startRouteRunStopInternal } from "../../domains/routeRun/operations/sta
 export const routeRunRoutes = Router();
 
 const MAX_OSRM_STOPS = 25;
-// LEGACY: integer user_id on route_runs has no FK and no canonical significance.
-// The canonical UL identity is assigned_user_oid (already wired from req.body.ul_id).
-// This constant will be removed when the legacy user_id column is deprecated.
-const LEGACY_TRANSIT_USER_ID = 0;
 
 /**
  * @openapi
@@ -730,7 +726,6 @@ routeRunRoutes.post(
                     stops: stopsToPlan,
                     assigned_user_oid: assignedUserOid,
                     created_by_oid: createdByOid,
-                    user_id: LEGACY_TRANSIT_USER_ID,
                     route_pool_id: targetPoolId,
                     base_id: resolvedBaseId,
                     run_date,
@@ -1101,7 +1096,7 @@ routeRunRoutes.patch(
             const numericOrgId = await resolveNumericOrgId(req);
             const prevOid = await withOrgContext(numericOrgId, async (client) => {
                 const prevRes = await client.query(
-                    `SELECT assigned_user_oid FROM route_runs WHERE id = $1`,
+                    `SELECT assigned_user_oid FROM route_run_assignment WHERE route_run_id = $1`,
                     [id]
                 );
                 const prevOid: string | null = prevRes.rows[0]?.assigned_user_oid ?? null;

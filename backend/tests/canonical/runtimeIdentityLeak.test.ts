@@ -162,12 +162,18 @@ async function seedFixture(): Promise<void> {
       );
     }
     const runRes = await client.query(
-      `INSERT INTO route_runs (route_pool_id, run_date, status, assigned_user_oid, created_by_oid)
-       VALUES ($1, CURRENT_DATE, 'planned', $2, $3)
+      `INSERT INTO route_runs (route_pool_id, run_date, status)
+       VALUES ($1, CURRENT_DATE, 'planned')
        RETURNING id`,
-      [FIX_POOL, ASSIGNEE_OID, CREATOR_OID],
+      [FIX_POOL],
     );
     fixtureRunId = Number(runRes.rows[0].id);
+    // ISSUE-062: assignment identity lives in the route_run_assignment sidecar.
+    await client.query(
+      `INSERT INTO route_run_assignment (route_run_id, org_id, assigned_user_oid, created_by_oid)
+       SELECT id, org_id, $2, $3 FROM route_runs WHERE id = $1`,
+      [fixtureRunId, ASSIGNEE_OID, CREATOR_OID],
+    );
     // loadRouteRunById INNER-joins route_run_stops, so the run needs ≥1 stop to
     // resolve (else 404). Mirrors tests/setup createRouteRunFixture.
     await client.query(

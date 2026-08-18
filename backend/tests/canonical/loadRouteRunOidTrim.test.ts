@@ -43,9 +43,14 @@ test("SEAM-C item 4: /lead/route-runs/:id exposes assigned/creator NAME+ROLE but
   const { client, f } = await acquireRouteRunFixture();
   try {
     // Give the fixture run resolvable identity (seeded identity_directory rows).
+    // ISSUE-062: assignment identity lives in the route_run_assignment sidecar.
     await client.query(
-      `UPDATE route_runs SET assigned_user_oid = 'seed-specialist-oid',
-              created_by_oid = 'seed-dispatch-oid' WHERE id = $1`,
+      `INSERT INTO route_run_assignment (route_run_id, org_id, assigned_user_oid, created_by_oid)
+       SELECT id, org_id, 'seed-specialist-oid', 'seed-dispatch-oid'
+       FROM route_runs WHERE id = $1
+       ON CONFLICT (route_run_id) DO UPDATE
+         SET assigned_user_oid = EXCLUDED.assigned_user_oid,
+             created_by_oid = EXCLUDED.created_by_oid`,
       [f.routeRunId],
     );
 

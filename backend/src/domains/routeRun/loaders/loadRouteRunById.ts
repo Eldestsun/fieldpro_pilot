@@ -29,10 +29,10 @@ export async function loadRouteRunById(id: number | string, orgId: number | stri
       rr.total_duration_s,
       rr.created_at          AS route_run_created_at,
       rr.updated_at          AS route_run_updated_at,
-      rr.assigned_user_oid,
+      rra.assigned_user_oid,
       id_dir.display_name    AS assigned_user_name,
       id_dir.last_seen_role  AS assigned_user_role,
-      rr.created_by_oid,
+      rra.created_by_oid,
       creator.display_name   AS created_by_name,
       rp.label               AS route_pool_label,
       rrs.id                 AS route_run_stop_id,
@@ -73,6 +73,9 @@ export async function loadRouteRunById(id: number | string, orgId: number | stri
       COALESCE(cl.washed_can, false)       AS washed_can
     FROM route_runs rr
     LEFT JOIN route_pools rp ON rp.id = rr.route_pool_id
+    -- ISSUE-062: assignment identity lives in the app-only sidecar; the
+    -- route_runs frame carries no identity columns.
+    LEFT JOIN route_run_assignment rra ON rra.route_run_id = rr.id
     -- CONTROLLED EXCEPTION — identity_directory JOIN
     -- This is the only permitted JOIN to identity_directory in the codebase.
     -- Purpose: route detail view shows the Lead who assigned the route and
@@ -80,8 +83,8 @@ export async function loadRouteRunById(id: number | string, orgId: number | stri
     -- Constraint: this display name MUST NOT flow into any intelligence surface
     -- (risk maps, condition history, effort history, Control Center dashboards).
     -- Any new JOIN to identity_directory requires explicit review. See R11 spec.
-    LEFT JOIN identity_directory id_dir ON id_dir.oid = rr.assigned_user_oid
-    LEFT JOIN identity_directory creator ON creator.oid = rr.created_by_oid
+    LEFT JOIN identity_directory id_dir ON id_dir.oid = rra.assigned_user_oid
+    LEFT JOIN identity_directory creator ON creator.oid = rra.created_by_oid
     JOIN route_run_stops rrs ON rrs.route_run_id = rr.id
     JOIN stops s ON s.stop_id = rrs.stop_id
     -- SEAM-C: the 5 cleaning booleans derive from canonical action observations, not
