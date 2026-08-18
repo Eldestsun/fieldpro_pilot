@@ -21,6 +21,23 @@ services:
       # split — runs only on a fresh volume (initdb). See db/init/00_bootstrap_provisioner.sh.
       - ./db/init:/docker-entrypoint-initdb.d:ro
 
+  # ── Founder DB verification console (DEV ONLY — never in a hosted compose) ──
+  # Browser SQL console so the founder can independently verify what the system
+  # wrote ("the human is always the verifier") — including from a phone on the
+  # home LAN during mobile agent sessions: http://<mac-lan-ip>:8081
+  # Login = the DB credentials (server: postgres); nothing is auto-authenticated.
+  # Connection recipes + verification query pack: docs/dev/founder-db-verification.md
+  adminer:
+    image: adminer:4
+    container_name: fieldpro_adminer
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    ports:
+      - "8081:8080"
+
   minio:
     image: minio/minio:latest
     container_name: fieldpro_minio
