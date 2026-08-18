@@ -1,6 +1,11 @@
 import { defineConfig, devices } from '@playwright/test'
-import * as fs from 'fs'
-import * as path from 'path'
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// package.json is "type": "module", so Playwright loads this config as ESM —
+// no CommonJS __dirname; derive it from import.meta.url instead.
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // CRED-ENVLOCAL: load the gitignored .env.local so E2E_* credentials reach the
 // specs without shell exports — agent sessions (incl. mobile-driven Prompt3
