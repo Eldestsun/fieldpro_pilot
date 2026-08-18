@@ -243,6 +243,22 @@ suggest switching the founder to dev bypass when browser auth issues arise: the 
 Azure Entra, and the correct fix is always on the real MSAL/Entra path. Rationale and the
 two-context detail: see `docs/dev/dev-auth-bypass.md § Intended Use`.
 
+### Agent Smoke-Test Discipline (hard rule)
+
+Smoke-testing the app against the shared dev DB is expected after building — but leave the
+database as you found it:
+
+- **Clean up what you scaffold.** Runs, stops, visits, photos, observations created for a
+  smoke test are deleted when the test ends (or confined to fixtures that clean themselves
+  up). If test data is intentionally left behind, say so explicitly in the session output.
+- **Never "heal" existing data outside a dispatch.** Re-running a flow to make a missing row
+  appear, backfilling a mapping, or otherwise repairing state mid-test destroys the evidence
+  trail other sessions and the founder rely on (this happened: AGENT-SMOKE-1's 18:00Z
+  mystery visit). Found a gap → report it on the board; fixing it is its own dispatch.
+- **The founder verifies independently.** Every claim about what a test wrote must survive
+  the query pack in `docs/dev/founder-db-verification.md` — write your smoke output with
+  that audience in mind.
+
 ---
 
 ## Git Commit Convention
