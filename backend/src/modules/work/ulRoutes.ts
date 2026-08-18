@@ -113,12 +113,15 @@ ulRoutes.get(
 
             // Find the latest planned/in_progress run EXPLICITLY assigned to this OID
             // Do NOT use date inference. Do NOT use integer user_id.
+            // ISSUE-062: assignment identity lives in route_run_assignment
+            // (app-only sidecar), not on the route_runs frame.
             const findQuery = `
-        SELECT id
-        FROM route_runs
-        WHERE assigned_user_oid = $1
-          AND status IN ('planned', 'in_progress')
-        ORDER BY created_at DESC
+        SELECT rr.id
+        FROM route_runs rr
+        JOIN route_run_assignment rra ON rra.route_run_id = rr.id
+        WHERE rra.assigned_user_oid = $1
+          AND rr.status IN ('planned', 'in_progress')
+        ORDER BY rr.created_at DESC
         LIMIT 1
       `;
             // MT-2: route_runs is FORCE-RLS — resolve org first and run the lookup

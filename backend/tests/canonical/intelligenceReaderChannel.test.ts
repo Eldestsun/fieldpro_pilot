@@ -27,7 +27,14 @@ const IDENTITY_OBJECTS = [
   "core.evidence_actor_audit",
   "core.assignment_actor_audit",
   "public.identity_directory",
+  // ISSUE-062: route_runs is now the identity-free operational frame (zero
+  // identity columns — asserted below). It stays denied here deliberately:
+  // granting the frame to intelligence_reader is a future, explicit
+  // P4-Reporting decision, not a side effect of the extraction.
   "public.route_runs",
+  // ISSUE-062: the app-only assignment sidecar — the plaintext worker↔route
+  // store. Permanently walled from the intelligence channel.
+  "public.route_run_assignment",
 ];
 
 test("ISSUE-018: intelligence_reader grant posture — canonical reads + derived-output DML, NOBYPASSRLS", async () => {
@@ -93,6 +100,43 @@ test("ISSUE-018: RLS binds on the channel — context-less snapshot read sees ze
   } finally {
     bare.release();
   }
+});
+
+test("ISSUE-062: route_runs is the identity-free operational frame — zero identity columns", async () => {
+  // The extraction's schema guarantee: reporting can be pointed at the frame
+  // without an identity review, because there is nothing identity-shaped on it.
+  const r = await pool.query(
+    `SELECT column_name FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'route_runs'
+       AND (column_name IN ('assigned_user_oid', 'created_by_oid', 'user_id',
+                            'actor_oid', 'captured_by_oid')
+            OR column_name LIKE '%\\_oid')`,
+  );
+  assertEqual(
+    r.rowCount ?? 0, 0,
+    `route_runs must carry zero identity columns — found: ${
+      r.rows.map((x: any) => x.column_name).join(", ") || "none"}`,
+  );
+});
+
+test("ISSUE-062: no reporting-granted relation projects an identity column", async () => {
+  // Sweep every relation intelligence_reader can SELECT: none may expose an
+  // OID-shaped or user-id column. Converts the labor-safety claim from
+  // review-time promise to red-PR-if-violated.
+  const r = await pool.query(`
+    SELECT g.table_schema || '.' || g.table_name AS rel, c.column_name
+    FROM information_schema.role_table_grants g
+    JOIN information_schema.columns c
+      ON c.table_schema = g.table_schema AND c.table_name = g.table_name
+    WHERE g.grantee = 'intelligence_reader' AND g.privilege_type = 'SELECT'
+      AND (c.column_name LIKE '%\\_oid' OR c.column_name = 'oid'
+           OR c.column_name = 'user_id' OR c.column_name = 'actor_ref')
+  `);
+  assertEqual(
+    r.rowCount ?? 0, 0,
+    `reporting-granted relation(s) project identity column(s): ${
+      r.rows.map((x: any) => `${x.rel}.${x.column_name}`).join(", ") || "none"}`,
+  );
 });
 
 test("ISSUE-018: fail-closed plumbing — missing orgId throws, never defaults", async () => {
