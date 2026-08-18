@@ -1,5 +1,9 @@
-import { test, expect, Page } from '@playwright/test'
-import path from 'path'
+import { test, expect, type Page } from '@playwright/test'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// ESM package ("type": "module") — no CommonJS __dirname; derive it.
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // ── auth helper ───────────────────────────────────────────────────────────────
 // MSAL uses popup auth; we navigate through the Microsoft login form.
