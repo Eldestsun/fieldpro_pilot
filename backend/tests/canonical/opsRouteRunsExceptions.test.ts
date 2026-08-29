@@ -45,9 +45,7 @@ async function planAssignment(client: PoolClient, routeRunId: number): Promise<v
 async function runRow(baseUrl: string, runId: number): Promise<any> {
   const res = await fetch(`${baseUrl}/api/ops/route-runs?page=1&pageSize=200`, {
     headers: {
-      "X-Dev-User-Oid": "seam-a-a2-suite-dispatch",
-      "X-Dev-User-Roles": "Dispatch",
-      "X-Dev-User-Org-Id": ORG,
+      "X-Dev-Persona": "dispatch",
     },
   });
   assertEqual(res.status, 200, "/ops/route-runs returns 200 for Dispatch");

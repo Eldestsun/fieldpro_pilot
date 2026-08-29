@@ -43,9 +43,7 @@ const OVERVIEW = "/api/ops/control-center/overview";
 async function getOverview(baseUrl: string): Promise<{ hazards_reported: number }> {
   const res = await fetch(`${baseUrl}${OVERVIEW}`, {
     headers: {
-      "X-Dev-User-Oid": "seam-b-r1-suite-admin",
-      "X-Dev-User-Roles": "Admin",
-      "X-Dev-User-Org-Id": ORG,
+      "X-Dev-Persona": "admin",
     },
   });
   assertEqual(res.status, 200, "overview endpoint returns 200 for Admin");

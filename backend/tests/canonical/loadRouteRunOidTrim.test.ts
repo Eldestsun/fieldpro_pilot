@@ -56,9 +56,7 @@ test("SEAM-C item 4: /lead/route-runs/:id exposes assigned/creator NAME+ROLE but
 
     const res = await fetch(`${baseUrl}/api/lead/route-runs/${f.routeRunId}`, {
       headers: {
-        "X-Dev-User-Oid": "seam-c-oidtrim-suite-dispatch",
-        "X-Dev-User-Roles": "Dispatch",
-        "X-Dev-User-Org-Id": ORG,
+        "X-Dev-Persona": "dispatch",
       },
     });
     assertEqual(res.status, 200, "detail endpoint returns 200 for Dispatch");

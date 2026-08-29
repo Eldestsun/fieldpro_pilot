@@ -5,8 +5,9 @@
  *   Frontend: addInitScript seeds localStorage.__dev_user__ so the React
  *   router renders protected surfaces (requires VITE_DEV_AUTH_BYPASS=true
  *   in frontend/.env.local and Vite dev server running with that env).
- *   Backend: setExtraHTTPHeaders sends X-Dev-User-* headers so API calls
- *   return real data (requires DEV_AUTH_BYPASS=true on backend).
+ *   Backend: setExtraHTTPHeaders sends an X-Dev-Persona header so API calls
+ *   return real data (requires DEV_AUTH_BYPASS=true on backend; identity is
+ *   minted from the backend's fixed persona registry, GUARD-DEVBYPASS).
  *
  * Standard: WCAG 2.1 AA (wcag2a, wcag2aa, wcag21a, wcag21aa)
  *
@@ -30,20 +31,29 @@ const ORG_ID = 1
 /**
  * Seeds both bypass halves before page.goto():
  *   - localStorage.__dev_user__ (frontend bypass — React router renders protected route)
- *   - X-Dev-User-* headers (backend bypass — API calls return data)
+ *   - X-Dev-Persona header (backend bypass — API calls return data)
+ *
+ * GUARD-DEVBYPASS: the backend mints identity ONLY from its fixed persona
+ * registry (backend/src/middleware/devAuthBypass.ts DEV_PERSONAS). The
+ * localStorage half mirrors the same persona so both halves agree.
  */
-async function setupAuth(page: Page, oid: string, roles: string[]): Promise<void> {
+const BACKEND_PERSONAS: Record<string, { oid: string; roles: string[] }> = {
+  'ul-legacy': { oid: 'dev-persona-ul-legacy', roles: ['UL'] },
+  lead:        { oid: 'dev-persona-lead',      roles: ['Lead'] },
+  admin:       { oid: 'dev-persona-admin',     roles: ['Admin'] },
+}
+
+async function setupAuth(page: Page, persona: keyof typeof BACKEND_PERSONAS): Promise<void> {
+  const p = BACKEND_PERSONAS[persona]
   await page.addInitScript(
     ({ devUser }) => {
       localStorage.setItem('__dev_user__', JSON.stringify(devUser))
     },
-    { devUser: { oid, roles, org_id: ORG_ID } },
+    { devUser: { oid: p.oid, roles: p.roles, org_id: ORG_ID } },
   )
 
   await page.setExtraHTTPHeaders({
-    'x-dev-user-oid':    oid,
-    'x-dev-user-roles':  roles.join(','),
-    'x-dev-user-org-id': String(ORG_ID),
+    'x-dev-persona': String(persona),
   })
 }
 
@@ -85,7 +95,7 @@ async function waitForAppReady(page: Page, timeout = 20_000): Promise<void> {
 
 test.describe('Surface: UL Stop List', () => {
   test('axe — UL stop list', async ({ page }) => {
-    await setupAuth(page, 'axe-audit-ul', ['UL'])
+    await setupAuth(page, 'ul-legacy')
     await page.goto('/work')
     await waitForAppReady(page)
     await page.waitForLoadState('networkidle')
@@ -111,7 +121,7 @@ test.describe('Surface: UL Stop List', () => {
 
 test.describe('Surface: UL Stop Wizard', () => {
   test('axe — UL stop wizard mid-flow (after Start Stop)', async ({ page }) => {
-    await setupAuth(page, 'axe-audit-ul', ['UL'])
+    await setupAuth(page, 'ul-legacy')
     await page.goto('/work')
     await waitForAppReady(page)
     await page.waitForLoadState('networkidle')
@@ -135,8 +145,8 @@ test.describe('Surface: UL Stop Wizard', () => {
       test.info().annotations.push({
         type: 'fixture-gap',
         description:
-          'UL Stop Wizard: no stops loaded for axe-audit-ul. ' +
-          'Fixture requirement: a planned route_run assigned to axe-audit-ul with ≥1 stop.',
+          'UL Stop Wizard: no stops loaded for dev-persona-ul-legacy. ' +
+          'Fixture requirement: a planned route_run assigned to dev-persona-ul-legacy with ≥1 stop.',
       })
       const results = await runAxe(page, 'ul_stop_wizard')
       expect(results).toBeDefined()
@@ -161,7 +171,7 @@ test.describe('Surface: UL Stop Wizard', () => {
 
 test.describe('Surface: Lead Routes', () => {
   test('axe — Lead route pool view', async ({ page }) => {
-    await setupAuth(page, 'axe-audit-lead', ['Lead'])
+    await setupAuth(page, 'lead')
     await page.goto('/routes')
     await waitForAppReady(page)
     await page.waitForLoadState('networkidle')
@@ -184,7 +194,7 @@ test.describe('Surface: Lead Routes', () => {
 
 test.describe('Surface: Admin Panel', () => {
   test('axe — Admin pools panel', async ({ page }) => {
-    await setupAuth(page, 'axe-audit-admin', ['Admin'])
+    await setupAuth(page, 'admin')
     await page.goto('/admin/pools')
     await waitForAppReady(page)
     await page.waitForLoadState('networkidle')
@@ -207,7 +217,7 @@ test.describe('Surface: Admin Panel', () => {
 
 test.describe('Surface: Control Center', () => {
   test('axe — Control Center live data view', async ({ page }) => {
-    await setupAuth(page, 'axe-audit-admin', ['Admin'])
+    await setupAuth(page, 'admin')
     await page.goto('/admin/control-center')
     await waitForAppReady(page)
     await page.waitForLoadState('networkidle')

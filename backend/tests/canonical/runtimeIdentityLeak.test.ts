@@ -121,9 +121,9 @@ async function req(
 ): Promise<{ status: number; body: any }> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (role) {
-    headers["X-Dev-User-Oid"] = `runtime-leak-suite-${role}`;
-    headers["X-Dev-User-Roles"] = role;
-    headers["X-Dev-User-Org-Id"] = ORG;
+    // GUARD-DEVBYPASS: identity comes from the fixed persona registry; the
+    // persona name for each core role is its lowercase form.
+    headers["X-Dev-Persona"] = role.toLowerCase();
   }
   const res = await fetch(`${baseUrl}${path}`, { method, headers });
   let body: any = null;

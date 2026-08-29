@@ -6,8 +6,8 @@ import { test, assert } from "../setup";
  * ISSUE-059 — static source guard for the GET /api/users org-resolution path.
  *
  * WHY STATIC (not runtime): the fail-open branch is unreachable through the test
- * HTTP harness. Dev-bypass requires all three X-Dev-User-* headers, so it always
- * supplies org_id and short-circuits resolution; a synthetic bad-tid real-Entra
+ * HTTP harness. Dev-bypass mints a fixed persona (with org_id) from its
+ * registry, so it always short-circuits resolution; a synthetic bad-tid real-Entra
  * token can't pass requireAuth/JWKS in tests. So the only faithful red-demo — one
  * that turns RED if the fallback is reintroduced INTO resourceRoutes — is a source
  * assertion. This mirrors the cleanLogsIdentity.test.ts static-guard precedent, and

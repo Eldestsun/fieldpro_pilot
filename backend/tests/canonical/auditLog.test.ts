@@ -288,7 +288,9 @@ test("audit_log meta-trigger: failed request (invalid date) does not write entry
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as any).port;
 
-  const marker = `audit-read-fail-${Date.now()}`;
+  // GUARD-DEVBYPASS: the caller is the fixed admin persona (no per-test marker
+  // OID exists anymore), so the no-write assertion is time-scoped instead.
+  const startedAt = new Date();
 
   // Request with invalid 'from' date — handler returns 400 before auditWrite is called.
   await new Promise<void>((resolve, reject) => {
@@ -298,9 +300,7 @@ test("audit_log meta-trigger: failed request (invalid date) does not write entry
         port,
         path: "/api/admin/audit-log?from=not-a-date",
         headers: {
-          "x-dev-user-oid": marker,
-          "x-dev-user-roles": "Admin",
-          "x-dev-user-org-id": "1",
+          "x-dev-persona": "admin",
         },
       },
       (res) => {
@@ -318,8 +318,9 @@ test("audit_log meta-trigger: failed request (invalid date) does not write entry
   const check = await withOrgContext(META_ORG_ID, (client) =>
     client.query(
       `SELECT COUNT(*)::int AS ct FROM audit_log
-       WHERE actor_oid = $1 AND action = 'admin.audit_log_read'`,
-      [marker],
+       WHERE actor_oid = $1 AND action = 'admin.audit_log_read'
+         AND occurred_at >= $2`,
+      ["dev-persona-admin", startedAt],
     ),
   );
   assertEqual(check.rows[0].ct, 0, "no audit_log_read entry written for a failed request");

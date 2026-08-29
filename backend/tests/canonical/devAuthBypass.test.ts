@@ -1,7 +1,17 @@
 import { pool, test, assert, assertEqual } from '../setup';
 import { withOrgContext } from "../../src/db";
-import { createDevAuthBypass } from '../../src/middleware/devAuthBypass';
+import { createDevAuthBypass, DEV_PERSONAS } from '../../src/middleware/devAuthBypass';
 import { requireAnyRole } from '../../src/authz';
+
+// GUARD-DEVBYPASS — the bypass mints identity ONLY from the compile-time
+// persona registry. These tests prove:
+//   • both env gates still hold (production / literal-'true' opt-in);
+//   • the minted identity is the persona VERBATIM — no field is readable
+//     from the request;
+//   • the old X-Dev-User-* identity headers are DEAD: sending them mints
+//     nothing (the containment regression tripwire);
+//   • unknown/missing persona falls through to real auth;
+//   • every bypass use writes an audit row recording the persona name only.
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -62,153 +72,154 @@ test('devAuthBypass: returns null when DEV_AUTH_BYPASS="TRUE" (case sensitive)',
   assertEqual(result, null, 'DEV_AUTH_BYPASS check is case-sensitive — "TRUE" must not activate');
 });
 
+// ── Registry shape (the containment contract) ─────────────────────────────────
+
+test('devAuthBypass: persona registry is frozen, fixed-org, and carries no Admin outside org 1', async () => {
+  assert(Object.isFrozen(DEV_PERSONAS), 'DEV_PERSONAS must be frozen');
+  for (const [name, p] of Object.entries(DEV_PERSONAS)) {
+    assert(p.oid.startsWith('dev-persona-'), `${name}: oid must be a synthetic dev-persona-* value`);
+    assert(p.org_id === 1 || p.org_id === 2, `${name}: org must be the dev org (1) or the empty outsider org (2)`);
+    if (p.org_id !== 1) {
+      assert(!p.roles.includes('Admin'), `${name}: no Admin persona outside org 1`);
+    }
+  }
+});
+
 // ── Middleware behaviour tests ─────────────────────────────────────────────────
 
-test('devAuthBypass: with valid headers populates req.user and req.roles', async () => {
+test('devAuthBypass: persona header mints the fixed identity verbatim', async () => {
   const handler = createDevAuthBypass({ NODE_ENV: 'test', DEV_AUTH_BYPASS: 'true' });
   assert(handler !== null, 'handler must not be null in test env with bypass enabled');
 
-  const req  = mockReq({
-    'x-dev-user-oid':    'synthetic-oid-001',
-    'x-dev-user-roles':  'Admin',
-    'x-dev-user-org-id': '42',
-  });
+  const req  = mockReq({ 'x-dev-persona': 'admin' });
   const next = nextFn();
   handler(req as any, mockRes() as any, next.fn);
 
   assert(next.wasCalled(), 'next() must be called');
-  assertEqual((req.user as any)?.oid,    'synthetic-oid-001', 'req.user.oid');
+  assertEqual((req.user as any)?.oid,    'dev-persona-admin', 'req.user.oid is the fixed persona oid');
   assertEqual((req.user as any)?.tid,    '00000000-0000-0000-0000-000000000000', 'req.user.tid (null UUID for dev bypass)');
-  assertEqual((req.user as any)?.org_id, 42,                   'req.user.org_id parsed as int');
-  assert(Array.isArray(req.roles),                             'req.roles must be an array');
-  assertEqual(req.roles?.[0],            'Admin',              'req.roles[0]');
+  assertEqual((req.user as any)?.org_id, 1,                   'req.user.org_id is the persona\'s fixed org');
+  assert(Array.isArray(req.roles),                            'req.roles must be an array');
+  assertEqual(req.roles?.[0],            'Admin',             'req.roles[0] from the registry');
 });
 
-test('devAuthBypass: with valid headers, downstream requireAnyRole([Admin]) passes', async () => {
+test('devAuthBypass: legacy X-Dev-User-* identity headers are DEAD — they mint nothing', async () => {
   const handler = createDevAuthBypass({ NODE_ENV: 'test', DEV_AUTH_BYPASS: 'true' });
   assert(handler !== null, 'handler must not be null');
 
-  const req = mockReq({
-    'x-dev-user-oid':    'synthetic-oid-role-check',
-    'x-dev-user-roles':  'Admin',
-    'x-dev-user-org-id': '1',
-  });
-
-  // Populate req via bypass
-  const bypassNext = nextFn();
-  handler(req as any, mockRes() as any, bypassNext.fn);
-  assert(bypassNext.wasCalled(), 'bypass next() must be called');
-
-  // requireAnyRole must now pass
-  const roleMiddleware = requireAnyRole(['UL']); // Admin bypasses all role checks
-  const roleNext       = nextFn();
-  const res            = mockRes();
-  roleMiddleware(req as any, res as any, roleNext.fn);
-
-  assert(roleNext.wasCalled(), 'requireAnyRole must call next() when Admin role present');
-  assertEqual(res.statusCode(), undefined, 'no 403 must be emitted');
-});
-
-test('devAuthBypass: with valid headers, multi-role header parsed correctly', async () => {
-  const handler = createDevAuthBypass({ NODE_ENV: 'test', DEV_AUTH_BYPASS: 'true' });
-  assert(handler !== null, 'handler must not be null');
-
+  // The exact pre-GUARD-DEVBYPASS escalation: arbitrary role + arbitrary org.
   const req  = mockReq({
-    'x-dev-user-oid':    'synthetic-oid-multi',
-    'x-dev-user-roles':  'UL,Lead',
-    'x-dev-user-org-id': '7',
+    'x-dev-user-oid':    'attacker-oid',
+    'x-dev-user-roles':  'Admin',
+    'x-dev-user-org-id': '999',
+  });
+  const next = nextFn();
+  handler(req as any, mockRes() as any, next.fn);
+
+  assert(next.wasCalled(), 'next() must be called (fall-through to real auth)');
+  assertEqual(req.user, undefined, 'legacy identity headers must mint NOTHING');
+  assertEqual(req.roles, undefined, 'req.roles must remain unset');
+});
+
+test('devAuthBypass: persona identity ignores any accompanying identity headers', async () => {
+  const handler = createDevAuthBypass({ NODE_ENV: 'test', DEV_AUTH_BYPASS: 'true' });
+  assert(handler !== null, 'handler must not be null');
+
+  // Caller sends a persona AND tries to override org/roles via legacy headers.
+  const req = mockReq({
+    'x-dev-persona':     'specialist',
+    'x-dev-user-roles':  'Admin',
+    'x-dev-user-org-id': '999',
   });
   handler(req as any, mockRes() as any, () => {});
 
-  assertEqual(req.roles?.length, 2, 'two roles must be parsed');
-  assert(req.roles?.includes('UL'),   'roles must include UL');
-  assert(req.roles?.includes('Lead'), 'roles must include Lead');
+  assertEqual((req.user as any)?.oid,    'dev-persona-specialist', 'oid from registry');
+  assertEqual((req.user as any)?.org_id, 1,                        'org from registry, not header');
+  assertEqual(req.roles?.length, 1,                                'exactly the registry roles');
+  assertEqual(req.roles?.[0],    'Specialist',                     'role from registry, not header');
 });
 
-// Role rename Phase 1 — dual-accept verification.
-// A token claim carrying the *new* role string ('Specialist' / 'Dispatch')
-// must be accepted by a guard whose required-list still contains both old
-// and new strings.  This locks in the dual-accept window and will be
-// tightened in Phase 3 (single new-string only).
-test('devAuthBypass: requireAnyRole accepts new role strings (Specialist, Dispatch)', async () => {
+test('devAuthBypass: unknown persona falls through without setting req.user', async () => {
   const handler = createDevAuthBypass({ NODE_ENV: 'test', DEV_AUTH_BYPASS: 'true' });
   assert(handler !== null, 'handler must not be null');
 
-  // 1. Specialist must satisfy a guard configured for ["UL", "Specialist"]
-  const reqA = mockReq({
-    'x-dev-user-oid':    'rename-specialist',
-    'x-dev-user-roles':  'Specialist',
-    'x-dev-user-org-id': '1',
-  });
-  handler(reqA as any, mockRes() as any, () => {});
-  const specialistGuard = requireAnyRole(['UL', 'Specialist']);
-  const nextA = nextFn();
-  const resA  = mockRes();
-  specialistGuard(reqA as any, resA as any, nextA.fn);
-  assert(nextA.wasCalled(),               'Specialist must satisfy ["UL","Specialist"] guard');
-  assertEqual(resA.statusCode(), undefined, 'no 403 must be emitted for Specialist');
-
-  // 2. Dispatch must satisfy a guard configured for ["Lead", "Dispatch", "Admin"]
-  const reqB = mockReq({
-    'x-dev-user-oid':    'rename-dispatch',
-    'x-dev-user-roles':  'Dispatch',
-    'x-dev-user-org-id': '1',
-  });
-  handler(reqB as any, mockRes() as any, () => {});
-  const dispatchGuard = requireAnyRole(['Lead', 'Dispatch', 'Admin']);
-  const nextB = nextFn();
-  const resB  = mockRes();
-  dispatchGuard(reqB as any, resB as any, nextB.fn);
-  assert(nextB.wasCalled(),               'Dispatch must satisfy ["Lead","Dispatch","Admin"] guard');
-  assertEqual(resB.statusCode(), undefined, 'no 403 must be emitted for Dispatch');
-});
-
-test('devAuthBypass: missing X-Dev-User-Oid passes through without setting req.user', async () => {
-  const handler = createDevAuthBypass({ NODE_ENV: 'test', DEV_AUTH_BYPASS: 'true' });
-  assert(handler !== null, 'handler must not be null');
-
-  const req  = mockReq({
-    // OID header deliberately absent
-    'x-dev-user-roles':  'Admin',
-    'x-dev-user-org-id': '1',
-  });
+  const req  = mockReq({ 'x-dev-persona': 'superuser' });
   const next = nextFn();
   handler(req as any, mockRes() as any, next.fn);
 
   assert(next.wasCalled(), 'next() must still be called (fall-through to real auth)');
-  assertEqual(req.user, undefined, 'req.user must remain unset when a header is missing');
-  assertEqual(req.roles, undefined, 'req.roles must remain unset when a header is missing');
+  assertEqual(req.user, undefined, 'req.user must remain unset for an unknown persona');
+  assertEqual(req.roles, undefined, 'req.roles must remain unset');
 });
 
-test('devAuthBypass: missing X-Dev-User-Roles passes through without setting req.user', async () => {
+test('devAuthBypass: missing persona header falls through without setting req.user', async () => {
   const handler = createDevAuthBypass({ NODE_ENV: 'test', DEV_AUTH_BYPASS: 'true' });
   assert(handler !== null, 'handler must not be null');
 
-  const req  = mockReq({
-    'x-dev-user-oid':    'synthetic-oid-partial',
-    // Roles header absent
-    'x-dev-user-org-id': '1',
-  });
+  const req  = mockReq({});
   const next = nextFn();
   handler(req as any, mockRes() as any, next.fn);
 
   assert(next.wasCalled(), 'next() must be called');
-  assertEqual(req.user, undefined, 'req.user must remain unset');
+  assertEqual(req.user, undefined, 'req.user must remain unset when no persona is named');
+});
+
+test('devAuthBypass: downstream requireAnyRole works against persona roles', async () => {
+  const handler = createDevAuthBypass({ NODE_ENV: 'test', DEV_AUTH_BYPASS: 'true' });
+  assert(handler !== null, 'handler must not be null');
+
+  // Admin persona bypasses all role checks.
+  const reqAdmin = mockReq({ 'x-dev-persona': 'admin' });
+  handler(reqAdmin as any, mockRes() as any, () => {});
+  const ulGuard = requireAnyRole(['UL']);
+  const nextA = nextFn();
+  const resA = mockRes();
+  ulGuard(reqAdmin as any, resA as any, nextA.fn);
+  assert(nextA.wasCalled(), 'Admin persona must pass any role guard');
+  assertEqual(resA.statusCode(), undefined, 'no 403 for Admin persona');
+
+  // Role-rename dual-accept: the specialist persona satisfies ["UL","Specialist"].
+  const reqSpec = mockReq({ 'x-dev-persona': 'specialist' });
+  handler(reqSpec as any, mockRes() as any, () => {});
+  const specGuard = requireAnyRole(['UL', 'Specialist']);
+  const nextB = nextFn();
+  const resB = mockRes();
+  specGuard(reqSpec as any, resB as any, nextB.fn);
+  assert(nextB.wasCalled(), 'Specialist persona must satisfy ["UL","Specialist"] guard');
+  assertEqual(resB.statusCode(), undefined, 'no 403 for Specialist persona');
+
+  // Dispatch persona satisfies ["Lead","Dispatch","Admin"].
+  const reqDisp = mockReq({ 'x-dev-persona': 'dispatch' });
+  handler(reqDisp as any, mockRes() as any, () => {});
+  const dispGuard = requireAnyRole(['Lead', 'Dispatch', 'Admin']);
+  const nextC = nextFn();
+  const resC = mockRes();
+  dispGuard(reqDisp as any, resC as any, nextC.fn);
+  assert(nextC.wasCalled(), 'Dispatch persona must satisfy ["Lead","Dispatch","Admin"] guard');
+  assertEqual(resC.statusCode(), undefined, 'no 403 for Dispatch persona');
+});
+
+test('devAuthBypass: multi-role persona parsed from registry', async () => {
+  const handler = createDevAuthBypass({ NODE_ENV: 'test', DEV_AUTH_BYPASS: 'true' });
+  assert(handler !== null, 'handler must not be null');
+
+  const req = mockReq({ 'x-dev-persona': 'multi' });
+  handler(req as any, mockRes() as any, () => {});
+
+  assertEqual(req.roles?.length, 2, 'two roles from the multi persona');
+  assert(req.roles?.includes('UL'),   'roles must include UL');
+  assert(req.roles?.includes('Lead'), 'roles must include Lead');
 });
 
 // ── Audit log test (requires DB) ──────────────────────────────────────────────
 
-test('devAuthBypass: audit_log entry written for every bypass use', async () => {
+test('devAuthBypass: audit_log entry written for every bypass use, persona name only in detail', async () => {
   const handler = createDevAuthBypass({ NODE_ENV: 'test', DEV_AUTH_BYPASS: 'true' });
   assert(handler !== null, 'handler must not be null');
 
-  // Use a unique OID so this test row is unambiguous
-  const uniqueOid = `dev-bypass-audit-${Date.now()}`;
-  const req       = mockReq({
-    'x-dev-user-oid':    uniqueOid,
-    'x-dev-user-roles':  'UL',
-    'x-dev-user-org-id': '1',
-  });
+  // Fixed persona OID — scope the assertion by time instead of a unique OID.
+  const startedAt = new Date();
+  const req = mockReq({ 'x-dev-persona': 'ul-legacy' });
 
   const next = nextFn();
   handler(req as any, mockRes() as any, next.fn);
@@ -223,30 +234,31 @@ test('devAuthBypass: audit_log entry written for every bypass use', async () => 
       `SELECT action, detail
        FROM audit_log
        WHERE actor_oid = $1 AND action = 'auth.dev_bypass'
+         AND occurred_at >= $2
        ORDER BY occurred_at DESC
        LIMIT 1`,
-      [uniqueOid]
+      ['dev-persona-ul-legacy', startedAt]
     )
   );
 
   assertEqual(result.rowCount, 1, 'exactly one audit_log row must be written');
   assertEqual(result.rows[0].action, 'auth.dev_bypass', 'action must be auth.dev_bypass');
-  // Labor-safety scrub (Phase 3): the OID is recorded in the actor_oid COLUMN
-  // (the query above matched on it), never copied into detail. The redundant
-  // org header is likewise dropped; only the non-identity roles header remains.
+  // Labor-safety scrub: the OID is recorded in the actor_oid COLUMN (matched
+  // above), never copied into detail. detail carries only the persona name —
+  // the single request-supplied input.
+  assertEqual(
+    result.rows[0].detail?.['x-dev-persona'],
+    'ul-legacy',
+    'detail carries the persona name'
+  );
   assertEqual(
     result.rows[0].detail?.['x-dev-user-oid'],
     undefined,
-    'detail must NOT carry the worker OID (it lives in actor_oid)'
-  );
-  assertEqual(
-    result.rows[0].detail?.['x-dev-user-org-id'],
-    undefined,
-    'detail must NOT carry the org header (it lives in org_id)'
+    'detail must NOT carry any OID'
   );
   assertEqual(
     result.rows[0].detail?.['x-dev-user-roles'],
-    'UL',
-    'detail retains only the non-identity roles header'
+    undefined,
+    'the legacy roles-header key must be gone from detail'
   );
 });

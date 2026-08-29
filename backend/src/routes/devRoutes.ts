@@ -178,6 +178,14 @@ devRoutes.post("/dev/seed-axe-fixture", async (req: Request, res: Response) => {
 // DEV ONLY – route run generator for testing, not for production (the devRoutes
 // mount itself is prod-gated in app.ts per ISSUE-043).
 devRoutes.post("/dev/generate-route-run", async (req: Request, res: Response) => {
+    // GUARD-DEVBYPASS: inline gate, same contract as /dev/seed-axe-fixture.
+    // Before this the ONLY protection was the app.ts mount-level NODE_ENV
+    // check — in any non-production deploy this was an unauthenticated
+    // endpoint that writes the live DB.
+    if (process.env.NODE_ENV === 'production' || process.env.DEV_AUTH_BYPASS !== 'true') {
+        return res.status(404).json({ error: 'Not found' });
+    }
+
     const client = await pool.connect();
     try {
         const { pool_id, user_id, base_id = "NORTH", max_stops = 25, org_id = 1 } = req.body;

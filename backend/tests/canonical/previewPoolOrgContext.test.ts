@@ -36,9 +36,7 @@ const S2 = "PREVIEW_RLS_STOP_2";
 function devHeaders(): Record<string, string> {
   return {
     "Content-Type": "application/json",
-    "X-Dev-User-Oid": "preview-rls-suite-dispatch",
-    "X-Dev-User-Roles": "Dispatch",
-    "X-Dev-User-Org-Id": ORG,
+    "X-Dev-Persona": "dispatch",
   };
 }
 

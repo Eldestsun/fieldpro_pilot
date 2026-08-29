@@ -63,9 +63,7 @@ test("role-rename Phase 1 audit: Dispatch token GETs /lead/route-runs/:id → 20
     fixture = await createRouteRunFixture(client);
 
     const res = await httpGet(port, `/api/lead/route-runs/${fixture.routeRunId}`, {
-      "x-dev-user-oid": "rename-audit-dispatch",
-      "x-dev-user-roles": "Dispatch",
-      "x-dev-user-org-id": String(FIXTURE_ORG_ID),
+      "x-dev-persona": "dispatch",
     });
 
     assertEqual(res.status, 200, "Dispatch-only token must receive 200, not 403, on /lead/route-runs/:id");
@@ -96,9 +94,7 @@ test("role-rename Phase 1 audit: /api/users returns backfilled Specialist + Disp
 
   try {
     const res = await httpGet(port, "/api/users", {
-      "x-dev-user-oid": "rename-audit-admin",
-      "x-dev-user-roles": "Admin",
-      "x-dev-user-org-id": String(FIXTURE_ORG_ID),
+      "x-dev-persona": "admin",
     });
 
     assertEqual(res.status, 200, "/api/users must return 200 for an Admin caller");
