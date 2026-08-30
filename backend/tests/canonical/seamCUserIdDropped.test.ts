@@ -23,9 +23,7 @@ const ORG = String(FIXTURE_ORG_ID);
 async function getRuns(baseUrl: string, path: string): Promise<any[]> {
   const res = await fetch(`${baseUrl}${path}`, {
     headers: {
-      "X-Dev-User-Oid": "seam-c-userid-suite-dispatch",
-      "X-Dev-User-Roles": "Dispatch",
-      "X-Dev-User-Org-Id": ORG,
+      "X-Dev-Persona": "dispatch",
     },
   });
   assertEqual(res.status, 200, `${path} returns 200 for Dispatch`);

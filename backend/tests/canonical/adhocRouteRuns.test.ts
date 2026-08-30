@@ -33,9 +33,7 @@ const STOP_B = "SEAMD_ADHOC_B";
 function devHeaders(): Record<string, string> {
   return {
     "Content-Type": "application/json",
-    "X-Dev-User-Oid": "seam-d-adhoc-suite-dispatch",
-    "X-Dev-User-Roles": "Dispatch",
-    "X-Dev-User-Org-Id": ORG,
+    "X-Dev-Persona": "dispatch",
   };
 }
 

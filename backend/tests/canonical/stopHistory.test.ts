@@ -48,10 +48,11 @@ function historyUrl(baseUrl: string, stopId: string): string {
 }
 
 function devHeaders(role: string, orgId: string = ORG): Record<string, string> {
+  // GUARD-DEVBYPASS: identity comes from the fixed persona registry. Same-org
+  // callers use the persona named for their role; the cross-org case uses the
+  // fixed 'outsider' persona (org 2 — not the fixture org, holds no data).
   return {
-    "X-Dev-User-Oid": `seam-d-history-suite-${role}`,
-    "X-Dev-User-Roles": role,
-    "X-Dev-User-Org-Id": orgId,
+    "X-Dev-Persona": orgId === ORG ? role.toLowerCase() : "outsider",
   };
 }
 

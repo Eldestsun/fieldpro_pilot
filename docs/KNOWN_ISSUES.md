@@ -182,7 +182,7 @@ A partially-implemented enhancement to the dev auth bypass middleware added Bear
 - Implement Bearer token + env-var fallback together as one commit
 - Verify 99/99 test baseline holds
 
-**Deferred because:** The current header-based bypass (`X-Dev-User-*`) works for all agent terminal sessions. Bearer token support is only needed if remote agent tooling changes to Bearer token auth.
+**Deferred because:** The current bypass (persona registry via `X-Dev-Persona`, GUARD-DEVBYPASS 2026-08-29; formerly the `X-Dev-User-*` headers) works for all agent terminal sessions. Bearer token support is only needed if remote agent tooling changes to Bearer token auth.
 
 ---
 
@@ -243,7 +243,7 @@ and returns whichever row arrives first — in practice the lowest-id organizati
 **Why this is safe today:**
 - The dev and pilot deployments are both single-org KCM. The "lowest-id org" and "the correct org" are the same row, so the fallback returns the right answer by coincidence of cardinality.
 - Real Entra-authenticated requests populate `req.user.org_id` directly (from the dev-bypass headers) or supply a `tid` that resolves a unique `tenant_uuid` row, so the fallback branch is never hit on the request path.
-- The known caller that does hit the fallback today is `POST /api/dev/generate-route-run` (no `requireAuth`), which is dev-only and gated by `DEV_AUTH_BYPASS === 'true'`.
+- The known caller that does hit the fallback today is `POST /api/dev/generate-route-run` (no `requireAuth`), which is dev-only and gated by `DEV_AUTH_BYPASS === 'true'`. (Provenance: this doc previously claimed that inline gate while the endpoint in fact relied only on the `app.ts` mount-level `NODE_ENV` check — the GUARD-DEVBYPASS recon caught the divergence and the inline gate was actually added 2026-08-29.)
 
 **Why it must be fixed before multi-org deployment:**
 Once a second organization is added, any code path that reaches the fallback (forgotten `requireAuth`, a token with a `tid` not yet registered in `organizations.tenant_uuid`, a background job, a misconfigured cron, a new dev endpoint) will silently default the caller into org 1's data. RLS will faithfully scope reads and writes to org 1 — fail-open with respect to tenant identity, not a leak across orgs, but a structural defect that puts the wrong org's data on the wire to the wrong caller. The helper is the trust boundary; it should fail closed by raising when it cannot determine an authoritative org.
@@ -607,7 +607,7 @@ The choice of which role the app/test connection uses is the same decision ISSUE
 **Severity:** HIGH (pre-pilot blocker — auth bypass must be unreachable where real users authenticate)
 
 **What:**
-The dev-bypass mechanism (`localStorage.__dev_user__`, `dev-bypass-token`, and the `X-Dev-User-*` header path) exists for headless agent testing in development. It must not be reachable in production builds.
+The dev-bypass mechanism (`localStorage.__dev_user__`, `dev-bypass-token`, and the `X-Dev-Persona` header path — persona registry per GUARD-DEVBYPASS) exists for headless agent testing in development. It must not be reachable in production builds.
 
 **Scope:**
 Gate the bypass code paths behind a `NODE_ENV === 'development'` check (or equivalent), or strip them entirely via bundler/build configuration for production builds. Verify by attempting to authenticate via the bypass in a production build and confirming it fails.

@@ -40,9 +40,7 @@ const EXCEPTIONS = "/api/ops/control-center/exceptions";
 async function getExceptions(baseUrl: string): Promise<{ total_hazards: number; total_infra_issues: number }> {
   const res = await fetch(`${baseUrl}${EXCEPTIONS}`, {
     headers: {
-      "X-Dev-User-Oid": "seam-c-cc-suite-admin",
-      "X-Dev-User-Roles": "Admin",
-      "X-Dev-User-Org-Id": ORG,
+      "X-Dev-Persona": "admin",
     },
   });
   assertEqual(res.status, 200, "exceptions endpoint returns 200 for Admin");

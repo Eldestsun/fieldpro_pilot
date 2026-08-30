@@ -18,9 +18,9 @@ const ENDPOINTS = ["/overview", "/routes", "/exceptions", "/difficulty"] as cons
 async function req(baseUrl: string, path: string, role?: string): Promise<number> {
   const headers: Record<string, string> = {};
   if (role) {
-    headers["X-Dev-User-Oid"] = `seam-b-cc-suite-${role}`;
-    headers["X-Dev-User-Roles"] = role;
-    headers["X-Dev-User-Org-Id"] = "1";
+    // GUARD-DEVBYPASS: identity comes from the fixed persona registry; the
+    // persona name for each core role is its lowercase form.
+    headers["X-Dev-Persona"] = role.toLowerCase();
   }
   const res = await fetch(`${baseUrl}${CC}${path}`, { headers });
   return res.status;
@@ -56,7 +56,7 @@ test("SEAM-B: the old /api/admin/control-center mount is retired (404, not serve
     // Admin token on the OLD path — the ccRouter no longer mounts there, so it is
     // not a served route (404), not a 200. (Frontend handles muscle-memory via redirect.)
     const res = await fetch(`${baseUrl}/api/admin/control-center/overview`, {
-      headers: { "X-Dev-User-Oid": "seam-b-old-path", "X-Dev-User-Roles": "Admin", "X-Dev-User-Org-Id": "1" },
+      headers: { "X-Dev-Persona": "admin" },
     });
     assertEqual(res.status, 404, "old /api/admin/control-center/overview is no longer mounted (404)");
   } finally {
