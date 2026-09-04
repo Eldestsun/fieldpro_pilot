@@ -87,6 +87,34 @@ describe('LeadRouteDetail — A4 reassign', () => {
     expect(mockHistory).toHaveBeenCalledWith('test-token', '31150')
   })
 
+  it('T1-D4: Clear assignment sends null (never ""), refetches on success', async () => {
+    mockGetDetail.mockResolvedValue(detail())
+    render(<LeadRouteDetail id={42} onBack={() => {}} />)
+    await screen.findByText('Alice Assignee')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear assignment' }))
+
+    await waitFor(() => expect(mockReassign).toHaveBeenCalledWith('test-token', 42, null))
+    expect(mockReassign).not.toHaveBeenCalledWith('test-token', 42, '')
+    await waitFor(() => expect(mockGetDetail).toHaveBeenCalledTimes(2))
+  })
+
+  it('T1-D4: Clear assignment is absent when the run is unassigned', async () => {
+    mockGetDetail.mockResolvedValue(detail({ assigned_user: undefined }))
+    render(<LeadRouteDetail id={42} onBack={() => {}} />)
+    await screen.findByText('Unassigned')
+    expect(screen.queryByRole('button', { name: 'Clear assignment' })).not.toBeInTheDocument()
+  })
+
+  it('T1-D4: reassign control is hidden entirely on completed runs', async () => {
+    mockGetDetail.mockResolvedValue(detail({ status: 'completed' }))
+    render(<LeadRouteDetail id={42} onBack={() => {}} />)
+    await screen.findByText('Alice Assignee')
+    expect(screen.queryByLabelText('Reassign to worker')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Reassign/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Clear assignment' })).not.toBeInTheDocument()
+  })
+
   it('surfaces a reassign error on failure', async () => {
     mockGetDetail.mockResolvedValue(detail())
     mockReassign.mockRejectedValueOnce(new Error('assigned_user_oid cannot be empty string'))

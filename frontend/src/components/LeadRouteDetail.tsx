@@ -78,6 +78,23 @@ export function LeadRouteDetail({ id, onBack }: LeadRouteDetailProps) {
         }
     };
 
+    // T1-D4 — clear assignment: null is the cancel value (backend writes
+    // assignment.cancel). "" is never sent; the API rejects it with a 400.
+    const handleClearAssignment = async () => {
+        setReassigning(true);
+        setReassignError(null);
+        try {
+            const token = await getAccessToken();
+            await reassignRouteRun(token, id, null);
+            setSelectedOid("");
+            await fetchDetail();
+        } catch (err: any) {
+            setReassignError(err.message || "Failed to clear assignment");
+        } finally {
+            setReassigning(false);
+        }
+    };
+
     if (loading) {
         return (
             <OpsLayout title={`Route Run #${id}`} subtitle="Loading detail...">
@@ -145,33 +162,45 @@ export function LeadRouteDetail({ id, onBack }: LeadRouteDetailProps) {
                     </div>
                 </div>
 
-                {/* Reassign control (A4). Names in the dropdown; the OID is the write value only. */}
-                <div className="mt-6 pt-4 border-t border-gray-100">
-                    <div className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-2">Reassign</div>
-                    <div className="flex items-end gap-3 flex-wrap">
-                        <select
-                            aria-label="Reassign to worker"
-                            value={selectedOid}
-                            onChange={(e) => setSelectedOid(e.target.value)}
-                            className="px-3 py-2 rounded-md border border-gray-300 text-sm bg-white min-h-[44px] min-w-[220px]"
-                        >
-                            <option value="">Select a worker…</option>
-                            {users.map((u) => (
-                                <option key={u.id} value={u.id}>{u.displayName}{u.role ? ` (${u.role})` : ""}</option>
-                            ))}
-                        </select>
-                        <OpsButton
-                            variant="primary"
-                            onClick={handleReassign}
-                            disabled={!selectedOid || reassigning}
-                        >
-                            {reassigning ? "Reassigning…" : "Reassign"}
-                        </OpsButton>
+                {/* Reassign control (A4 + T1-D4). Names in the dropdown; the OID is the
+                    write value only. Hidden on completed runs — nothing to move. */}
+                {routeRun.status !== "completed" && (
+                    <div className="mt-6 pt-4 border-t border-gray-100">
+                        <div className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-2">Reassign</div>
+                        <div className="flex items-end gap-3 flex-wrap">
+                            <select
+                                aria-label="Reassign to worker"
+                                value={selectedOid}
+                                onChange={(e) => setSelectedOid(e.target.value)}
+                                className="px-3 py-2 rounded-md border border-gray-300 text-sm bg-white min-h-[44px] min-w-[220px]"
+                            >
+                                <option value="">Select a worker…</option>
+                                {users.map((u) => (
+                                    <option key={u.id} value={u.id}>{u.displayName}{u.role ? ` (${u.role})` : ""}</option>
+                                ))}
+                            </select>
+                            <OpsButton
+                                variant="primary"
+                                onClick={handleReassign}
+                                disabled={!selectedOid || reassigning}
+                            >
+                                {reassigning ? "Reassigning…" : "Reassign"}
+                            </OpsButton>
+                            {routeRun.assigned_user && (
+                                <OpsButton
+                                    variant="outline"
+                                    onClick={handleClearAssignment}
+                                    disabled={reassigning}
+                                >
+                                    Clear assignment
+                                </OpsButton>
+                            )}
+                        </div>
+                        {reassignError && (
+                            <p className="mt-2 text-sm text-red-600" role="alert">{reassignError}</p>
+                        )}
                     </div>
-                    {reassignError && (
-                        <p className="mt-2 text-sm text-red-600" role="alert">{reassignError}</p>
-                    )}
-                </div>
+                )}
             </OpsCard>
 
             <OpsCard className="p-0">

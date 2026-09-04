@@ -322,10 +322,12 @@ export async function getLeadRouteRunById(
 
 // SEAM-A A4 — reassign a route run to a different worker. The OID is a WRITE of
 // assignment intent (never displayed); the UI shows names only.
+// T1-D4: passing null clears the assignment (backend writes assignment.cancel).
+// Never pass "" — the API rejects empty string with a 400.
 export async function reassignRouteRun(
     token: string,
     routeRunId: number,
-    assignedUserOid: string,
+    assignedUserOid: string | null,
 ): Promise<void> {
     const res = await fetch(`/api/route-runs/${routeRunId}/assign`, {
         method: "PATCH",
