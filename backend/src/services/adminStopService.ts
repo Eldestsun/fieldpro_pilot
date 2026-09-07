@@ -7,6 +7,7 @@ export interface Stop {
     is_hotspot: boolean;
     compactor: boolean;
     has_trash: boolean;
+    active: boolean;
     on_street_name: string;
     intersection_loc: string;
     trf_district_code: string;
@@ -30,12 +31,18 @@ export async function listStops(params: {
     pageSize: number;
     q?: string;
     pool_id?: string;
+    /** T2-A2: retired stops (active = false) are hidden unless explicitly requested. */
+    include_retired?: boolean;
 }, client?: PoolClient): Promise<{ items: Stop[]; total: number }> {
-    const { page, pageSize, q, pool_id } = params;
+    const { page, pageSize, q, pool_id, include_retired } = params;
     const offset = (page - 1) * pageSize;
     const conditions: string[] = [];
     const values: any[] = [];
     let idx = 1;
+
+    if (!include_retired) {
+        conditions.push(`active = true`);
+    }
 
     if (q) {
         conditions.push(`(
@@ -67,6 +74,7 @@ export async function listStops(params: {
             is_hotspot,
             compactor,
             has_trash,
+            active,
             on_street_name,
             intersection_loc,
             trf_district_code,
@@ -95,7 +103,18 @@ export async function listStops(params: {
 
 export async function updateStop(
     stopId: string,
-    data: { pool_id?: string | null; notes?: string | null },
+    data: {
+        pool_id?: string | null;
+        notes?: string | null;
+        // T2-A2: retire/reactivate. Also the row-level flag toggles — these were
+        // advertised in the OpenAPI schema and PATCHed by AdminStopsPanel's
+        // per-row toggles, but silently unhandled here (fields.length === 0 →
+        // null → 404). Fixed alongside `active` since it is the same block.
+        active?: boolean;
+        is_hotspot?: boolean;
+        compactor?: boolean;
+        has_trash?: boolean;
+    },
     client?: PoolClient,
 ): Promise<Stop | null> {
     const ownClient = client ?? await pool.connect();
@@ -127,6 +146,12 @@ export async function updateStop(
             fields.push(`notes = $${idx++}`);
             values.push(data.notes);
         }
+        for (const flag of ["active", "is_hotspot", "compactor", "has_trash"] as const) {
+            if (data[flag] !== undefined) {
+                fields.push(`${flag} = $${idx++}`);
+                values.push(data[flag]);
+            }
+        }
 
         if (fields.length === 0) {
             if (ownTx) await ownClient.query("ROLLBACK");
@@ -144,6 +169,7 @@ export async function updateStop(
                 is_hotspot,
                 compactor,
                 has_trash,
+                active,
                 on_street_name,
                 intersection_loc,
                 trf_district_code,

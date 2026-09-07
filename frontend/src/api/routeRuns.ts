@@ -634,6 +634,8 @@ export interface NormalizedAdminStop {
     is_hotspot?: boolean;
     compactor?: boolean;
     has_trash?: boolean;
+    /** T2-A2: false = retired. Hidden from default lists; toggled via PATCH. */
+    active?: boolean;
 
     notes?: string | null;
 
@@ -671,6 +673,8 @@ function normalizeAdminStop(raw: RawAdminStop): NormalizedAdminStop {
         is_hotspot: !!(raw.is_hotspot ?? raw.IS_HOTSPOT),
         compactor: !!(raw.compactor ?? raw.COMPACTOR),
         has_trash: !!(raw.has_trash ?? raw.HAS_TRASH),
+        // Default true: older payloads without the column are active stops.
+        active: (raw.active ?? raw.ACTIVE ?? true) !== false,
 
         notes: raw.notes ?? null,
 
@@ -758,13 +762,14 @@ export async function disableAdminPool(token: string, id: string): Promise<any> 
 
 export async function getAdminStops(
     token: string,
-    params: { page: number; pageSize: number; q?: string; pool_id?: string }
+    params: { page: number; pageSize: number; q?: string; pool_id?: string; include_retired?: boolean }
 ): Promise<NormalizedStopsListResponse> {
     const qs = new URLSearchParams();
     qs.set("page", String(params.page));
     qs.set("pageSize", String(params.pageSize));
     if (params.q) qs.set("q", params.q);
     if (params.pool_id) qs.set("pool_id", params.pool_id);
+    if (params.include_retired) qs.set("include_retired", "true");
 
     const raw = await apiFetch<{ items: RawAdminStop[]; total: number }>(`/api/admin/stops?${qs.toString()}`, token);
     return normalizeStopsListResponse(raw);
@@ -786,7 +791,7 @@ export async function getOpsStops(
 
 export async function getStopsScoped(
     token: string,
-    params: { page: number; pageSize: number; q?: string; pool_id?: string },
+    params: { page: number; pageSize: number; q?: string; pool_id?: string; include_retired?: boolean },
     scope: OpsScope
 ): Promise<NormalizedStopsListResponse> {
     return scope === "admin" ? getAdminStops(token, params) : getOpsStops(token, params);

@@ -365,10 +365,12 @@ adminRoutes.get("/admin/stops", async (req: Request, res: Response) => {
     const pageSize = Math.min(parseInt(req.query.pageSize as string) || 50, 200);
     const q = req.query.q as string;
     const pool_id = req.query.pool_id as string;
+    // T2-A2: retired stops hidden by default; ?include_retired=true opts in.
+    const include_retired = req.query.include_retired === "true";
 
     const numericOrgId = await resolveNumericOrgId(req);
     const result = await withOrgContext(numericOrgId, (client) =>
-      stopService.listStops({ page, pageSize, q, pool_id }, client),
+      stopService.listStops({ page, pageSize, q, pool_id, include_retired }, client),
     );
     res.json(result);
   } catch (err: any) {
@@ -424,9 +426,20 @@ adminRoutes.get("/admin/stops", async (req: Request, res: Response) => {
 adminRoutes.patch("/admin/stops/:id", async (req: Request, res: Response) => {
   try {
     const numericOrgId = await resolveNumericOrgId(req);
-    const updated = await withOrgContext(numericOrgId, (client) =>
-      stopService.updateStop(req.params.id, req.body, client),
-    );
+    const { updated, prevActive } = await withOrgContext(numericOrgId, async (client) => {
+      // T2-A2: capture the prior active value so the audit row records the
+      // retire/reactivate transition, not just the field name.
+      let prevActive: boolean | null = null;
+      if (req.body?.active !== undefined) {
+        const prev = await client.query(
+          `SELECT active FROM public.transit_stops WHERE stop_id = $1`,
+          [req.params.id],
+        );
+        prevActive = prev.rows[0]?.active ?? null;
+      }
+      const updated = await stopService.updateStop(req.params.id, req.body, client);
+      return { updated, prevActive };
+    });
     if (!updated) return res.status(404).json({ error: "Stop not found" });
     auditWrite({
       actor_oid: (req as any).user?.oid ?? 'unknown',
@@ -434,7 +447,12 @@ adminRoutes.patch("/admin/stops/:id", async (req: Request, res: Response) => {
       action: 'admin.stop_edit',
       resource_type: 'stop',
       resource_id: String(req.params.id),
-      detail: { fields: Object.keys(req.body) },
+      detail: {
+        fields: Object.keys(req.body),
+        ...(req.body?.active !== undefined
+          ? { active: { from: prevActive, to: req.body.active } }
+          : {}),
+      },
       ip_address: req.ip,
     });
     res.json({ stop: updated });

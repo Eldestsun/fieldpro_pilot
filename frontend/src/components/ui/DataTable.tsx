@@ -37,6 +37,8 @@ interface DataTableProps<T = any> {
     isLoading?: boolean;
     emptyMessage?: string;
     onRowClick?: (row: T) => void;
+    /** Optional per-row class (e.g. fade retired rows — T2-A2). */
+    getRowClassName?: (row: T) => string | undefined;
     className?: string;
 }
 
@@ -52,6 +54,7 @@ export function DataTable<T>({
     isLoading = false,
     emptyMessage = "No results.",
     onRowClick,
+    getRowClassName,
     className,
 }: DataTableProps<T>) {
     const [sortKey, setSortKey] = useState<string | null>(null);
@@ -142,7 +145,8 @@ export function DataTable<T>({
                                     onClick={onRowClick ? () => onRowClick(row) : undefined}
                                     className={cn(
                                         "transition-colors",
-                                        onRowClick && "cursor-pointer hover:bg-(--surface-sunken)"
+                                        onRowClick && "cursor-pointer hover:bg-(--surface-sunken)",
+                                        getRowClassName?.(row)
                                     )}
                                 >
                                     {columns.map(col => (
