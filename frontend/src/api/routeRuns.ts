@@ -620,13 +620,12 @@ export type RawAdminStop = Record<string, any>;
 export interface NormalizedAdminStop {
     stop_id: string;
 
-    trf_district_code?: string | null;
-    bay_code?: string | null;
     bearing_code?: string | null;
 
     on_street_name?: string | null;
     intersection_loc?: string | null;
-    hastus_cross_street_name?: string | null;
+    // ISSUE-061: renamed from the KCM export name hastus_cross_street_name.
+    cross_street?: string | null;
 
     lon?: number | null;
     lat?: number | null;
@@ -659,13 +658,11 @@ function normalizeAdminStop(raw: RawAdminStop): NormalizedAdminStop {
     return {
         stop_id: String(raw.stop_id ?? raw.STOP_ID ?? raw.id ?? raw.STOP_NUMBER ?? ""),
 
-        trf_district_code: raw.trf_district_code ?? raw.TRF_DISTRICT_CODE ?? null,
-        bay_code: raw.bay_code ?? raw.BAY_CODE ?? null,
         bearing_code: raw.bearing_code ?? raw.BEARING_CODE ?? null,
 
         on_street_name: raw.on_street_name ?? raw.ON_STREET_NAME ?? null,
         intersection_loc: raw.intersection_loc ?? raw.INTERSECTION_LOC ?? null,
-        hastus_cross_street_name: raw.hastus_cross_street_name ?? raw.HASTUS_CROSS_STREET_NAME ?? null,
+        cross_street: raw.cross_street ?? raw.CROSS_STREET ?? null,
 
         lon: raw.lon ?? null,
         lat: raw.lat ?? null,

@@ -26,8 +26,9 @@ function getStopField(stop: any, key: string) {
 function buildLocation(stop: any): string {
   const onStreet = normalizeText(getStopField(stop, "on_street_name"));
   const intersection = normalizeText(getStopField(stop, "intersection_loc"));
-  const hastus = normalizeText(getStopField(stop, "hastus_cross_street_name"));
-  const parts = [onStreet, intersection, hastus].filter(Boolean);
+  // ISSUE-061: DB column renamed hastus_cross_street_name -> cross_street.
+  const crossStreet = normalizeText(getStopField(stop, "cross_street"));
+  const parts = [onStreet, intersection, crossStreet].filter(Boolean);
   return parts.length ? parts.join(" | ") : "—";
 }
 
