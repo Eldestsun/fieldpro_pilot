@@ -109,6 +109,7 @@ import "./canonical/qcAssignmentLinkage.test";
 import "./canonical/auditReaderChannel.test";
 import "./canonical/intelligenceReaderChannel.test";
 import "./canonical/stopPhotosEvidence.test";
+import "./canonical/adminStopRetire.test";
 
 (async () => {
   console.log("canonical integration tests — real local DB, no mocking\n");

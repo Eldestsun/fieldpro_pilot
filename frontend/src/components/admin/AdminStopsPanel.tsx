@@ -6,6 +6,7 @@ import { OpsCard } from "../ui/OpsCard";
 import { OpsButton } from "../ui/OpsButton";
 import { OpsBadge } from "../ui/OpsBadge";
 import { DataTable, type DataTableColumn } from "../ui/DataTable";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { StopHistoryDrawer } from "../StopHistoryDrawer";
 import { cn } from "../../lib/utils";
 
@@ -45,6 +46,10 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
   // D5b — read-only per-stop history drawer; a read control, so it renders in
   // BOTH the ops (read-only) and admin (edit) scopes.
   const [historyStopId, setHistoryStopId] = useState<string | null>(null);
+  // T2-A2 — retirement. Retired stops are hidden unless showRetired; retiring
+  // requires confirmation (reactivating does not — it is the safe reverse).
+  const [showRetired, setShowRetired] = useState(false);
+  const [confirmRetireStopId, setConfirmRetireStopId] = useState<string | null>(null);
 
   const isReadOnly = scope === "ops";
 
@@ -57,6 +62,7 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
         pageSize: 20,
         q: search,
         pool_id: selectedPoolId,
+        include_retired: showRetired,
       }, scope);
       setStops(data?.items ?? []);
       setTotal(data?.total ?? 0);
@@ -83,7 +89,7 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
   useEffect(() => {
     fetchStops();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, selectedPoolId, getAccessToken, scope]);
+  }, [page, selectedPoolId, getAccessToken, scope, showRetired]);
 
   const handleSearch = (e: FormEvent) => {
     e.preventDefault();
@@ -134,6 +140,18 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
     } catch (e: any) {
       console.error(`Failed to toggle ${field}`, e);
       alert(`Failed to toggle ${field}`);
+    }
+  };
+
+  // T2-A2 — retire (active=false, confirm-gated) / reactivate (active=true).
+  const setStopActive = async (stopId: string, active: boolean) => {
+    if (isReadOnly) return;
+    try {
+      const token = await getAccessToken();
+      await updateAdminStop(token, stopId, { active });
+      fetchStops();
+    } catch (e: any) {
+      alert(e?.message || `Failed to ${active ? "reactivate" : "retire"} stop`);
     }
   };
 
@@ -287,6 +305,44 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
       },
     },
     {
+      key: "active",
+      header: "Active",
+      render: (stop: any) => {
+        const stopId = normalizeText(getStopField(stop, "stop_id"));
+        const isActive = (getStopField(stop, "active") ?? true) !== false;
+
+        if (isReadOnly) {
+          return isActive
+            ? <span className="text-(--text-muted)">—</span>
+            : <OpsBadge variant="danger" value="Retired" />;
+        }
+        return (
+          <div className="flex items-center gap-2">
+            {!isActive && <OpsBadge variant="danger" value="Retired" />}
+            {isActive ? (
+              <OpsButton
+                size="sm"
+                variant="outline"
+                aria-label={`Retire stop ${stopId}`}
+                onClick={() => setConfirmRetireStopId(stopId)}
+              >
+                Retire
+              </OpsButton>
+            ) : (
+              <OpsButton
+                size="sm"
+                variant="secondary"
+                aria-label={`Reactivate stop ${stopId}`}
+                onClick={() => setStopActive(stopId, true)}
+              >
+                Reactivate
+              </OpsButton>
+            )}
+          </div>
+        );
+      },
+    },
+    {
       key: "history",
       header: "History",
       render: (stop: any) => {
@@ -349,6 +405,17 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
               ))}
             </select>
           </div>
+          {!isReadOnly && (
+            <label className="flex items-center gap-2 text-sm text-(--text-body) cursor-pointer min-h-[44px]">
+              <input
+                type="checkbox"
+                checked={showRetired}
+                onChange={(e) => { setShowRetired(e.target.checked); setPage(1); }}
+                className="w-4 h-4 accent-(--color-brand-700)"
+              />
+              Show retired
+            </label>
+          )}
           <OpsButton type="submit" variant="secondary">Filter</OpsButton>
         </form>
       </OpsCard>
@@ -385,6 +452,23 @@ export function AdminStopsPanel({ scope = "admin" }: AdminStopsPanelProps) {
         serverPagination={true}
         isLoading={loading}
         emptyMessage="No stops found. Try adjusting your search or filter."
+        getRowClassName={(stop: any) =>
+          (getStopField(stop, "active") ?? true) === false ? "opacity-55" : undefined
+        }
+      />
+
+      <ConfirmDialog
+        isOpen={confirmRetireStopId !== null}
+        title={`Retire stop ${confirmRetireStopId ?? ""}?`}
+        message="It will no longer appear in route planning. You can reactivate it later."
+        confirmLabel="Retire"
+        variant="danger"
+        onConfirm={() => {
+          const id = confirmRetireStopId;
+          setConfirmRetireStopId(null);
+          if (id) setStopActive(id, false);
+        }}
+        onCancel={() => setConfirmRetireStopId(null)}
       />
 
       {historyStopId && (

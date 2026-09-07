@@ -44,6 +44,7 @@ export async function getCandidateStopsForPoolWithRisk(
       AND spm.pool_id = $1
       AND spm.active = true
     LEFT JOIN public.stop_risk_snapshot r ON r.stop_id = s.stop_id
+    WHERE s.active = true
     order by combined_risk_score desc
     LIMIT $2
   `;
