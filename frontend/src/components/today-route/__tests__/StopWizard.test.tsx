@@ -237,4 +237,86 @@ describe('StopWizard (StopDetail)', () => {
     await userEvent.click(screen.getByRole('button', { name: /^Finish$/i }))
     expect(onCompleteStop).toHaveBeenCalledOnce()
   })
+
+  // ── ISSUE-063 — pending-photo completion regressions ────────────────────────
+
+  it('ISSUE-063: Finish with a pending (not-uploaded) photo flushes the upload FIRST, then completes', async () => {
+    const callOrder: string[] = []
+    const onCompleteStop = vi.fn(() => { callOrder.push('complete') })
+    const uploadPhotos = vi.fn(async () => {
+      callOrder.push('upload')
+      return { photos: [], queued: true } // durable offline queue path
+    })
+
+    render(
+      <StopDetail
+        {...buildProps({
+          checklist: { ...emptyChecklist, spotCheck: true },
+          onCompleteStop,
+          uploadPhotos,
+        })}
+      />
+    )
+
+    const afterPhotoInput = document.getElementById('after-photo-upload') as HTMLInputElement
+    const file = new File(['photo-data'], 'after.jpg', { type: 'image/jpeg' })
+    fireEvent.change(afterPhotoInput, { target: { files: [file] } })
+
+    // Evidence gate: a selected file enables Finish (no sticky flag, no
+    // silent disabled-Finish trap) — user is NOT forced through Upload Now.
+    const finishBtn = await screen.findByRole('button', { name: /^Finish$/i })
+    await waitFor(() => expect(finishBtn).not.toBeDisabled())
+
+    await userEvent.click(finishBtn)
+
+    await waitFor(() => expect(onCompleteStop).toHaveBeenCalledOnce())
+    expect(uploadPhotos).toHaveBeenCalledOnce()
+    expect(callOrder).toEqual(['upload', 'complete']) // never photo-less complete
+  })
+
+  it('ISSUE-063: Finish does NOT complete when the pending-photo flush fails', async () => {
+    const onCompleteStop = vi.fn()
+    const uploadPhotos = vi.fn(async () => { throw new Error('upload exploded') })
+
+    render(
+      <StopDetail
+        {...buildProps({
+          checklist: { ...emptyChecklist, spotCheck: true },
+          onCompleteStop,
+          uploadPhotos,
+        })}
+      />
+    )
+
+    const afterPhotoInput = document.getElementById('after-photo-upload') as HTMLInputElement
+    fireEvent.change(afterPhotoInput, {
+      target: { files: [new File(['photo-data'], 'after.jpg', { type: 'image/jpeg' })] },
+    })
+
+    const finishBtn = await screen.findByRole('button', { name: /^Finish$/i })
+    await userEvent.click(finishBtn)
+
+    await waitFor(() => expect(uploadPhotos).toHaveBeenCalledOnce())
+    expect(onCompleteStop).not.toHaveBeenCalled() // flush failed → no complete
+  })
+
+  it('ISSUE-063: discarding the selected photo closes the gate again (no sticky flag)', async () => {
+    render(
+      <StopDetail
+        {...buildProps({ checklist: { ...emptyChecklist, spotCheck: true } })}
+      />
+    )
+
+    const afterPhotoInput = document.getElementById('after-photo-upload') as HTMLInputElement
+    fireEvent.change(afterPhotoInput, {
+      target: { files: [new File(['photo-data'], 'after.jpg', { type: 'image/jpeg' })] },
+    })
+    await screen.findByRole('button', { name: /^Finish$/i })
+
+    await userEvent.click(screen.getByRole('button', { name: /Discard/i }))
+
+    // Gate must close: back to the Take After Photo prompt, no Finish.
+    expect(await screen.findByText(/Take After Photo/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Finish$/i })).toBeNull()
+  })
 })

@@ -6,6 +6,7 @@ import { resolveNumericOrgId } from "../../middleware/resolveOrgId";
 import multer, { MulterError } from "multer";
 import { uploadStopPhotos } from "../../s3Client";
 import { createStopPhotos, listStopPhotosByRouteRunStop } from "../../domains/routeRunStop/stopPhotosService";
+import { ensureVisitForRouteRunStop } from "../../domains/visit/visitService";
 import { auditWrite, reqOrgId } from "../../middleware/auditWrite";
 import {
     MAX_FILE_BYTES,
@@ -307,6 +308,21 @@ ulRoutes.post(
             const photos = await withOrgContext(numericOrgId, async (client) => {
                 await client.query("BEGIN");
                 try {
+                    // ISSUE-063: ensure the canonical visit EXISTS before writing
+                    // evidence. createStopPhotos attaches evidence to the visit via
+                    // deriveClientVisitId(stopId); with no visit it silently wrote
+                    // nothing yet still returned 200 (photo lost, complete then 400s
+                    // "After photo required"). This bit two ways: (a) a started stop
+                    // whose visit is absent, and (b) the offline replay order —
+                    // UPLOAD_STOP_PHOTOS runs BEFORE START_STOP, so the visit never
+                    // exists at photo replay time. ensureVisit is idempotent (keyed
+                    // on the same client_visit_id START_STOP uses), so a later
+                    // START_STOP returns this same visit rather than making a second.
+                    await ensureVisitForRouteRunStop(client, {
+                        routeRunStopId: stopRunId,
+                        actorOid: userOid,
+                        visitType: "service",
+                    });
                     await createStopPhotos(client, {
                         routeRunStopId: stopRunId,
                         userOid,

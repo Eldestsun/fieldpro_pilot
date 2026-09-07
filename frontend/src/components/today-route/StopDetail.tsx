@@ -161,8 +161,7 @@ export function StopDetail({
         // Reset collapsible state
         setIsReportSafetyOpen(false);
         setIsReportInfraOpen(false);
-        // Reset after-photo taken state
-        setAfterPhotoTaken(false);
+        // (Photo gate is evidence-derived — ISSUE-063 — nothing to reset here.)
         setShowResumeBanner(false);
         // (Safety and Infra state are managed by parent via onSetSafety/onSetInfra)
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -175,7 +174,6 @@ export function StopDetail({
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [existingPhotos, setExistingPhotos] = useState<PhotoDto[]>([]);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-    const [afterPhotoTaken, setAfterPhotoTaken] = useState(false);
 
 
 
@@ -369,9 +367,10 @@ export function StopDetail({
         }
     };
 
-    // Helper to handle upload confirmation
-    const handleConfirmUpload = async () => {
-        if (selectedFiles.length === 0) return;
+    // Helper to handle upload confirmation. Returns true when the photos were
+    // uploaded or durably queued (ISSUE-063: Finish awaits this).
+    const handleConfirmUpload = async (): Promise<boolean> => {
+        if (selectedFiles.length === 0) return true;
         const filesToUpload = [...selectedFiles];
         try {
             const { photos, queued } = await uploadPhotos(stop.route_run_stop_id, filesToUpload);
@@ -399,10 +398,26 @@ export function StopDetail({
                     setExistingPhotos(prev => [...prev, ...optimistic]);
                 }
             }
+            return true;
         } catch (err) {
             // Error handled in hook (alert), but we keep selectedFiles so user can retry
             console.error(err);
+            return false;
         }
+    };
+
+    // ISSUE-063 — Finish flushes pending photos first. Previously a selected-
+    // but-not-uploaded photo satisfied the gate via a sticky flag while the
+    // file sat only in React state: complete went out photo-less (backend
+    // 400 "After photo is required") and the photo evaporated on unmount.
+    // Now Finish is a single tap: upload/queue the pending files, then
+    // complete — and it never proceeds when the flush fails.
+    const handleFinish = async () => {
+        if (selectedFiles.length > 0) {
+            const ok = await handleConfirmUpload();
+            if (!ok) return;
+        }
+        onCompleteStop();
     };
 
     // Helper to discard selection
@@ -766,19 +781,25 @@ export function StopDetail({
         checklist.washed_can;
     const hasCleaning = anyCleaningTask;
     const hasTrashVolume = checklist.trashVolume !== undefined;
-    const hasAfterPhoto = afterPhotoTaken;
-    const hasPendingUploads = selectedFiles.length > 0;
+    // ISSUE-063: the photo gate is derived from EVIDENCE (uploaded photos,
+    // files awaiting upload, or durably queued uploads), never a sticky flag —
+    // the old afterPhotoTaken boolean stayed true after a discard and let a
+    // photo-less complete through to a guaranteed 400.
+    const hasAfterPhoto =
+        existingPhotos.length > 0 || selectedFiles.length > 0 || queuedUploadCount > 0;
 
     // Safety Validation: If concern is yes, MUST have hazards
     const isSafetyValid = !safety?.hasConcern || (safety.hazardTypes && safety.hazardTypes.length > 0);
 
+    // Pending (selected-but-not-uploaded) files no longer block Finish —
+    // handleFinish flushes them first (upload or durable queue) and stops if
+    // the flush fails.
     const canComplete =
         (
             (hasCleaning && hasTrashVolume) ||
             checklist.spotCheck
         ) &&
         hasAfterPhoto &&
-        !hasPendingUploads &&
         !isCompletingStop &&
         isSafetyValid;
 
@@ -1339,7 +1360,8 @@ export function StopDetail({
                                     className="hidden"
                                     onChange={async (e) => {
                                         if (!e.target.files || !e.target.files[0]) return;
-                                        setAfterPhotoTaken(true);
+                                        // ISSUE-063: no sticky flag — selecting files feeds
+                                        // selectedFiles, which the evidence-derived gate reads.
                                         handleFileSelect(e);
                                     }}
                                     disabled={isUploadingPhoto}
@@ -1361,7 +1383,7 @@ export function StopDetail({
                     // All requirements met → Finish enabled
                     return (
                         <button
-                            onClick={onCompleteStop}
+                            onClick={handleFinish}
                             disabled={!canComplete}
                             className={cn(
                                 "py-4 bg-(--color-brand-dark) text-(--text-on-brand) border-0 rounded-lg text-base font-bold min-h-[44px]",
