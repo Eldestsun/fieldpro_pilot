@@ -111,6 +111,7 @@ import "./canonical/intelligenceReaderChannel.test";
 import "./canonical/stopPhotosEvidence.test";
 import "./canonical/adminStopRetire.test";
 import "./canonical/adminHealth.test";
+import "./canonical/issue024SyncTrigger.test";
 
 (async () => {
   console.log("canonical integration tests — real local DB, no mocking\n");

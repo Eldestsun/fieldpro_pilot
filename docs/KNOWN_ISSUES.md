@@ -552,7 +552,13 @@ Changelog: `2026-06-05-cleanup-phase-1-ci-test-infra.md`
 ---
 
 ## ISSUE-024 — `sync_transit_stop_primary_asset` trigger inserts into `transit_stop_assets` without NOT NULL `org_id`
-**Status:** Open — latent production defect, discovered during cleanup Phase 1  
+**Status:** Fixed 2026-09-07 — migration `20260907_issue024_sync_trigger_org_id.sql` replaces the
+function: the link INSERT carries `NEW.org_id` and both deactivation UPDATEs are org-scoped
+(correct under BYPASSRLS callers too). Three regression tests (`issue024SyncTrigger.test.ts`)
+cover create/self-heal/deactivate. NOTE: the "ON CONFLICT does not self-heal inside plpgsql"
+claim below was disproven — the arbiter works; the org_id NOT NULL violation was masking it.
+The CI seed's trigger-disable workaround remains in place (harmless; retiring it is RLS-TSA
+scope along with the multi-org recon).  
 **Discovered:** 2026-06-05 (seeding `transit_stops` in the cleanup Phase 1 dispatch)  
 **Area:** backend — DB trigger `public.sync_transit_stop_primary_asset()` (fires `AFTER INSERT OR UPDATE OF asset_id ON public.transit_stops`)  
 **Severity:** medium (real defect, but no current runtime path inserts `transit_stops` — they are reference data)  
