@@ -1,4 +1,5 @@
 import { OpsButton } from "./OpsButton";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 interface ConfirmDialogProps {
     isOpen: boolean;
@@ -24,6 +25,9 @@ export function ConfirmDialog({
     onConfirm,
     onCancel,
 }: ConfirmDialogProps) {
+    // S2-9-pre1: trap focus while open; Escape cancels; focus restores on close.
+    const trapRef = useFocusTrap<HTMLDivElement>(isOpen, onCancel);
+
     if (!isOpen) return null;
 
     return (
@@ -32,6 +36,7 @@ export function ConfirmDialog({
             onClick={onCancel}
         >
             <div
+                ref={trapRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="confirm-dialog-title"

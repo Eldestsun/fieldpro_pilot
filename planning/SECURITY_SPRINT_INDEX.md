@@ -64,7 +64,7 @@ Sprints 1 and 2 are agent-executable. Sprint 3 requires the founder for infrastr
 | S2-6 | Log Retention Policy (>= 1 Year) | Document | Agent | None | 🟢 Done 2026-05-14 |
 | S2-7 | Data Use Limitation Policy (WA Public-Sector Privacy) | Document | Agent | None | 🟢 Done 2026-05-14 |
 | S2-8 | ArcGIS Integration Roadmap Narrative (TPRA) | Document | Agent | None | 🟢 Done 2026-05-14 |
-| S2-9 | WCAG 2.1 AA Conformance Statement | Document | Agent | S1-8 + S1-9 + S2-9-prereqs | 🟠 In review — prereqs 1+2 open; S3-4 pending |
+| S2-9 | WCAG 2.1 AA Conformance Statement | Document | Agent | S1-8 + S1-9 + S2-9-prereqs | 🟠 In review — prereq 1 done 2026-09-06; prereq 2 (founder decision) + S3-4 pending |
 | S2-10 | TPRA Questionnaire Answers + Integration Options Matrix | Document | Agent | All S2 docs | 🔴 Not started |
 | **Sprint 3 — Founder Tasks & Final Validation** | | | | | |
 | S3-1 | Select and Configure Hosting Platform | Infra | Founder | — blocks S2 | 🟢 Done 2026-05-18 — Render (testing/demos) + Azure Enterprise (pilot) |
@@ -129,7 +129,7 @@ The statement is marked 🟠 In review until all three are resolved and S3-5 sig
 
 | # | Item | Type | Owner | Status |
 |---|------|------|-------|--------|
-| 1 | **Modal focus management JS** — `useEffect`-based focus trap on 5 dialog components (ConfirmDialog, ImagePreviewModal, ConflictResolutionModal, Safety Modal, Infra Modal): move focus to first element on open, contain Tab, return focus on close. ARIA roles applied in S1-9; JS behavior deferred. Assessed as not a WCAG 2.1 AA failure in S2-9 (§6.1). | Code | Agent | 🔴 Open |
+| 1 | **Modal focus management JS** — `useEffect`-based focus trap on 5 dialog components (ConfirmDialog, ImagePreviewModal, ConflictResolutionModal, Safety Modal, Infra Modal): move focus to first element on open, contain Tab, return focus on close. ARIA roles applied in S1-9; JS behavior deferred. Assessed as not a WCAG 2.1 AA failure in S2-9 (§6.1). | Code | Agent | 🟢 Done 2026-09-06 — shared `useFocusTrap` hook applied to all SEVEN dialog instances (the original 5 plus the post-card StopHistoryDrawer and RouteCreatePanel dialogs); Escape-to-close + focus restore included. Changelog: `docs/changelog/security/2026-09-06-s2-9-pre1-modal-focus-traps.md` |
 | 2 | **Photo remove button touch target** — 20×20px on photo strip overlay; below WCAG 2.5.5 AAA minimum. Not a Level AA violation. Documented in S2-9 §6.2. Requires product/design decision before closing. | Product decision | Founder | 🔴 Open |
 | 3 | **VoiceOver / TalkBack manual run** — tracked as S3-4 (Founder task). Specific verification targets documented in S2-9 §6.3. | QA | Founder | 🔴 Open (S3-4) |
 

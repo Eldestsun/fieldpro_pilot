@@ -1,5 +1,6 @@
 
 import React from "react";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 interface ImagePreviewModalProps {
     isOpen: boolean;
@@ -12,10 +13,14 @@ export const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({
     imageUrl,
     onClose,
 }) => {
+    // S2-9-pre1: focus trap + Escape-to-close + focus restore.
+    const trapRef = useFocusTrap<HTMLDivElement>(isOpen && !!imageUrl, onClose);
+
     if (!isOpen || !imageUrl) return null;
 
     return (
         <div
+            ref={trapRef}
             role="dialog"
             aria-modal="true"
             aria-label="Image preview"

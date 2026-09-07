@@ -2,6 +2,7 @@ import { useCreateRoute } from "../hooks/useCreateRoute";
 import { OpsCard } from "./ui/OpsCard";
 import { OpsButton } from "./ui/OpsButton";
 import { OpsTable, OpsTableRow, OpsTableCell } from "./ui/OpsTable";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 
 interface RouteCreatePanelProps {
     isOpen: boolean;
@@ -10,10 +11,14 @@ interface RouteCreatePanelProps {
 }
 
 export function RouteCreatePanel({ isOpen, onClose, hook }: RouteCreatePanelProps) {
+    // S2-9-pre1: focus trap + Escape-to-close + focus restore.
+    const trapRef = useFocusTrap<HTMLDivElement>(isOpen, onClose);
+
     if (!isOpen) return null;
 
     return (
         <div
+            ref={trapRef}
             className="fixed inset-0 bg-black/40 flex justify-end z-[1000] backdrop-blur-sm"
             onClick={onClose}
             role="dialog"
