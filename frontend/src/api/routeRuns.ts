@@ -760,6 +760,23 @@ export async function disableAdminPool(token: string, id: string): Promise<any> 
 
 // --- Stops ---
 
+/** T2-A7 — governance health view. Counts only; no per-user identifiers. */
+export interface SystemHealth {
+    as_of: string;
+    users: { by_role: Record<string, number>; active_last_30d: number };
+    stops: { active: number; retired: number; total: number };
+    pools: { active: number; inactive: number; total: number };
+    route_runs_yesterday: Record<string, number>;
+    visits_yesterday: number;
+    eam_bridge: { last_log_at: string | null; logs_7d: number };
+    audit_log: { rows_24h: number; rows_7d: number };
+    recent_issues: { not_ok_presence_7d: number };
+}
+
+export async function getSystemHealth(token: string): Promise<SystemHealth> {
+    return apiFetch<SystemHealth>("/api/admin/health", token);
+}
+
 export async function getAdminStops(
     token: string,
     params: { page: number; pageSize: number; q?: string; pool_id?: string; include_retired?: boolean }

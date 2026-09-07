@@ -84,6 +84,114 @@ adminRoutes.get("/admin/dashboard", async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * @openapi
+ * /admin/health:
+ *   get:
+ *     summary: System health aggregation (admin governance view)
+ *     tags: [Admin]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     responses:
+ *       200:
+ *         description: Counts and integration status. Counts only — no per-user identifiers (labor safety).
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+// T2-A7 — governance health view. COUNTS ONLY: no per-user identifiers, no
+// per-worker activity, no leaderboards (spec Labor Safety Constraint). Reads
+// canonical observations via the normalized columns (obs_kind/norm_status),
+// never payload, and never the frozen adapter tables (hazards/
+// infrastructure_issues are write-clipped; counting them would be
+// permanently stale — the spec's open_issues section predates the clip).
+adminRoutes.get("/admin/health", async (req: Request, res: Response) => {
+  try {
+    const numericOrgId = await resolveNumericOrgId(req);
+    const health = await withOrgContext(numericOrgId, async (client) => {
+      const byRoleRes = await client.query(
+        `SELECT last_seen_role AS role, COUNT(*)::int AS n
+         FROM identity_directory GROUP BY last_seen_role`,
+      );
+      const activeUsersRes = await client.query(
+        `SELECT COUNT(DISTINCT oid)::int AS n FROM identity_directory
+         WHERE last_seen_at > now() - interval '30 days'`,
+      );
+      const stopsRes = await client.query(
+        `SELECT COUNT(*) FILTER (WHERE active)::int AS active,
+                COUNT(*) FILTER (WHERE NOT active)::int AS retired,
+                COUNT(*)::int AS total
+         FROM transit_stops`,
+      );
+      const poolsRes = await client.query(
+        `SELECT COUNT(*) FILTER (WHERE active)::int AS active,
+                COUNT(*) FILTER (WHERE NOT active)::int AS inactive,
+                COUNT(*)::int AS total
+         FROM route_pools`,
+      );
+      const runsYesterdayRes = await client.query(
+        `SELECT status, COUNT(*)::int AS n FROM route_runs
+         WHERE run_date = CURRENT_DATE - INTERVAL '1 day' GROUP BY status`,
+      );
+      const visitsYesterdayRes = await client.query(
+        `SELECT COUNT(*)::int AS n FROM core.visits
+         WHERE started_at >= CURRENT_DATE - INTERVAL '1 day'
+           AND started_at < CURRENT_DATE`,
+      );
+      // eam_bridge_route_log live schema has no status column (spec predates
+      // it): a row IS a successful bridge log. Health = recency + volume.
+      const eamRes = await client.query(
+        `SELECT MAX(logged_at) AS last_log_at,
+                COUNT(*) FILTER (WHERE logged_at > now() - interval '7 days')::int AS logs_7d
+         FROM eam_bridge_route_log`,
+      );
+      const auditRes = await client.query(
+        `SELECT COUNT(*) FILTER (WHERE occurred_at > now() - interval '24 hours')::int AS rows_24h,
+                COUNT(*) FILTER (WHERE occurred_at > now() - interval '7 days')::int AS rows_7d
+         FROM audit_log`,
+      );
+      // Canonical replacement for the spec's open_issues: presence-kind
+      // observations with norm_status = 'not_ok' in the last 7 days
+      // (hazards + infra issues are presence observations per the registry;
+      // canonical has no open/closed lifecycle, so "recent" is the honest
+      // framing).
+      const issuesRes = await client.query(
+        `SELECT COUNT(*)::int AS n FROM core.observations
+         WHERE obs_kind = 'presence' AND norm_status = 'not_ok'
+           AND observed_at > now() - interval '7 days'`,
+      );
+
+      const by_role: Record<string, number> = {};
+      for (const r of byRoleRes.rows) by_role[r.role ?? "unknown"] = r.n;
+      const route_runs_yesterday: Record<string, number> = {};
+      for (const r of runsYesterdayRes.rows) route_runs_yesterday[r.status ?? "unknown"] = r.n;
+
+      return {
+        as_of: new Date().toISOString(),
+        users: { by_role, active_last_30d: activeUsersRes.rows[0].n },
+        stops: stopsRes.rows[0],
+        pools: poolsRes.rows[0],
+        route_runs_yesterday,
+        visits_yesterday: visitsYesterdayRes.rows[0].n,
+        eam_bridge: {
+          last_log_at: eamRes.rows[0].last_log_at,
+          logs_7d: eamRes.rows[0].logs_7d,
+        },
+        audit_log: auditRes.rows[0],
+        recent_issues: { not_ok_presence_7d: issuesRes.rows[0].n },
+      };
+    });
+    res.json(health);
+  } catch (err: any) {
+    console.error("Error in /admin/health:", err);
+    res.status(err.status ?? 500).json({ error: err.message });
+  }
+});
+
 /** ── Pools ────────────────────────────────────────────────────────────── */
 /**
  * @openapi

@@ -233,6 +233,8 @@ function buildEndpoints(): Endpoint[] {
     { method: "GET", route: "/difficulty", probe: "/ops/control-center/difficulty", kind: "clean", authorized: "Dispatch", underPriv: "Specialist" },
     // ── Admin dashboards / lists ──
     { method: "GET", route: "/admin/dashboard", probe: "/admin/dashboard", kind: "clean", authorized: "Admin" },
+    // T2-A7 governance health view — counts only, no per-user identifiers.
+    { method: "GET", route: "/admin/health", probe: "/admin/health", kind: "clean", authorized: "Admin" },
     { method: "GET", route: "/admin/pools", probe: "/admin/pools", kind: "clean", authorized: "Admin" },
     { method: "GET", route: "/admin/stops", probe: "/admin/stops", kind: "clean", authorized: "Admin" },
     { method: "GET", route: "/admin/route-runs", probe: "/admin/route-runs", kind: "clean", authorized: "Admin" },
