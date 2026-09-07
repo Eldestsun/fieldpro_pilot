@@ -104,8 +104,12 @@ export function OfflineSyncManager({ children }: Props) {
                     const files: File[] = [];
                     for (const id of localIds) {
                         const rec = await getPhoto(id);
-                        if (rec && rec.blob) {
+                        if (rec && rec.blob && rec.blob.size > 0) {
                             files.push(new File([rec.blob], rec.filename, { type: rec.contentType }));
+                        } else if (rec) {
+                            // ISSUE-063: a hollow stored blob would upload an empty
+                            // multipart and 400 forever — fail distinctly instead.
+                            throw new Error(`Stored photo is empty (${rec.filename}) — re-take the photo.`);
                         } else {
                             throw new Error(`Missing blob for localPhotoId: ${id}`);
                         }

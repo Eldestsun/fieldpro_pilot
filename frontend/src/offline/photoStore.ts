@@ -43,11 +43,30 @@ export async function putPhoto(params: {
     contentType: string;
     blob: Blob;
 }): Promise<string> {
+    // ISSUE-063: materialize the bytes NOW. A File from an <input> is a lazy
+    // reference to the on-disk file; structured-cloning it into IndexedDB can
+    // persist a snapshot that later reads as 0 bytes (proven: a replay
+    // uploaded an empty multipart and drew 400 "File type not allowed").
+    // Copying into a plain Blob makes the store own the bytes, and an
+    // unreadable/empty source fails HERE — visibly, at capture time — instead
+    // of as a doomed queued action.
+    if (params.blob.size === 0) {
+        throw new Error("Photo file is empty or unreadable — please re-take the photo.");
+    }
+    // (Response fallback: jsdom Blobs lack arrayBuffer(); browsers use the native call.)
+    const bytes = typeof params.blob.arrayBuffer === "function"
+        ? await params.blob.arrayBuffer()
+        : await new Response(params.blob).arrayBuffer();
+    if (bytes.byteLength === 0) {
+        throw new Error("Photo file is empty or unreadable — please re-take the photo.");
+    }
+
     const db = await openDB();
     const localPhotoId = crypto.randomUUID();
     const record: StoredPhoto = {
         localPhotoId,
         ...params,
+        blob: new Blob([bytes], { type: params.contentType }),
         createdAt: new Date().toISOString(),
     };
 

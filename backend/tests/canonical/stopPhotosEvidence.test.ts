@@ -7,6 +7,7 @@ import {
   FIXTURE_ORG_ID,
   acquireRouteRunFixture,
   releaseFixture,
+  deriveClientVisitIdLocal,
 } from "../setup";
 import { ensureVisitForRouteRunStop } from "../../src/domains/visit/visitService";
 import { createStopPhotos } from "../../src/domains/routeRunStop/stopPhotosService";
@@ -50,6 +51,55 @@ test("PATTERN-001/PHOTOS: under org context, createStopPhotos writes evidence + 
     assertEqual(ev.rows[0].kind, "completion", "evidence kind preserved");
     assertEqual(ev.rows[0].actor_ref, "encrypted", "sidecar actor_ref is the non-identifying sentinel");
     assert(ev.rows[0].has_ct === true, "sidecar carries the ciphertext (ISSUE-058)");
+  } finally {
+    await releaseFixture(client, f);
+  }
+});
+
+test("ISSUE-063: photo upload with NO pre-existing visit ensures the visit, so evidence lands (offline replay order)", async () => {
+  // The offline replay order is UPLOAD_STOP_PHOTOS → START_STOP → …, so photos
+  // reach the server BEFORE the visit exists. It also happens for a started
+  // stop whose visit was never created (a zombie). Before the fix,
+  // createStopPhotos found no visit, skipped core.evidence, and the route
+  // returned 200 anyway — the photo silently vanished and completion 400'd.
+  // The photo route now calls ensureVisitForRouteRunStop first; this pins that.
+  const { client, f } = await acquireRouteRunFixture();
+  try {
+    // Deliberately DO NOT create the visit up front — reproduce photo-before-start.
+    const before = await client.query(
+      `SELECT COUNT(*)::int AS n FROM core.visits WHERE client_visit_id = $1`,
+      [deriveClientVisitIdLocal(f.routeRunStopId)],
+    );
+    assertEqual(before.rows[0].n, 0, "precondition: no visit exists yet");
+
+    // Exactly the fixed route's sequence: ensure the visit, then write evidence.
+    await client.query("BEGIN");
+    await ensureVisitForRouteRunStop(client, {
+      routeRunStopId: f.routeRunStopId,
+      actorOid: FIXTURE_ACTOR_OID,
+      visitType: "service",
+    });
+    await createStopPhotos(client, {
+      routeRunStopId: f.routeRunStopId,
+      userOid: FIXTURE_ACTOR_OID,
+      s3Keys: ["test/issue063-photo-before-visit.png"],
+      kind: "completion",
+    });
+    await client.query("COMMIT");
+
+    const ev = await client.query(
+      `SELECT COUNT(*)::int AS n FROM core.evidence
+       WHERE storage_key = 'test/issue063-photo-before-visit.png'`,
+    );
+    assertEqual(ev.rows[0].n, 1, "evidence lands even though no visit existed at upload time");
+
+    // Idempotency: a subsequent START_STOP-style ensure returns the SAME visit,
+    // never a duplicate (both key on deriveClientVisitId).
+    const visits = await client.query(
+      `SELECT COUNT(*)::int AS n FROM core.visits WHERE client_visit_id = $1`,
+      [deriveClientVisitIdLocal(f.routeRunStopId)],
+    );
+    assertEqual(visits.rows[0].n, 1, "exactly one visit — ensure is idempotent across upload + start");
   } finally {
     await releaseFixture(client, f);
   }
