@@ -4,6 +4,7 @@ import { getStopHistory, type StopHistoryEntry, type StopHistoryObservation } fr
 import { OpsCard } from "./ui/OpsCard";
 import { OpsBadge } from "./ui/OpsBadge";
 import { OpsButton } from "./ui/OpsButton";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 
 // SEAM-D D5b — read-only per-stop history drawer.
 // Intelligence surface: per-STOP condition/effort over time IS the product.
@@ -82,6 +83,8 @@ function HistoryEntry({ entry }: { entry: StopHistoryEntry }) {
 }
 
 export function StopHistoryDrawer({ stopId, stopLabel, onClose }: StopHistoryDrawerProps) {
+    // S2-9-pre1: focus trap + Escape-to-close + focus restore.
+    const trapRef = useFocusTrap<HTMLDivElement>(true, onClose);
     const { getAccessToken } = useAuth();
     const [entries, setEntries] = useState<StopHistoryEntry[] | null>(null);
     const [totalVisits, setTotalVisits] = useState(0);
@@ -108,6 +111,7 @@ export function StopHistoryDrawer({ stopId, stopLabel, onClose }: StopHistoryDra
 
     return (
         <div
+            ref={trapRef}
             className="fixed inset-0 bg-black/40 flex justify-end z-[1000] backdrop-blur-sm"
             onClick={onClose}
             role="dialog"

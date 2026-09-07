@@ -8,6 +8,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { getQueuedUploadCountForStop, subscribe, hasPendingStartStopForStop, hasPendingSkipStopForStop } from "../../offline/offlineQueue";
 import { saveStopDraft, loadStopDraft, clearStopDraft } from "../../offline/stopDraftStore";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 const CHECKLIST_ITEMS: { key: keyof ChecklistState; label: string }[] = [
     { key: 'picked_up_litter', label: 'Picked up litter' },
@@ -313,6 +314,9 @@ export function StopDetail({
     // Active Stop Layout State
     const [isReportSafetyOpen, setIsReportSafetyOpen] = useState(false);
     const [isReportInfraOpen, setIsReportInfraOpen] = useState(false);
+    // S2-9-pre1: focus traps for the two report modals (Escape closes without saving).
+    const safetyTrapRef = useFocusTrap<HTMLDivElement>(isReportSafetyOpen, () => setIsReportSafetyOpen(false));
+    const infraTrapRef = useFocusTrap<HTMLDivElement>(isReportInfraOpen, () => setIsReportInfraOpen(false));
 
     // Local state for Infra Photo (one photo for the whole report context)
     const [localInfraPhotoKey, setLocalInfraPhotoKey] = useState<string | null>(null);
@@ -842,6 +846,7 @@ export function StopDetail({
             {isReportSafetyOpen && (
                 <div className="fixed inset-0 bg-[rgba(17,24,39,0.6)] flex items-center justify-center z-[2000] p-4">
                     <div
+                        ref={safetyTrapRef}
                         role="dialog"
                         aria-modal="true"
                         aria-labelledby="safety-modal-title"
@@ -1044,6 +1049,7 @@ export function StopDetail({
             {isReportInfraOpen && (
                 <div className="fixed inset-0 bg-[rgba(17,24,39,0.6)] flex items-center justify-center z-[2000] p-4">
                     <div
+                        ref={infraTrapRef}
                         role="dialog"
                         aria-modal="true"
                         aria-labelledby="infra-modal-title"

@@ -1,4 +1,5 @@
 import type { OfflineAction } from "../../offline/offlineQueue";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 interface Props {
     conflicts: OfflineAction[];
@@ -7,6 +8,8 @@ interface Props {
 }
 
 export function ConflictResolutionModal({ conflicts, onDismiss, onClose }: Props) {
+    // S2-9-pre1: focus trap + Escape-to-close + focus restore.
+    const trapRef = useFocusTrap<HTMLDivElement>(true, onClose);
     const handleCopyInfo = (action: OfflineAction) => {
         const info = [
             `Stop ID: ${action.routeRunStopId ?? 'unknown'}`,
@@ -33,6 +36,7 @@ export function ConflictResolutionModal({ conflicts, onDismiss, onClose }: Props
             onClick={onClose}
         >
             <div
+                ref={trapRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="conflict-modal-title"
