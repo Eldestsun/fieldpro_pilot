@@ -37,6 +37,18 @@
   excluded from pool planning and the ad-hoc picker, reversible, and audited with
   the transition.
 
+## Migration (drift heal — found by PR #114's red CI)
+`backend/migrations/20260904_t2a2_transit_stops_active.sql` (new file, pre-existing
+name): CI's clean-room build failed with `column "active" does not exist` — the dev
+DB's `transit_stops.active` was applied out-of-band. Specifically the REVERSE of
+ISSUE-038: dev's `schema_migrations` already carried a RECORDED entry
+`20260904_t2a2_transit_stops_active.sql` (from the 2026-09-04 T2-A2 branch prep)
+whose file was never committed. The file is restored under the recorded name with
+content verified identical to dev (column `boolean NOT NULL DEFAULT true` + `stops`
+view widened with `ts.active`), fully idempotent — dev treats it as applied; fresh
+builds apply it. Lesson: branch prep that hand-applies DDL must commit the
+migration file in the same motion.
+
 ## Files touched
 - `backend/src/services/adminStopService.ts`
 - `backend/src/modules/admin/adminRoutes.ts`
