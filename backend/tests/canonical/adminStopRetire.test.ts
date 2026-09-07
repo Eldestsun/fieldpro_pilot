@@ -35,8 +35,8 @@ async function withOrgClient<T>(fn: (client: any) => Promise<T>): Promise<T> {
 async function createFixtureStop(client: any): Promise<void> {
   await client.query(
     `INSERT INTO public.transit_stops
-       (stop_id, on_street_name, intersection_loc, trf_district_code, lon, lat, active, org_id)
-     VALUES ($1, 'T2A2 Test St', 'Far side', 'TST', -122.30, 47.61, true, $2)
+       (stop_id, on_street_name, intersection_loc, lon, lat, active, org_id)
+     VALUES ($1, 'T2A2 Test St', 'Far side', -122.30, 47.61, true, $2)
      ON CONFLICT (stop_id) DO UPDATE SET active = true`,
     [STOP_ID, FIXTURE_ORG_ID],
   );

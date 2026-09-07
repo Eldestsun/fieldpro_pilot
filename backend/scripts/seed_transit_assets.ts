@@ -415,15 +415,13 @@ async function upsertAssets(
            'has_trash',             ts.has_trash,
            'pool_id',               ts.pool_id,
            'priority_class',        ts.priority_class,
-           'num_shelters',          COALESCE(ts.num_shelters, 0),
            'notes',                 ts.notes,
-           'stop_status',           ts.stop_status,
-           'trf_district_code',     ts.trf_district_code,
-           'bay_code',              ts.bay_code,
-           'bearing_code',          ts.bearing_code,
-           'kcm_managed_equipment', ts.kcm_managed_equipment,
-           'route_list',            ts.route_list
-         ),
+           'bearing_code',          ts.bearing_code
+         -- ISSUE-061: agency export fields (num_shelters, stop_status,
+         -- trf_district_code, bay_code, kcm_managed_equipment, route_list, …)
+         -- now live in transit_stops.source_attributes — merged wholesale so
+         -- any future agency's fields flow through with no script change.
+         ) || ts.source_attributes,
          true,
          now()
        FROM transit_stops ts

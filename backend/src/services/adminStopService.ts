@@ -10,11 +10,11 @@ export interface Stop {
     active: boolean;
     on_street_name: string;
     intersection_loc: string;
-    trf_district_code: string;
     last_level3_at: Date | null;
     notes: string | null;
     bearing_code: string | null;
-    hastus_cross_street_name: string | null;
+    // ISSUE-061: renamed from the KCM export name hastus_cross_street_name.
+    cross_street: string | null;
     lon: number | null;
     lat: number | null;
 }
@@ -77,9 +77,8 @@ export async function listStops(params: {
             active,
             on_street_name,
             intersection_loc,
-            trf_district_code,
             bearing_code,
-            hastus_cross_street_name,
+            cross_street,
             lon,
             lat,
             last_level3_at,
@@ -172,9 +171,8 @@ export async function updateStop(
                 active,
                 on_street_name,
                 intersection_loc,
-                trf_district_code,
                 bearing_code,
-                hastus_cross_street_name,
+                cross_street,
                 lon,
                 lat,
                 last_level3_at,
