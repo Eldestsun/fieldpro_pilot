@@ -18,6 +18,7 @@ import * as AdminStopsPanelMod from "./components/admin/AdminStopsPanel";
 import * as AdminControlCenterMod from "./components/admin/AdminControlCenter";
 import * as AdminAuditLogPanelMod from "./components/admin/AdminAuditLogPanel";
 import * as AdminExportDeletePanelMod from "./components/admin/AdminExportDeletePanel";
+import * as AdminSystemHealthPanelMod from "./components/admin/AdminSystemHealthPanel";
 import * as LoginPageMod from "./auth/LoginPage";
 import { OfflineSyncManager } from "./offline/OfflineSyncManager";
 import { OfflineStatusBar } from "./components/ui/OfflineStatusBar";
@@ -35,6 +36,7 @@ const AdminStopsPanel = resolveComponent(AdminStopsPanelMod, "AdminStopsPanel");
 const AdminControlCenter = resolveComponent(AdminControlCenterMod, "AdminControlCenter");
 const AdminAuditLogPanel = resolveComponent(AdminAuditLogPanelMod, "AdminAuditLogPanel");
 const AdminExportDeletePanel = resolveComponent(AdminExportDeletePanelMod, "AdminExportDeletePanel");
+const AdminSystemHealthPanel = resolveComponent(AdminSystemHealthPanelMod, "AdminSystemHealthPanel");
 const LoginPage = resolveComponent(LoginPageMod, "LoginPage");
 
 function DefaultRedirect() {
@@ -138,6 +140,7 @@ export default function App() {
                   <NavLink to="/ops/control-center" end className={navLinkClass}>Control Center</NavLink>
                   <NavLink to="/admin/audit-log" end className={navLinkClass}>Audit Log</NavLink>
                   <NavLink to="/admin/export-delete" end className={navLinkClass}>Export &amp; Delete</NavLink>
+                  <NavLink to="/admin/system-health" end className={navLinkClass}>System Health</NavLink>
                 </>
               )}
             </div>
@@ -231,6 +234,7 @@ export default function App() {
                   <NavLink to="/ops/control-center" end className={mobileNavLinkClass} onClick={closeMenu}>Control Center</NavLink>
                   <NavLink to="/admin/audit-log" end className={mobileNavLinkClass} onClick={closeMenu}>Audit Log</NavLink>
                   <NavLink to="/admin/export-delete" end className={mobileNavLinkClass} onClick={closeMenu}>Export &amp; Delete</NavLink>
+                  <NavLink to="/admin/system-health" end className={mobileNavLinkClass} onClick={closeMenu}>System Health</NavLink>
                 </>
               )}
               <div className="mt-2 pt-2 border-t border-gray-100">
@@ -283,6 +287,9 @@ export default function App() {
             } />
             <Route path="/admin/export-delete" element={
               <RequireRole roles={["Admin"]}><AdminExportDeletePanel /></RequireRole>
+            } />
+            <Route path="/admin/system-health" element={
+              <RequireRole roles={["Admin"]}><AdminSystemHealthPanel /></RequireRole>
             } />
             <Route path="/ops/dashboard" element={
               <RequireRole roles={["Dispatch", "Admin"]}><AdminDashboard scope="ops" /></RequireRole>
