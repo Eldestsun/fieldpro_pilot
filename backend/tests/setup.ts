@@ -98,9 +98,9 @@ export async function releaseFixture(client: PoolClient, f: RouteRunFixture): Pr
  * partial writes when a test fails mid-way.
  */
 export async function cleanupFixture(client: PoolClient, f: RouteRunFixture): Promise<void> {
-  // stop_photos: FK to route_run_stops ON DELETE CASCADE — but delete explicitly
-  // so we tolerate a future schema change.
-  await client.query(`DELETE FROM stop_photos WHERE route_run_stop_id = $1`, [f.routeRunStopId]);
+  // Evidence lives in core.evidence now — public.stop_photos was physically
+  // dropped in 20260908_issue037_drop_frozen_adapter_tables.sql. No adapter
+  // photo rows to scrub.
   // core.evidence: FK to core.visits ON DELETE CASCADE — cascaded with visit delete.
   // core.observations: FK to core.visits ON DELETE CASCADE — cascaded with visit delete.
   // Delete visits for this stop (cascades evidence + observations).
@@ -120,8 +120,8 @@ export async function cleanupFixture(client: PoolClient, f: RouteRunFixture): Pr
     [f.routeRunId]
   );
 
-  // route_run_stops: FK from stop_photos already deleted, hazards/infra are nullable.
-  // route_runs delete cascades route_run_stops.
+  // route_runs delete cascades route_run_stops (the frozen adapter tables and
+  // their dead hazard_id/infra_issue_id pointer columns were dropped in ISSUE-037).
   await client.query(`DELETE FROM route_runs WHERE id = $1`, [f.routeRunId]);
 
   // Reset org context so this connection is clean when returned to the pool.

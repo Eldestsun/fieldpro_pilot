@@ -103,14 +103,18 @@ test("clean-logs canonical pivot: 5 booleans match written actions exactly (incl
 
     const today = (await client.query(`SELECT CURRENT_DATE::text AS d`)).rows[0].d as string;
 
-    // ── WRITE-CLIP PROOF (ISSUE-031 Stage 2): completeStop no longer dual-writes
-    //    public.clean_logs. The completed visit exists, but NO mirror row was
-    //    created for it — canonical is now the sole source of truth.
-    const mirror = await client.query(
-      `SELECT 1 FROM clean_logs WHERE visit_id = $1`,
-      [visitId],
+    // ── WRITE-CLIP PROOF, now STRUCTURAL (ISSUE-031 Stage 2 → ISSUE-037 Stage 3):
+    //    completeStop stopped dual-writing public.clean_logs at Stage 2; Stage 3
+    //    physically dropped the table. A mirror row is not merely absent — it is
+    //    now impossible. Assert the adapter table no longer exists at all.
+    const adapterGone = await client.query(
+      `SELECT to_regclass('public.clean_logs') AS reg`,
     );
-    assertEqual(mirror.rowCount, 0, "completeStop must NOT write a clean_logs mirror row (Stage-2 clip)");
+    assertEqual(
+      adapterGone.rows[0].reg,
+      null,
+      "public.clean_logs must be physically dropped (ISSUE-037) — no adapter mirror possible",
+    );
 
     // ── AFTER: the repointed canonical read (the real builder both endpoints use),
     //    scoped to this stop + today so it isolates the fixture visit.
@@ -123,12 +127,12 @@ test("clean-logs canonical pivot: 5 booleans match written actions exactly (incl
     const after = await client.query(query, queryValues);
     const count = await client.query(countQuery, countValues);
 
-    // Row count parity: one clean_logs row ⇒ one canonical row; total matches.
+    // Row count parity: the single completed visit yields exactly one canonical row.
     assertEqual(after.rowCount, 1, "canonical read returns exactly one row for stop/date");
     assertEqual(
       parseInt(count.rows[0].total, 10),
       1,
-      "canonical count(total) matches the single clean_logs row",
+      "canonical count(total) matches the single completed visit",
     );
 
     const row = after.rows[0];
@@ -171,15 +175,8 @@ test("clean-logs canonical pivot: 5 booleans match written actions exactly (incl
       assert(!keys.includes(idCol), `canonical read leaked identity column "${idCol}" (keys: ${keys.join(", ")})`);
     }
   } finally {
-    // Defensive cleanup. Post Stage-2 write-clip completeStop writes no clean_logs
-    // mirror row, so this DELETE is normally a no-op; it remains to scrub any
-    // legacy/orphan row (visit_id FK is SET NULL, not cascaded, on visit delete) so
-    // nothing pollutes the DB. The sibling trash_volume_logs DELETE was removed when
-    // that table was physically dropped in 20260620_issue037_drop_trash_volume_logs.sql.
-    try {
-      await client.query(`DELETE FROM clean_logs WHERE route_run_stop_id = $1`, [f.routeRunStopId]);
-    } finally {
-      await releaseFixture(client, f); // cascades visit → observations / effort_history
-    }
+    // No adapter scrub: public.clean_logs (like its sibling trash_volume_logs) was
+    // physically dropped in ISSUE-037, so there is no mirror row to delete.
+    await releaseFixture(client, f); // cascades visit → observations / effort_history
   }
 });
