@@ -37,20 +37,33 @@ The system is in a controlled transitional state. The canonical domain model (`c
 
 These are diagnosed defects, not design decisions. Each represents a delta between current state and `target_architecture.md`.
 
-### §5.1 — `assignment_id` never written on `core.visits`
-- **Column**: `core.visits.assignment_id bigint` — exists in schema, never populated
-- **Impact**: The model cannot answer "what was planned vs. what actually happened" — there is no FK from a visit to its originating assignment
-- **Fix**: `ensureVisitForRouteRunStop()` must resolve and write `assignment_id` from `route_run_stops → route_runs → core.assignments`
+> **§5.1, §5.2, §5.3, §5.6, §5.7 RESOLVED 2026-09-07 (ISSUE-051).** These five were
+> written before the ISSUE-031 Stage-2 clip made `completeStop` canonical-only and
+> in-transaction, and before ISSUE-063 closed the evidence path. They are marked
+> resolved inline below with references; kept (not deleted) so the history reads.
+> Remaining genuinely-open items in this section: §5.4/§5.5 (intentional transit
+> artifacts), §5.8 (cosmetic param name), §5.9 (visit lifecycle — reshaped by
+> ISSUE-063, see note there).
 
-### §5.2 — `outcome` and `reason_code` always null on `core.visits`
-- **Columns**: `core.visits.outcome`, `core.visits.reason_code` — both always null
-- **Impact**: A completed stop has no recorded outcome in the canonical visit; a skipped stop has no skip reason recorded at the visit level (only in `clean_logs`)
-- **Fix**: `completeStop()` must write `outcome = "completed"`; skip path must write `outcome = "skipped"` + `reason_code = skip_reason`
+### §5.1 — `assignment_id` never written on `core.visits` — ✅ RESOLVED
+- **RESOLVED (ISSUE-051 recon, 2026-09-07):** `ensureVisitForRouteRunStop()` resolves
+  the canonical assignment (`core.assignments` where `source_ref = route_run_id`,
+  `assignment_type = 'transit_stop_clean'`) and writes `assignment_id` into the visit
+  INSERT (`visitService.ts`). Null only for pre-Tier-5 runs with no assignment row.
+- ~~**Column**: `core.visits.assignment_id bigint` — exists in schema, never populated~~
 
-### §5.3 — `washed_can` not emitted as an observation
-- **Source**: `CompleteStopPayload.washed_can` → written to `clean_logs` only
-- **Impact**: Can-wash state exists only in the transit legacy table, not in canonical observations
-- **Fix**: Add `wash_can_condition` paired observation to `emitObservationsForStop()`
+### §5.2 — `outcome` and `reason_code` always null on `core.visits` — ✅ RESOLVED
+- **RESOLVED (ISSUE-051 recon, 2026-09-07):** `closeVisitForRouteRunStop()` writes
+  `outcome='completed'` on complete and `outcome='skipped'` + `reason_code` on the
+  skip path (`cleanLogService.ts` / `routeRunStopRoutes.ts` skip handler), both inside
+  the completion transaction.
+- ~~**Columns**: both always null~~
+
+### §5.3 — `washed_can` not emitted as an observation — ✅ RESOLVED
+- **RESOLVED (ISSUE-031 Stage-2 clip):** all five cleaning-action booleans incl.
+  `washed_can` are emitted as `core.observations` action rows via
+  `emitObservationsForStop()` from `uiPayload` (`cleanLogService.ts`).
+- ~~**Source**: `washed_can` → written to `clean_logs` only~~
 
 ### §5.4 — `clean_logs` records actions, not state truth
 - `clean_logs` stores boolean flags (`picked_up_litter = true`) — what someone *did*, not what *was true*
@@ -63,17 +76,22 @@ These are diagnosed defects, not design decisions. Each represents a delta betwe
 - Identity is correctly recorded via `actor_oid` on `core.visits` — the legacy `user_id` is vestigial
 - **Do not use this pattern** in new code
 
-### §5.6 — Photos not written to `core.evidence`
-- `stop_photos` table has a `visit_id` FK and is populated on every photo upload
-- `core.evidence` table exists (`visit_id`, `kind`, `storage_key`) but no code writes to it
-- **Impact**: Evidence is anchored at the transit-vertical level only; canonical evidence layer is empty
-- **Fix**: `stopPhotosService.ts` should write to `core.evidence` in addition to `stop_photos`
+### §5.6 — Photos not written to `core.evidence` — ✅ RESOLVED
+- **RESOLVED (PATTERN-001/PHOTOS 2026-08-18 + ISSUE-063 2026-09-07):** `createStopPhotos()`
+  writes `core.evidence` (+ the encrypted `core.evidence_actor_audit` sidecar) atomically,
+  and the photos route now `ensureVisitForRouteRunStop` before writing so evidence can
+  never be silently skipped for a missing visit.
+- ~~`core.evidence` exists but no code writes to it~~
 
-### §5.7 — Observations emitted post-commit on a separate connection
-- `cleanLogService.ts` commits the transaction, then calls `emitObservationsForStop()` on a separate pool connection
-- If observation emission fails, the visit is closed but carries no observations — no retry or transactional guarantee
-- **Impact**: Observations are not atomically bound to visit close
-- **Fix**: Move observation emission inside the transaction, or implement a reliable post-commit retry mechanism
+### §5.7 — Observations emitted post-commit on a separate connection — ✅ RESOLVED
+- **RESOLVED (ISSUE-031 Stage-2 for complete; ISSUE-051 2026-09-07 for skip):** the
+  complete-stop path emits observations on the caller's `client` inside the single
+  BEGIN/COMMIT (`cleanLogService.ts` + `routeRunStopRoutes.ts` complete handler). The
+  skip-with-hazard path was the last holdout — it committed then emitted on a fresh
+  pool connection with no retry; ISSUE-051 moved its `emitObservationsForStop` (and the
+  route-run completion check) inside the transaction, passing `client`, before COMMIT.
+  Regression test: `tests/canonical/skipHazardAtomic.test.ts`.
+- ~~emission ran post-commit with no transactional guarantee~~
 
 ### §5.8 — Spot-check observation emits inside transaction using ambiguous pool reference
 - `emitSpotCheckObservation({ pool: client, ... })` — `pool` is actually a `PoolClient`, not a `Pool`
@@ -88,6 +106,12 @@ These are diagnosed defects, not design decisions. Each represents a delta betwe
   - `started_at` reflects the photo upload time, not arrival time — making it an unreliable arrival timestamp
   - `visit_type` is hardcoded `"service"` before outcome is known
 - **Fix**: Visit creation must be tied to a single authoritative lifecycle event (stop start), not photo upload
+- **NOTE (ISSUE-063, 2026-09-07):** photo upload now *deliberately* calls
+  `ensureVisitForRouteRunStop` before writing evidence — REQUIRED because the offline
+  replay order (`UPLOAD_STOP_PHOTOS` → `START_STOP`) delivers photos before start, and
+  evidence was silently lost without a visit. Do NOT "fix" §5.9 by removing that ensure.
+  The remaining lifecycle nuance (started_at = upload time when a photo precedes start)
+  is the true residual; ensureVisit is idempotent so start/complete reuse the same visit.
 
 ---
 
