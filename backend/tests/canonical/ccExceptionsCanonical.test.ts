@@ -8,7 +8,6 @@ import {
   test,
   assert,
   assertEqual,
-  pool,
   FIXTURE_ACTOR_OID,
   FIXTURE_ORG_ID,
   FIXTURE_LOCATION_ID,
@@ -27,14 +26,14 @@ import { emitObservationsForStop } from "../../src/domains/observation/observati
 // and measures BEFORE/AFTER deltas (the tile counts org-wide today, so deltas are
 // deterministic under concurrent presence rows). It FAILS against the pre-SEAM-C
 // handler, which counted public.hazards / public.infrastructure_issues:
-//   - seeding canonical presence observations gives the OLD handler a 0 delta (fail),
-//   - the synthetic clipped public.hazards row gives the OLD handler a +1 delta (fail).
+//   - seeding canonical presence observations gives the OLD handler a 0 delta (fail).
+// (The former synthetic-clipped-row assertion is now structural: public.hazards and
+//  public.infrastructure_issues were physically dropped in ISSUE-037.)
 //
 // Taxonomy shift asserted: contaminated-waste → biohazard_present counts under
 // HAZARDS (safety), never infra (observationService.ts mapInfraIssue / presenceTaxonomy.ts).
 // ============================================================================
 
-const ORG = String(FIXTURE_ORG_ID);
 const EXCEPTIONS = "/api/ops/control-center/exceptions";
 
 async function getExceptions(baseUrl: string): Promise<{ total_hazards: number; total_infra_issues: number }> {
@@ -55,7 +54,6 @@ test("CC /exceptions (SEAM-C): hazard + infra tiles count canonical presence obs
   const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
   const { client, f } = await acquireRouteRunFixture();
-  let hazardId: number | null = null;
   try {
     const before = await getExceptions(baseUrl);
 
@@ -95,26 +93,11 @@ test("CC /exceptions (SEAM-C): hazard + infra tiles count canonical presence obs
       "infra tile +1 from graffiti only; contaminated-waste counts under hazards (taxonomy shift)",
     );
 
-    // Adapter non-contribution: a synthetic clipped public.hazards row for today must
-    // NOT move the hazards tile (the repoint reads core.observations, not this table).
-    const inserted = await client.query(
-      `INSERT INTO public.hazards (stop_id, org_id, hazard_type, reported_at)
-       VALUES ($1, $2, 'seam_c_synthetic_clipped_row', now()) RETURNING id`,
-      ["31150", FIXTURE_ORG_ID],
-    );
-    hazardId = inserted.rows[0].id;
-
-    const afterAdapter = await getExceptions(baseUrl);
-    assertEqual(
-      afterAdapter.total_hazards,
-      afterSeed.total_hazards,
-      "a clipped public.hazards row does NOT contribute to the canonical hazards tile",
-    );
+    // Adapter non-contribution is now STRUCTURAL: public.hazards was physically
+    // dropped in ISSUE-037, so there is no clipped adapter row that could ever move
+    // the tile. The tiles count core.observations presence rows exclusively; the
+    // before/afterSeed deltas above are the whole proof.
   } finally {
-    if (hazardId != null) {
-      await pool.query(`SELECT set_config('app.current_org_id', $1, false)`, [ORG]);
-      await pool.query(`DELETE FROM public.hazards WHERE id = $1`, [hazardId]);
-    }
     await releaseFixture(client, f);
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }

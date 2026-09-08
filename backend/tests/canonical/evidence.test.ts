@@ -69,11 +69,10 @@ test("evidence (ISSUE-031 Stage 2): createStopPhotos no longer writes the stop_p
       kind: "completion",
     });
 
-    const sp = await client.query(
-      `SELECT id FROM stop_photos WHERE route_run_stop_id = $1`,
-      [f.routeRunStopId]
-    );
-    assertEqual(sp.rowCount, 0, "stop_photos mirror NOT written (clipped)");
+    // The public.stop_photos mirror is not merely un-written — the table was
+    // physically dropped in ISSUE-037, so no adapter mirror can exist at all.
+    const spGone = await client.query(`SELECT to_regclass('public.stop_photos') AS reg`);
+    assertEqual(spGone.rows[0].reg, null, "public.stop_photos dropped (ISSUE-037) — no mirror possible");
 
     const ev = await client.query(
       `SELECT id FROM core.evidence WHERE visit_id = $1 AND storage_key = $2`,
@@ -161,12 +160,7 @@ test("evidence (Q-D): pool-handed path commits evidence + sidecar atomically (no
 
     const verify = await pool.connect();
     try {
-      const sp = await verify.query(
-        `SELECT id FROM stop_photos WHERE s3_key = $1`,
-        [key]
-      );
-      assertEqual(sp.rowCount, 0, "stop_photos mirror NOT written (clipped)");
-
+      // No stop_photos mirror to check — the table was dropped in ISSUE-037.
       const ev = await verify.query(
         `SELECT id FROM core.evidence WHERE storage_key = $1`,
         [key]
@@ -250,12 +244,8 @@ test("evidence (Q-D): a mid-write failure rolls the whole unit back — no orpha
 
   const verify = await pool.connect();
   try {
-    const sp = await verify.query(
-      `SELECT id FROM stop_photos WHERE s3_key = ANY($1)`,
-      [[key1, key2]]
-    );
-    assertEqual(sp.rowCount, 0, "no stop_photos rows survive the rollback");
-
+    // No stop_photos mirror to check — the table was dropped in ISSUE-037; the
+    // rollback proof now rests on the canonical tables (evidence + sidecar).
     const ev = await verify.query(
       `SELECT id FROM core.evidence WHERE storage_key = ANY($1)`,
       [[key1, key2]]

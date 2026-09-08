@@ -65,16 +65,20 @@ These are diagnosed defects, not design decisions. Each represents a delta betwe
   `emitObservationsForStop()` from `uiPayload` (`cleanLogService.ts`).
 - ~~**Source**: `washed_can` → written to `clean_logs` only~~
 
-### §5.4 — `clean_logs` records actions, not state truth
-- `clean_logs` stores boolean flags (`picked_up_litter = true`) — what someone *did*, not what *was true*
-- This is intentionally kept as a transit vertical artifact; `core.observations` is the canonical state layer
-- **Do not expand `clean_logs`** — new state facts belong in `core.observations`
+### §5.4 — `clean_logs` records actions, not state truth — ✅ DROPPED (ISSUE-037)
+- **DROPPED (ISSUE-037 Stage-3, 2026-09-08):** `public.clean_logs` was physically
+  removed along with the other three frozen adapter tables (`hazards`, `stop_photos`,
+  `infrastructure_issues`). The write was clipped at ISSUE-031 Stage 2; the table is
+  now gone. `core.observations` is the sole state layer.
+- ~~`clean_logs` stores boolean flags (`picked_up_litter = true`) — what someone *did*, not what *was true*~~
+- ~~This is intentionally kept as a transit vertical artifact~~ — no longer exists.
 
-### §5.5 — `user_id = 123` hardcoded in `clean_logs`
-- `const user_id = 123; // DEV ONLY` in `cleanLogService.ts`
-- `clean_logs.user_id` is a non-functional integer placeholder
-- Identity is correctly recorded via `actor_oid` on `core.visits` — the legacy `user_id` is vestigial
-- **Do not use this pattern** in new code
+### §5.5 — `user_id = 123` hardcoded in `clean_logs` — ✅ DROPPED (ISSUE-037)
+- **DROPPED (ISSUE-037 Stage-3, 2026-09-08):** the `clean_logs` table (and its
+  vestigial `user_id` placeholder column) is gone. Identity is recorded only via the
+  encrypted `actor_oid` sidecar on `core.visits` / `core.*_actor_audit`.
+- ~~`const user_id = 123; // DEV ONLY` in `cleanLogService.ts`~~ (the mirror write was
+  clipped at Stage 2; the table dropped at Stage 3).
 
 ### §5.6 — Photos not written to `core.evidence` — ✅ RESOLVED
 - **RESOLVED (PATTERN-001/PHOTOS 2026-08-18 + ISSUE-063 2026-09-07):** `createStopPhotos()`

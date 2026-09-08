@@ -16,8 +16,9 @@ import type { InfraIssueInput } from "../../src/domains/routeRunStop/infrastruct
  * living-table clips). Proves the dual-write to public.infrastructure_issues is
  * gone and that an infra-issue stop completion now writes ONLY canonical:
  *
- *   - WRITE-CLIP PROOF: a completed stop carrying infra issues produces a ZERO
- *     row-delta on public.infrastructure_issues (the mirror is frozen).
+ *   - WRITE-CLIP PROOF (now structural): public.infrastructure_issues was
+ *     physically dropped in ISSUE-037, so a completed stop carrying infra issues
+ *     cannot write the mirror at all — the table is gone.
  *   - CANONICAL-INTACT PROOF: all 8 disjoint infra *_present observation types
  *     still emit to core.observations for the visit, with cause/component/notes
  *     threaded into the observation payload — independent of the removed mirror.
@@ -56,10 +57,15 @@ const EXPECTED_CANONICAL_TYPES = [
 test("infra write-clip: completeStop writes 0 infrastructure_issues rows; all 8 infra *_present observations still emit canonically", async () => {
   const { client, f } = await acquireRouteRunFixture();
   try {
-    // ── BEFORE: global mirror row count (RLS-free table; count is stable across the
-    //    transaction except for any write completeStop itself would make).
-    const before = await client.query(`SELECT count(*)::int AS n FROM public.infrastructure_issues`);
-    const beforeCount = before.rows[0].n as number;
+    // ── WRITE-CLIP PROOF, now STRUCTURAL (Stage 2 → ISSUE-037 Stage 3): the mirror
+    //    is not merely un-written — public.infrastructure_issues was physically
+    //    dropped, so a completion cannot write it at all.
+    const mirrorGone = await client.query(`SELECT to_regclass('public.infrastructure_issues') AS reg`);
+    assertEqual(
+      mirrorGone.rows[0].reg,
+      null,
+      "public.infrastructure_issues dropped (ISSUE-037) — no adapter mirror possible",
+    );
 
     // ── Drive the live write path with all 8 infra issue types.
     const completed = await completeStop(client, f.routeRunStopId, {
@@ -69,14 +75,6 @@ test("infra write-clip: completeStop writes 0 infrastructure_issues rows; all 8 
       actorOid: FIXTURE_ACTOR_OID,
     });
     assert(completed !== null, "completeStop returned null (stop not found)");
-
-    // ── WRITE-CLIP PROOF: zero new rows in the frozen mirror.
-    const after = await client.query(`SELECT count(*)::int AS n FROM public.infrastructure_issues`);
-    assertEqual(
-      after.rows[0].n as number,
-      beforeCount,
-      "completeStop must write ZERO public.infrastructure_issues rows (Stage-2 clip)",
-    );
 
     // ── Resolve the canonical visit.
     const visitRow = await client.query(
