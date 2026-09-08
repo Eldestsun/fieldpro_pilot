@@ -14,6 +14,8 @@ import { pool } from "../db";
 import { writeAuditLog } from "../middleware/auditLog";
 import { SYSTEM_ACTOR_OID } from "../constants";
 import { PoolClient } from "pg";
+import { deriveClientVisitId } from "../domains/visit/visitService";
+import { SAFETY_PRESENCE_TYPES, INFRA_PRESENCE_TYPES } from "../domains/observation/presenceTaxonomy";
 
 interface RouteRunRow {
   id: number;
@@ -52,15 +54,45 @@ async function fetchUnloggedRuns(client: PoolClient, watermark: Date): Promise<R
 }
 
 async function fetchStops(client: PoolClient, routeRunId: number): Promise<StopRow[]> {
-  const res = await client.query<StopRow>(
-    `SELECT stop_id,
-            status,
-            (hazard_id IS NOT NULL OR infra_issue_id IS NOT NULL) AS is_exception
-     FROM route_run_stops
-     WHERE route_run_id = $1`,
+  const base = await client.query<{ id: number; stop_id: string; status: string }>(
+    `SELECT id, stop_id, status FROM route_run_stops WHERE route_run_id = $1`,
     [routeRunId]
   );
-  return res.rows;
+  const rows = base.rows;
+  if (rows.length === 0) return [];
+
+  // ISSUE-035 item 1: is_exception derived from CANONICAL, not the dead
+  // route_run_stops.hazard_id / infra_issue_id adapter pointers (both
+  // permanently NULL for post-clip rows — hazard_id since the hazards Stage-2
+  // clip, infra_issue_id never written by any path). A stop is an exception if
+  // its visit carries any safety- or infra-presence observation. Bridge
+  // route_run_stop → visit via the deterministic client_visit_id — the same
+  // derivation the write path and ISSUE-036 use (Postgres has no uuidv5, so the
+  // bridge is computed here, not in SQL).
+  const cvidToStopId = new Map<string, number>();
+  for (const r of rows) cvidToStopId.set(deriveClientVisitId(r.id), r.id);
+
+  const exceptionTypes = [...SAFETY_PRESENCE_TYPES, ...INFRA_PRESENCE_TYPES];
+  const exc = await client.query<{ client_visit_id: string }>(
+    `SELECT DISTINCT v.client_visit_id
+       FROM core.visits v
+       JOIN core.observations o ON o.visit_id = v.id
+      WHERE v.client_visit_id = ANY($1::uuid[])
+        AND o.obs_kind = 'presence'
+        AND o.observation_type = ANY($2::text[])`,
+    [Array.from(cvidToStopId.keys()), exceptionTypes]
+  );
+  const exceptionStopIds = new Set<number>();
+  for (const r of exc.rows) {
+    const sid = cvidToStopId.get(r.client_visit_id);
+    if (sid !== undefined) exceptionStopIds.add(sid);
+  }
+
+  return rows.map((r) => ({
+    stop_id: r.stop_id,
+    status: r.status,
+    is_exception: exceptionStopIds.has(r.id),
+  }));
 }
 
 // PATTERN-001 / ISSUE-013 (ISSUE-057 product fix, mirroring riskMapJob): this

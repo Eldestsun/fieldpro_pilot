@@ -333,28 +333,22 @@ ccRouter.get("/exceptions", async (req: Request, res: Response) => {
   try {
     await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(numericOrgId)]);
     const queries = {
-      // 1. Skips by Reason
+      // 1. Skips by Reason (ISSUE-035 item 3 / SEAM-C-R1: canonical repoint off
+      // the clipped public.hazards join). The old query read the reason from
+      // public.hazards via rrs.hazard_id — a dead adapter pointer since the
+      // hazards Stage-2 clip (hazard_id always NULL for post-clip skips), so the
+      // reason collapsed to 'unspecified' for every real skip (founder-confirmed
+      // 2026-09-07). The canonical skip reason lives on the visit: the skip path
+      // writes core.visits.reason_code = the hazard type. A skip IS a visit with
+      // outcome='skipped'; group those by reason_code. RLS-scoped by the org
+      // context set on this client above.
       skips: `
-                WITH skipped AS (
-                  SELECT
-                    rrs.id,
-                    COALESCE(
-                      NULLIF(h.details->>'hazard_types', ''),
-                      h.hazard_type,
-                      'unspecified'
-                    ) AS reason
-                  FROM public.route_run_stops rrs
-                  LEFT JOIN public.hazards h
-                    ON h.id = rrs.hazard_id
-                  WHERE
-                    rrs.status = 'skipped'
-                    AND rrs.updated_at::date = CURRENT_DATE
-                )
-                SELECT
-                  reason,
-                  COUNT(*)::int AS count
-                FROM skipped
-                GROUP BY reason
+                SELECT COALESCE(reason_code, 'unspecified') AS reason,
+                       COUNT(*)::int AS count
+                FROM core.visits
+                WHERE outcome = 'skipped'
+                  AND ended_at::date = CURRENT_DATE
+                GROUP BY reason_code
                 ORDER BY count DESC;
             `,
       // 2. Total Hazards Today (SEAM-C: canonical repoint off clipped public.hazards).

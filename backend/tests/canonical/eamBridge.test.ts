@@ -7,8 +7,12 @@ import {
   FIXTURE_STOP_ID,
   FIXTURE_ASSET_ID,
   FIXTURE_POOL_ID,
+  FIXTURE_ACTOR_OID,
+  FIXTURE_LOCATION_ID,
+  deriveClientVisitIdLocal,
 } from "../setup";
 import { populate } from "../../src/scripts/populateEamBridge";
+import { ensureVisitForRouteRunStop } from "../../src/domains/visit/visitService";
 
 // ── S1-7: EAM Bridge Route Log integration tests ──────────────────────────
 
@@ -40,7 +44,6 @@ test("eam_bridge_route_log: table has no worker identity columns", async () => {
 test("eam_bridge_route_log: populate inserts correct stop_count and exception_count", async () => {
   const client = await pool.connect();
   let routeRunId: number | null = null;
-  let hazardId: number | null = null;
   let savedWatermark: Date | null = null;
 
   try {
@@ -81,17 +84,21 @@ test("eam_bridge_route_log: populate inserts correct stop_count and exception_co
     );
     const stop3Id = Number(s3.rows[0].id);
 
-    // Seed a hazard on stop3 — marks it as an exception in the bridge summary.
-    const hRes = await client.query<{ id: number }>(
-      `INSERT INTO hazards (stop_id, route_run_stop_id, hazard_type, severity, details, org_id)
-       VALUES ($1, $2, 'graffiti', 2, '{"source": "eam-bridge-test"}', $3)
-       RETURNING id`,
-      [FIXTURE_STOP_ID, stop3Id, FIXTURE_ORG_ID]
-    );
-    hazardId = Number(hRes.rows[0].id);
+    // ISSUE-035 item 1: an exception is now derived from CANONICAL, not the dead
+    // route_run_stops.hazard_id adapter pointer. Mark stop3 as an exception by
+    // giving its visit a presence observation (graffiti_present = an INFRA
+    // presence type). ensureVisit uses the same client_visit_id the populate
+    // script's canonical bridge derives, so the two line up.
+    const stop3VisitId = await ensureVisitForRouteRunStop(client, {
+      routeRunStopId: stop3Id,
+      actorOid: FIXTURE_ACTOR_OID,
+      visitType: "service",
+    });
     await client.query(
-      `UPDATE route_run_stops SET hazard_id = $1 WHERE id = $2`,
-      [hazardId, stop3Id]
+      `INSERT INTO core.observations
+         (org_id, visit_id, location_id, asset_id, observation_type, obs_kind, payload, observed_at)
+       VALUES ($1, $2, $3, $4, 'graffiti_present', 'presence', '{}'::jsonb, NOW())`,
+      [FIXTURE_ORG_ID, stop3VisitId, FIXTURE_LOCATION_ID, FIXTURE_ASSET_ID]
     );
 
     // Push watermark back so the populate script sees the new run.
@@ -121,7 +128,7 @@ test("eam_bridge_route_log: populate inserts correct stop_count and exception_co
     assertEqual(Number(row.org_id), FIXTURE_ORG_ID, "org_id matches fixture org");
     assertEqual(Number(row.route_run_id), routeRunId, "route_run_id matches");
     assertEqual(row.stop_count, 3, "stop_count = 3");
-    assertEqual(row.exception_count, 1, "exception_count = 1 (stop3 has hazard)");
+    assertEqual(row.exception_count, 1, "exception_count = 1 (stop3 has a canonical presence observation)");
     assert(row.canonical_summary !== null, "canonical_summary is present");
     assert(
       Array.isArray(row.canonical_summary.stops),
@@ -146,9 +153,20 @@ test("eam_bridge_route_log: populate inserts correct stop_count and exception_co
         [routeRunId]
       );
     }
-    // Deleting hazard sets route_run_stops.hazard_id = NULL via ON DELETE SET NULL.
-    if (hazardId !== null) {
-      await client.query(`DELETE FROM hazards WHERE id = $1`, [hazardId]);
+    // ISSUE-035: canonical seeding — delete the stop3 visit (cascades its
+    // observation) so it does not leak into other stop-scoped tests. Keyed on
+    // the same client_visit_id derivation used above.
+    if (routeRunId !== null) {
+      const s3 = await client.query<{ id: number }>(
+        `SELECT id FROM route_run_stops WHERE route_run_id = $1 ORDER BY sequence DESC LIMIT 1`,
+        [routeRunId]
+      );
+      if (s3.rows[0]) {
+        await client.query(
+          `DELETE FROM core.visits WHERE client_visit_id = $1`,
+          [deriveClientVisitIdLocal(Number(s3.rows[0].id))]
+        );
+      }
     }
     // Deleting route_run cascades to route_run_stops.
     if (routeRunId !== null) {
