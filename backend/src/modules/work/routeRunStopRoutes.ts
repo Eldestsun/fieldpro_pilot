@@ -224,10 +224,11 @@ routeRunStopRoutes.post(
                 return res.status(400).json({ error: `Cannot skip stop in status '${status}'` });
             }
 
-            // 3. Transaction: Update Status (canonical hazard observation is emitted
-            //    post-commit via emitObservationsForStop below). ISSUE-031 Stage 2:
-            //    the public.hazards mirror write (and its route_run_stops.hazard_id
-            //    FK pointer) was clipped — the hazard now lives only in canonical.
+            // 3. Transaction: status update, visit close, AND hazard-observation
+            //    emission all commit together (ISSUE-051 §5.7 — emission moved
+            //    in-transaction below). ISSUE-031 Stage 2: the public.hazards
+            //    mirror write (and its route_run_stops.hazard_id FK pointer) was
+            //    clipped — the hazard now lives only in canonical.
             await client.query("BEGIN");
 
             const updateQuery = `
@@ -253,9 +254,13 @@ routeRunStopRoutes.post(
                 reasonCode: hazard_types?.[0],
             });
 
-            await client.query("COMMIT");
-
-            // 5. Emit "Submit" Observations (Post-Commit, authoritative side-effect)
+            // ISSUE-051 (§5.7): the hazard observations MUST be emitted inside the
+            // same transaction, before COMMIT, on the same client — mirroring the
+            // complete-stop path. Previously this emission ran post-commit on a
+            // separate pool connection with no retry, so a failure after COMMIT
+            // left a skipped visit (with reason_code) whose hazard observations
+            // silently never landed — canonical diverging from the operator's
+            // recorded skip. All-or-nothing now.
             const ctx = await getVisitContext(client, Number(id));
 
             const uiPayload: StopUiPayload = {
@@ -275,14 +280,18 @@ routeRunStopRoutes.post(
                 locationId: ctx.locationId,
                 actorOid: req.user?.oid || "unknown",
                 uiPayload,
+                client,
             });
 
-            // 4. Reload Route Run (and check for completion first)
+            // Route-run completion check also inside the transaction (it only
+            // reads/writes route_runs on this client).
             const { checkAndCompleteRouteRun } = await import("../../domains/routeRun/routeRunService");
             await checkAndCompleteRouteRun(client, lookupRes.rows[0].route_run_id);
 
-            // ctx.orgId is already loaded inside this handler (line ~260) and
-            // matches the org-context the surrounding transaction ran in.
+            await client.query("COMMIT");
+
+            // Post-commit: read-only reload for the response. ctx.orgId matches
+            // the org-context the transaction ran in.
             const routeRun = await loadRouteRunById(lookupRes.rows[0].route_run_id, ctx.orgId);
 
             return res.json({
