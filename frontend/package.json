@@ -19,7 +19,7 @@
     "@fontsource/inter": "^5.2.8",
     "@tailwindcss/vite": "^4.3.0",
     "clsx": "^2.1.1",
-    "maplibre-gl": "^5.14.0",
+    "maplibre-gl": "^6.4.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.15.0",

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import maplibregl from "maplibre-gl";
+// maplibre-gl v6 is ESM-only and no longer ships a default export — use the
+// namespace import (ISSUE-064 / GHSA-jrc7-96c5-q579 CRITICAL bump to 6.4.1).
+import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { getDurableAssetKey } from "../../utils/identity";
 
