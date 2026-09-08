@@ -155,3 +155,52 @@ test("loadRouteRunById: cross-tenant request returns null (fail-closed)", async 
     await deleteOrgB(orgBId);
   }
 });
+
+// ISSUE-035 item 4 — the route-detail spot-check events/photoKeys now source
+// from core.evidence (bridged by client_visit_id), NOT the frozen
+// public.stop_photos adapter. This was the last live public.stop_photos reader
+// gating the Stage-3 DROP (ISSUE-037); its sibling was ISSUE-036.
+import {
+  acquireRouteRunFixture,
+  releaseFixture,
+  FIXTURE_LOCATION_ID,
+  FIXTURE_ACTOR_OID,
+} from "../setup";
+import { ensureVisitForRouteRunStop } from "../../src/domains/visit/visitService";
+
+test("ISSUE-035: loadRouteRunById surfaces spot-check photoKeys from core.evidence (not stop_photos)", async () => {
+  const { client, f } = await acquireRouteRunFixture();
+  try {
+    const visitId = await ensureVisitForRouteRunStop(client, {
+      routeRunStopId: f.routeRunStopId,
+      actorOid: FIXTURE_ACTOR_OID,
+      visitType: "service",
+    });
+    // A spot_check observation + a completion evidence row on the SAME visit —
+    // core.evidence is the new source; public.stop_photos gets nothing.
+    await client.query(
+      `INSERT INTO core.observations
+         (org_id, visit_id, location_id, asset_id, observation_type, obs_kind, payload, observed_at)
+       VALUES ($1, $2, $3, $4, 'spot_check', 'action', '{}'::jsonb, NOW())`,
+      [FIXTURE_ORG_ID, visitId, FIXTURE_LOCATION_ID, FIXTURE_ASSET_ID],
+    );
+    await client.query(
+      `INSERT INTO core.evidence (org_id, visit_id, observation_id, kind, storage_key)
+       VALUES ($1, $2, NULL, 'completion', $3)`,
+      [FIXTURE_ORG_ID, visitId, "test/issue035-spotcheck-evidence.png"],
+    );
+
+    const run: any = await loadRouteRunById(f.routeRunId, FIXTURE_ORG_ID);
+    assert(run !== null, "run loads");
+    const stop = run.stops.find((s: any) => String(s.route_run_stop_id) === String(f.routeRunStopId));
+    assert(stop, "seeded stop present in payload");
+    const spot = (stop.events || []).find((e: any) => e.type === "spot_check");
+    assert(spot, "spot_check event surfaced");
+    assert(
+      spot.photoKeys.includes("test/issue035-spotcheck-evidence.png"),
+      "photoKeys sourced from core.evidence.storage_key (repointed off stop_photos)",
+    );
+  } finally {
+    await releaseFixture(client, f);
+  }
+});

@@ -1,4 +1,5 @@
 import { withOrgContext } from "../../../db";
+import { deriveClientVisitId } from "../../visit/visitService";
 
 /**
  * Load full route run by ID, scoped to the caller's org.
@@ -117,48 +118,63 @@ export async function loadRouteRunById(id: number | string, orgId: number | stri
     ORDER BY rrs.sequence;
   `;
 
-    // Fetch observation-based events
+    // Fetch observation-based events (spot-check photo keys).
+    // ISSUE-035 item 4: repointed off the frozen public.stop_photos adapter onto
+    // core.evidence (the ISSUE-036 source). core.evidence has no
+    // route_run_stop_id column — bridge each stop to its visit via the
+    // deterministic client_visit_id (Postgres has no uuidv5, so the id set is
+    // computed in JS from the run's stops, then the result is mapped back). This
+    // was the last of the two live public.stop_photos readers gating the
+    // stop_photos Stage-3 DROP (ISSUE-037); its sibling was ISSUE-036.
     const eventsQuery = `
       SELECT
-        sp.route_run_stop_id,
+        v.client_visit_id,
         o.observation_type,
         o.observed_at,
-        array_agg(sp.s3_key)
-          FILTER (WHERE sp.s3_key IS NOT NULL) AS photo_keys
-      FROM public.route_run_stops rrs
-      JOIN public.stop_photos sp ON sp.route_run_stop_id = rrs.id
-      JOIN core.visits v ON v.id = sp.visit_id
+        array_agg(e.storage_key)
+          FILTER (WHERE e.storage_key IS NOT NULL) AS photo_keys
+      FROM core.visits v
       JOIN core.observations o ON o.visit_id = v.id
-      WHERE rrs.route_run_id = $1
+      JOIN core.evidence e ON e.visit_id = v.id
+      WHERE v.client_visit_id = ANY($1::uuid[])
         AND o.observation_type = 'spot_check'
       GROUP BY
-        sp.route_run_stop_id,
+        v.client_visit_id,
         o.observation_type,
         o.observed_at
     `;
 
-    // Both queries run inside withOrgContext so RLS filters route_runs and
-    // the identity_directory JOIN by the caller's org. Parallelism is dropped:
-    // the two queries share one pool connection (one org-context session),
-    // which is the simpler and safer way to keep both reads on the same set
-    // of session GUCs.
-    const [runRes, eventsRes] = await withOrgContext(orgId, async (client) => {
-        const a = await client.query(query, [id]);
-        const b = await client.query(eventsQuery, [id]);
-        return [a, b] as const;
+    // Both queries run inside withOrgContext so RLS filters by the caller's org.
+    // The main query must run first: its stop rows seed the client_visit_id set
+    // the events query bridges on. Both share one org-context session.
+    const { runRes, eventsRes, cvidToStopId } = await withOrgContext(orgId, async (client) => {
+        const runRes = await client.query(query, [id]);
+        const cvidToStopId = new Map<string, number>();
+        for (const r of runRes.rows as any[]) {
+            cvidToStopId.set(deriveClientVisitId(r.route_run_stop_id), r.route_run_stop_id);
+        }
+        const cvids = Array.from(cvidToStopId.keys());
+        const eventsRes = cvids.length
+            ? await client.query(eventsQuery, [cvids])
+            : { rows: [] as any[] };
+        return { runRes, eventsRes, cvidToStopId };
     });
 
     if (runRes.rows.length === 0) {
         return null;
     }
 
-    // Map events by stop ID
+    // Map events by stop ID. The events query returns client_visit_id (the
+    // core.evidence bridge key); translate back to route_run_stop_id via the
+    // map built from the run's stops (ISSUE-035 item 4).
     const eventsByStop: Record<number, any[]> = {};
     eventsRes.rows.forEach((row: any) => {
-        if (!eventsByStop[row.route_run_stop_id]) {
-            eventsByStop[row.route_run_stop_id] = [];
+        const stopId = cvidToStopId.get(row.client_visit_id);
+        if (stopId === undefined) return;
+        if (!eventsByStop[stopId]) {
+            eventsByStop[stopId] = [];
         }
-        eventsByStop[row.route_run_stop_id].push({
+        eventsByStop[stopId].push({
             type: row.observation_type,
             occurredAt: row.observed_at,
             photoKeys: row.photo_keys || []
