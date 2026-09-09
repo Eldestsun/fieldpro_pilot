@@ -29,7 +29,7 @@
     "express-session": "^1.18.2",
     "jsonwebtoken": "^9.0.2",
     "jwks-rsa": "^3.2.0",
-    "multer": "^2.2.0",
+    "multer": "^2.3.0",
     "passport": "^0.7.0",
     "pg": "^8.16.3",
     "ssh2-sftp-client": "^12.1.1",
@@ -60,7 +60,7 @@
       "qs": "^6.15.2",
       "follow-redirects": ">=1.16.0",
       "form-data": ">=4.0.6",
-      "js-yaml@4": "^4.3.1",
+      "js-yaml@4": "^4.3.2",
       "diff": "^4.0.4",
       "brace-expansion@1": "^1.1.18",
       "fast-uri@3": "^3.1.5"
