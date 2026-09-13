@@ -11,7 +11,8 @@
     "eam-bridge:populate": "ts-node src/scripts/populateEamBridge.ts",
     "test": "ts-node --transpile-only tests/run.ts",
     "openapi:generate": "ts-node src/openapi/generate.ts",
-    "sftp:export": "ts-node src/scripts/sftpExport.ts"
+    "sftp:export": "ts-node src/scripts/sftpExport.ts",
+    "seed:test-pools": "ts-node src/scripts/seedTestPoolMemberships.ts"
   },
   "keywords": [],
   "author": "",

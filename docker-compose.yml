@@ -63,29 +63,34 @@ services:
     # Expects these files in ./data/osrm:
     #   - seattle.osm.pbf
     #   - profiles/car.lua (or adjust PROFILE below)
+    # NOTE: shell variables are $$-escaped so docker-compose does not swallow
+    # them during its own ${VAR} interpolation pass — with single $, every
+    # variable below reached the shell as an empty string and the script
+    # always failed with 'ERROR: Missing .' (found during the 2026-09-03
+    # AGENT-SMOKE finding-#6 fix).
     command: >-
       /bin/sh -lc '
       set -e;
       DATASET=/data/seattle;
-      PBF=${DATASET}.osm.pbf;
+      PBF=$${DATASET}.osm.pbf;
       PROFILE=/data/profiles/car.lua;
-      if [ ! -f "$PBF" ]; then
-        echo "ERROR: Missing $PBF. Put seattle.osm.pbf into ./data/osrm.";
+      if [ ! -f "$$PBF" ]; then
+        echo "ERROR: Missing $$PBF. Put seattle.osm.pbf into ./data/osrm.";
         exit 1;
       fi;
-      if [ ! -f "$PROFILE" ]; then
-        echo "ERROR: Missing $PROFILE. Put car.lua into ./data/osrm/profiles/ or update PROFILE.";
+      if [ ! -f "$$PROFILE" ]; then
+        echo "ERROR: Missing $$PROFILE. Put car.lua into ./data/osrm/profiles/ or update PROFILE.";
         exit 1;
       fi;
       # If MLD artifacts exist, skip rebuild
-      if [ -f "${DATASET}.osrm.partition" ] && [ -f "${DATASET}.osrm.cells" ]; then
+      if [ -f "$${DATASET}.osrm.partition" ] && [ -f "$${DATASET}.osrm.cells" ]; then
         echo "OSRM MLD artifacts already present; skipping build.";
         exit 0;
       fi;
       echo "Building OSRM dataset with MLD pipeline...";
-      osrm-extract -p "$PROFILE" "$PBF";
-      osrm-partition "${DATASET}.osrm";
-      osrm-customize "${DATASET}.osrm";
+      osrm-extract -p "$$PROFILE" "$$PBF";
+      osrm-partition "$${DATASET}.osrm";
+      osrm-customize "$${DATASET}.osrm";
       echo "Done.";
       '
 
