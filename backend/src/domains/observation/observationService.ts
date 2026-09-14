@@ -396,12 +396,14 @@ export async function emitSpotCheckObservation(params: {
 }) {
     const { client, visitId, orgId, locationId, assetId, actorOid } = params;
 
-    // Normalize the spot_check through the same §4.2 path. spot_check is a
-    // condition row whose payload is '{}' and whose ok_rule is NULL today, so
-    // norm_status stays NULL (its §3.5 'ok' anchor + refined payload shape is a
-    // tracked follow-up, §9 Q4) — but obs_kind and type_id are still populated.
+    // Normalize the spot_check through the same §4.2 path. ISSUE-066 closed the
+    // §9 Q4 residual: the payload now carries the §3.5 target shape and the
+    // registry ok_rule ({field:'result', eq:'no_work_needed'}) grades it 'ok' —
+    // the stop-level positive anchor that makes component-level silence readable
+    // as benign (§4.4).
+    const spotPayload = { scope: "stop", result: "no_work_needed" };
     const spotRules = await loadRegistryRules(client, orgId, ["spot_check"]);
-    const spotNorm = normalizeObservation(spotRules.get("spot_check"), "spot_check", {});
+    const spotNorm = normalizeObservation(spotRules.get("spot_check"), "spot_check", spotPayload);
 
     // Worker identity goes to the no-grant sidecar, never on core.observations (§3.2).
     const res = await client.query(
@@ -418,7 +420,7 @@ export async function emitSpotCheckObservation(params: {
       norm_severity,
       intervention,
       type_id
-    ) VALUES ($1, $2, $3, $4, 'spot_check', '{}'::jsonb, $5, $6, $7, $8, $9)
+    ) VALUES ($1, $2, $3, $4, 'spot_check', $5, $6, $7, $8, $9, $10)
     RETURNING id
     `,
         [
@@ -426,6 +428,7 @@ export async function emitSpotCheckObservation(params: {
             visitId,
             locationId,
             assetId,
+            spotPayload,
             spotNorm.obs_kind,
             spotNorm.norm_status,
             spotNorm.norm_severity,
