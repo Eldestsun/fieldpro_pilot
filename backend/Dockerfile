@@ -16,4 +16,4 @@ RUN pnpm install --frozen-lockfile --prod
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/migrations ./migrations
 EXPOSE 4000
-CMD ["sh", "-c", "node dist/scripts/migrate.js && node dist/index.js"]
+CMD ["sh", "-c", "node dist/scripts/migrate.js && node dist/scripts/bootstrapStorage.js && node dist/index.js"]
