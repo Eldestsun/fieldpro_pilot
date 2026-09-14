@@ -22,128 +22,6 @@ const MAX_OSRM_STOPS = 25;
 
 /**
  * @openapi
- * /lead/hub:
- *   get:
- *     summary: Lead hub placeholder
- *     description: Returns confirmation that the caller has the Lead role.
- *     tags: [RouteRuns]
- *     security:
- *       - AzureAD: []
- *     x-required-roles: [Lead]
- *     responses:
- *       200:
- *         description: Caller is a Lead
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 ok: { type: boolean }
- *                 scope: { type: string }
- *             example:
- *               ok: true
- *               scope: Lead
- *       401:
- *         $ref: '#/components/responses/Unauthorized'
- *       403:
- *         $ref: '#/components/responses/Forbidden'
- */
-// Lead-only hub
-routeRunRoutes.get("/lead/hub", requireAuth, requireAnyRole(["Dispatch"]), (_req, res) => {
-    res.json({ ok: true, scope: "Lead" });
-});
-
-/**
- * @openapi
- * /lead/todays-runs:
- *   get:
- *     summary: Get all planned and in-progress route runs for today
- *     description: Returns all active route runs across all pools. Used by the Lead dispatch view.
- *     tags: [RouteRuns]
- *     security:
- *       - AzureAD: []
- *     x-required-roles: [Lead, Admin]
- *     responses:
- *       200:
- *         description: Today's active route runs
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 ok: { type: boolean }
- *                 route_runs:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       id: { type: integer }
- *                       status: { type: string }
- *                       route_pool_id: { type: string }
- *                       run_date: { type: string, format: date }
- *                       stop_count: { type: integer }
- *                       completed_stops: { type: integer }
- *             example:
- *               ok: true
- *               route_runs:
- *                 - id: 42
- *                   status: in_progress
- *                   route_pool_id: POOL-001
- *                   run_date: "2026-05-13"
- *                   stop_count: 25
- *                   completed_stops: 12
- *       401:
- *         $ref: '#/components/responses/Unauthorized'
- *       403:
- *         $ref: '#/components/responses/Forbidden'
- *       500:
- *         $ref: '#/components/responses/InternalError'
- */
-routeRunRoutes.get(
-    "/lead/todays-runs",
-    requireAuth,
-    requireAnyRole(["Dispatch", "Admin"]),
-    async (req: Request, res) => {
-        try {
-            const query = `
-        SELECT
-          rr.id,
-          rr.route_pool_id,
-          rr.base_id,
-          rr.status,
-          rr.run_date,
-          rr.created_at,
-          rr.is_adhoc,
-          COALESCE(rs.stop_count, 0) AS stop_count,
-          COALESCE(rs.completed_stop_count, 0) AS completed_stops
-        FROM route_runs rr
-        LEFT JOIN (
-          SELECT
-            route_run_id,
-            COUNT(*) AS stop_count,
-            COUNT(*) FILTER (WHERE status IN ('done', 'skipped')) AS completed_stop_count
-          FROM route_run_stops
-          GROUP BY route_run_id
-        ) rs ON rs.route_run_id = rr.id
-        WHERE rr.status IN ('planned', 'in_progress')
-        ORDER BY rr.created_at DESC;
-      `;
-            const numericOrgId = await resolveNumericOrgId(req);
-            const result = await withOrgContext(numericOrgId, (client) =>
-                client.query(query),
-            );
-            return res.json({ ok: true, route_runs: result.rows });
-        } catch (err: any) {
-            console.error("Error in /lead/todays-runs:", err);
-            return res
-                .status(500)
-                .json({ error: err.message || "Internal server error" });
-        }
-    }
-);
-
-/**
- * @openapi
  * /lead/route-runs/{id}:
  *   get:
  *     summary: Get route run details (Lead view)
@@ -181,43 +59,16 @@ routeRunRoutes.get(
  *       500:
  *         $ref: '#/components/responses/InternalError'
  */
-routeRunRoutes.get(
-    "/lead/route-runs/:id",
-    requireAuth,
-    requireAnyRole(["Dispatch", "Admin"]),
-    async (req: Request, res: Response) => {
-        try {
-            const { id } = req.params;
-            const numericOrgId = await resolveNumericOrgId(req);
-            const routeRun = await loadRouteRunById(id, numericOrgId);
-
-            if (!routeRun) {
-                return res.status(404).json({ error: "Route run not found" });
-            }
-
-            return res.json({ ok: true, route_run: routeRun });
-        } catch (err: any) {
-            console.error("Error in GET /lead/route-runs/:id:", err);
-            return res
-                .status(500)
-                .json({ error: err.message || "Internal server error" });
-        }
-    }
-);
-
-/** ── Lead: Get Route Run Details: GET /lead/route-runs/:id ──────────────── */
-// Duplicate registration — intentional; kept for backward compat.
-//
 // NAMING (ISSUE-043): "lead" is historical — it predates the Dispatch-role rename
 // (Lead → Dispatch) and is now an identifier only, not a description of who may call
 // it. This is the SURVIVING gated route-run detail view: auth-required, Dispatch/Admin
 // only. Its payload exposes the assigned worker's and assigning Lead's NAME and ROLE
 // (never their OID — SEAM-C item 4) as the R11 controlled reassignment exception; this
-// is operational, not intelligence, and is NOT role-gated below Dispatch (loadRouteRunById
-// applies no role gate — the earlier "Admin-gated" note was inaccurate).
-// The ungated identity-bearing twin GET /route-runs/:id was removed per ISSUE-043;
-// this gated route is the single detail endpoint. Do not rename (names are
-// identifiers — the frontend calls /api/lead/route-runs/:id); document, don't rename.
+// is operational, not intelligence. The ungated identity-bearing twin GET /route-runs/:id
+// was removed per ISSUE-043; this gated route is the single detail endpoint. Do not
+// rename (names are identifiers — the frontend calls /api/lead/route-runs/:id).
+// SEAM-A-R1: the byte-identical duplicate registration that used to follow this
+// mount was removed — Express only ever dispatched to this first one anyway.
 routeRunRoutes.get(
     "/lead/route-runs/:id",
     requireAuth,

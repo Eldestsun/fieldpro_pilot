@@ -31,7 +31,9 @@ async function getRuns(baseUrl: string, path: string): Promise<any[]> {
   return body.route_runs as any[];
 }
 
-test("SEAM-C item 3: /lead/todays-runs and /ops/route-runs responses carry no user_id key", async () => {
+// SEAM-A-R1: /lead/todays-runs was retired (dead-to-frontend); /ops/route-runs is
+// the surviving run-list surface this contract now covers.
+test("SEAM-C item 3: /ops/route-runs response carries no user_id key", async () => {
   const appRef = require("../../src/app").app;
   const server: Server = await new Promise((resolve) => {
     const s = appRef.listen(0, "127.0.0.1", () => resolve(s));
@@ -41,7 +43,7 @@ test("SEAM-C item 3: /lead/todays-runs and /ops/route-runs responses carry no us
   // Fixture guarantees at least one 'planned' run for today so both lists are non-empty.
   const { client, f } = await acquireRouteRunFixture();
   try {
-    for (const path of ["/api/lead/todays-runs", "/api/ops/route-runs"]) {
+    for (const path of ["/api/ops/route-runs"]) {
       const runs = await getRuns(baseUrl, path);
       assert(runs.length >= 1, `${path} returned at least the fixture run`);
       for (const row of runs) {

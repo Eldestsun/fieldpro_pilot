@@ -667,7 +667,7 @@
                   "photos": [
                     {
                       "id": 1,
-                      "s3_key": "runs/42/stops/7/uuid.jpg",
+                      "storage_key": "runs/42/stops/7/uuid.jpg",
                       "kind": "completion"
                     }
                   ]
@@ -754,7 +754,7 @@
                   "photos": [
                     {
                       "id": 1,
-                      "s3_key": "runs/42/stops/7/uuid.jpg",
+                      "storage_key": "runs/42/stops/7/uuid.jpg",
                       "kind": "completion"
                     }
                   ]
@@ -764,137 +764,6 @@
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalError"
-          }
-        }
-      }
-    },
-    "/lead/hub": {
-      "get": {
-        "summary": "Lead hub placeholder",
-        "description": "Returns confirmation that the caller has the Lead role.",
-        "tags": [
-          "RouteRuns"
-        ],
-        "security": [
-          {
-            "AzureAD": []
-          }
-        ],
-        "x-required-roles": [
-          "Lead"
-        ],
-        "responses": {
-          "200": {
-            "description": "Caller is a Lead",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "type": "boolean"
-                    },
-                    "scope": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "example": {
-                  "ok": true,
-                  "scope": "Lead"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          }
-        }
-      }
-    },
-    "/lead/todays-runs": {
-      "get": {
-        "summary": "Get all planned and in-progress route runs for today",
-        "description": "Returns all active route runs across all pools. Used by the Lead dispatch view.",
-        "tags": [
-          "RouteRuns"
-        ],
-        "security": [
-          {
-            "AzureAD": []
-          }
-        ],
-        "x-required-roles": [
-          "Lead",
-          "Admin"
-        ],
-        "responses": {
-          "200": {
-            "description": "Today's active route runs",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "type": "boolean"
-                    },
-                    "route_runs": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "integer"
-                          },
-                          "status": {
-                            "type": "string"
-                          },
-                          "route_pool_id": {
-                            "type": "string"
-                          },
-                          "run_date": {
-                            "type": "string",
-                            "format": "date"
-                          },
-                          "stop_count": {
-                            "type": "integer"
-                          },
-                          "completed_stops": {
-                            "type": "integer"
-                          }
-                        }
-                      }
-                    }
-                  }
-                },
-                "example": {
-                  "ok": true,
-                  "route_runs": [
-                    {
-                      "id": 42,
-                      "status": "in_progress",
-                      "route_pool_id": "POOL-001",
-                      "run_date": "2026-05-13",
-                      "stop_count": 25,
-                      "completed_stops": 12
-                    }
-                  ]
-                }
-              }
-            }
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -981,11 +850,19 @@
     "/routes/plan": {
       "post": {
         "summary": "Plan an OSRM-optimized route from a list of stop IDs",
-        "description": "Takes an array of stop IDs, looks up their coordinates, and returns an OSRM-optimized trip order. Does not create a route run. Note: this endpoint currently has no auth guard and is used by the planning UI before authentication completes.\n",
+        "description": "Takes an array of stop IDs, looks up their coordinates, and returns an OSRM-optimized trip order. Does not create a route run. Requires Dispatch or Admin (ISSUE-043 — previously unauthenticated).\n",
         "tags": [
           "RouteRuns"
         ],
-        "security": [],
+        "security": [
+          {
+            "AzureAD": []
+          }
+        ],
+        "x-required-roles": [
+          "Dispatch",
+          "Admin"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1069,11 +946,19 @@
     "/route-runs/preview": {
       "post": {
         "summary": "Preview an OSRM-optimized route run without creating it",
-        "description": "Returns the optimized route for a pool or explicit stop list. Does not persist anything. Used by the Lead planning UI to preview before committing. Note: no auth guard; intended for pre-auth planning flow.\n",
+        "description": "Returns the optimized route for a pool or explicit stop list. Does not persist anything. Used by the Dispatch planning UI to preview before committing. Requires Dispatch or Admin (ISSUE-043 — previously unauthenticated).\n",
         "tags": [
           "RouteRuns"
         ],
-        "security": [],
+        "security": [
+          {
+            "AzureAD": []
+          }
+        ],
+        "x-required-roles": [
+          "Dispatch",
+          "Admin"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1293,62 +1178,6 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalError"
-          }
-        }
-      }
-    },
-    "/route-runs/{id}": {
-      "get": {
-        "summary": "Get route run details",
-        "description": "Returns the full route run including all stops and their current status. This transitional endpoint has no auth guard — prefer domain-specific accessors where possible.\n",
-        "tags": [
-          "RouteRuns"
-        ],
-        "security": [],
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Route run ID",
-            "example": "42"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Route run found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "type": "boolean"
-                    },
-                    "route_run": {
-                      "type": "object"
-                    }
-                  }
-                },
-                "example": {
-                  "ok": true,
-                  "route_run": {
-                    "id": 42,
-                    "status": "in_progress",
-                    "stops": []
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
@@ -2219,6 +2048,52 @@
         }
       }
     },
+    "/dev/seed-axe-fixture": {
+      "post": {
+        "summary": "Seed a route_run fixture for axe-audit synthetic users (dev/test only)",
+        "description": "Idempotent. Creates a route_run with 3 stops assigned to the given OID if one does not already exist. Gated by NODE_ENV !== production AND DEV_AUTH_BYPASS === true. Returns 404 in any other environment.\n",
+        "tags": [
+          "Dev"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "oid"
+                ],
+                "properties": {
+                  "oid": {
+                    "type": "string"
+                  },
+                  "org_id": {
+                    "type": "integer",
+                    "default": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Fixture seeded or already exists"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "description": "Not available in this environment"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
     "/admin/dashboard": {
       "get": {
         "summary": "Admin dashboard — today's operational metrics",
@@ -2263,6 +2138,36 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/admin/health": {
+      "get": {
+        "summary": "System health aggregation (admin governance view)",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "AzureAD": []
+          }
+        ],
+        "x-required-roles": [
+          "Admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "Counts and integration status. Counts only — no per-user identifiers (labor safety)."
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -2861,6 +2766,7 @@
     "/admin/clean-logs": {
       "get": {
         "summary": "List clean logs with filters (admin)",
+        "description": "Paginated list of clean-log entries, read from the identity-free canonical layer (core.visits + core.observations) — not public.clean_logs. The 5 action booleans are pivoted from action observation rows (absence ⇒ false); cleaned_at is the visit end and duration_minutes is the visit wall-clock. `id` is the canonical visit id.\n",
         "tags": [
           "Admin"
         ],
@@ -3013,7 +2919,8 @@
                 "admin.stop_edit",
                 "admin.route_edit",
                 "upload.rejected",
-                "admin.oid_decrypt"
+                "admin.oid_decrypt",
+                "admin.audit_log_read"
               ]
             },
             "description": "Filter by audit action"
@@ -3117,258 +3024,6 @@
                 "example": {
                   "status": "ok",
                   "rows": 450
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalError"
-          }
-        }
-      }
-    },
-    "/admin/control-center/overview": {
-      "get": {
-        "summary": "Control center — today's operational overview",
-        "description": "Aggregate clean events, total clean minutes, hazards reported, and high-severity hazards for today.",
-        "tags": [
-          "Admin"
-        ],
-        "security": [
-          {
-            "AzureAD": []
-          }
-        ],
-        "x-required-roles": [
-          "Admin"
-        ],
-        "responses": {
-          "200": {
-            "description": "Today's overview metrics",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "clean_events": {
-                      "type": "integer"
-                    },
-                    "total_clean_minutes": {
-                      "type": "number"
-                    },
-                    "hazards_reported": {
-                      "type": "integer"
-                    },
-                    "high_severity_hazards": {
-                      "type": "integer"
-                    }
-                  }
-                },
-                "example": {
-                  "clean_events": 38,
-                  "total_clean_minutes": 462.5,
-                  "hazards_reported": 4,
-                  "high_severity_hazards": 1
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalError"
-          }
-        }
-      }
-    },
-    "/admin/control-center/routes": {
-      "get": {
-        "summary": "Control center — active route status table",
-        "description": "Per-route stop counts, resolved counts, emergency additions, and skip flags for planned and in-progress runs today.",
-        "tags": [
-          "Admin"
-        ],
-        "security": [
-          {
-            "AzureAD": []
-          }
-        ],
-        "x-required-roles": [
-          "Admin"
-        ],
-        "responses": {
-          "200": {
-            "description": "Array of active route status rows",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "route_run_id": {
-                        "type": "integer"
-                      },
-                      "pool_id": {
-                        "type": "string"
-                      },
-                      "planned_stops": {
-                        "type": "integer"
-                      },
-                      "emergency_stops": {
-                        "type": "integer"
-                      },
-                      "resolved_stops": {
-                        "type": "integer"
-                      },
-                      "skipped_stops": {
-                        "type": "integer"
-                      },
-                      "total_known_stops": {
-                        "type": "integer"
-                      },
-                      "observed_minutes": {
-                        "type": "number"
-                      },
-                      "has_emergency_additions": {
-                        "type": "boolean"
-                      },
-                      "high_skip_count": {
-                        "type": "boolean"
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalError"
-          }
-        }
-      }
-    },
-    "/admin/control-center/exceptions": {
-      "get": {
-        "summary": "Control center — today's exception summary",
-        "description": "Skips by reason, total hazards, total infrastructure issues, and emergency/ad-hoc stop count for today.",
-        "tags": [
-          "Admin"
-        ],
-        "security": [
-          {
-            "AzureAD": []
-          }
-        ],
-        "x-required-roles": [
-          "Admin"
-        ],
-        "responses": {
-          "200": {
-            "description": "Exception summary",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "skips_by_reason": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "reason": {
-                            "type": "string"
-                          },
-                          "count": {
-                            "type": "integer"
-                          }
-                        }
-                      }
-                    },
-                    "total_hazards": {
-                      "type": "integer"
-                    },
-                    "total_infra_issues": {
-                      "type": "integer"
-                    },
-                    "emergency_count": {
-                      "type": "integer"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "$ref": "#/components/responses/Forbidden"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalError"
-          }
-        }
-      }
-    },
-    "/admin/control-center/difficulty": {
-      "get": {
-        "summary": "Control center — today's difficulty indicators",
-        "description": "Heavy stops by location, routes with high difficulty density, and hotspot area concentration. Observational intelligence — no per-worker metrics.",
-        "tags": [
-          "Admin"
-        ],
-        "security": [
-          {
-            "AzureAD": []
-          }
-        ],
-        "x-required-roles": [
-          "Admin"
-        ],
-        "responses": {
-          "200": {
-            "description": "Difficulty indicators",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "heavy_stops": {
-                      "type": "array",
-                      "items": {
-                        "type": "object"
-                      }
-                    },
-                    "heavy_routes": {
-                      "type": "array",
-                      "items": {
-                        "type": "object"
-                      }
-                    },
-                    "hotspot_areas": {
-                      "type": "array",
-                      "items": {
-                        "type": "object"
-                      }
-                    }
-                  }
                 }
               }
             }
@@ -3669,6 +3324,71 @@
         }
       }
     },
+    "/stops/{stop_id}/history": {
+      "get": {
+        "summary": "Per-stop condition/effort history over time",
+        "description": "Chronological, visit-grouped history for one stop. Sources are the canonical layer (core.visits anchors + core.observations normalized columns) plus the de-identified intelligence tables (stop_effort_history, stop_condition_history). History attaches to the asset; the response carries no worker identity of any kind.\n",
+        "tags": [
+          "Stops"
+        ],
+        "security": [
+          {
+            "AzureAD": []
+          }
+        ],
+        "x-required-roles": [
+          "Dispatch",
+          "Admin"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "stop_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Transit stop ID",
+            "example": "31150"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 100
+            },
+            "description": "Max visit entries per page"
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Visit-grouped history, newest first. A stop with no visits returns an empty entries array — absence is a valid signal, never synthesized into rows."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
     "/pools": {
       "get": {
         "summary": "List active route pools",
@@ -3739,6 +3459,38 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/bases": {
+      "get": {
+        "summary": "List active dispatch bases",
+        "description": "Returns the org's active bases (the depot a route dispatches from). Used by the Create Route flow so Dispatch can pick a base when the pool has none pre-attached. Gated to Dispatch/Admin to match the route-creation surface.\n",
+        "tags": [
+          "Resources"
+        ],
+        "security": [
+          {
+            "AzureAD": []
+          }
+        ],
+        "x-required-roles": [
+          "Dispatch",
+          "Admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "List of active bases"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -4152,7 +3904,7 @@
     "/ops/clean-logs": {
       "get": {
         "summary": "List clean logs with filters (ops read-only)",
-        "description": "Paginated list of clean log entries. Read-only mirror of the Admin clean logs list.",
+        "description": "Paginated list of clean-log entries, read from the identity-free canonical layer (core.visits + core.observations) — not public.clean_logs. The 5 action booleans are pivoted from action observation rows (absence ⇒ false); cleaned_at is the visit end and duration_minutes is the visit wall-clock. `id` is the canonical visit id. Read-only mirror of the Admin clean logs list.\n",
         "tags": [
           "Ops"
         ],

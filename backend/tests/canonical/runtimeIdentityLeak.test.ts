@@ -245,9 +245,8 @@ function buildEndpoints(): Endpoint[] {
     { method: "GET", route: "/ops/stops", probe: "/ops/stops", kind: "clean", authorized: "Dispatch" },
     { method: "GET", route: "/ops/route-runs", probe: "/ops/route-runs", kind: "clean", authorized: "Dispatch" },
     { method: "GET", route: "/ops/clean-logs", probe: "/ops/clean-logs", kind: "clean", authorized: "Dispatch" },
-    // ── Lead dispatch list ──
-    { method: "GET", route: "/lead/todays-runs", probe: "/lead/todays-runs", kind: "clean", authorized: "Dispatch" },
-    // ── Resource + config reads ──
+    // ── Resource + config reads ── (the Lead dispatch list /lead/todays-runs was
+    // retired by SEAM-A-R1; /ops/route-runs above is the surviving run-list surface)
     { method: "GET", route: "/pools", probe: "/pools", kind: "clean", authorized: "Dispatch" },
     // /bases returns depot {id, name} only (NORTH/SOUTH facilities) — no worker
     // identity. Same shape/role as /pools. Used by the Create Route base picker.
@@ -288,7 +287,7 @@ const EXEMPT: { route: string; reason: string }[] = [
   { route: "/secure/ping", reason: "auth smoke; returns {ok}" },
   { route: "/admin/secret", reason: "auth/role smoke; returns {ok}" },
   { route: "/admin/ops", reason: "auth/role smoke; returns {ok}" },
-  { route: "/lead/hub", reason: "returns the role-scope literal {ok, scope}; no data" },
+  // /lead/hub retired by SEAM-A-R1 (dead role-scope placeholder; /secure/ping covers the auth smoke)
   { route: "/ul/inbox", reason: "returns the role-scope literal; no data" },
   { route: "/route-runs/:runId/stops/:stopId/photos", reason: "S3 photo object-key metadata only; no worker identity" },
   { route: "/openapi.json", reason: "static API spec; no runtime data" },

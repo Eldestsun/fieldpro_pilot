@@ -548,38 +548,6 @@ export async function createRouteRun(
     }
 }
 
-export interface LeadRouteRunSummary {
-    id: number;
-    route_pool_id: string;
-    base_id: string;
-    status: string;
-    run_date: string;
-    created_at: string;
-    stopCount: number;
-}
-
-export async function fetchLeadTodaysRuns(token: string): Promise<LeadRouteRunSummary[]> {
-    const res = await fetch("/api/lead/todays-runs", {
-        headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to fetch routes");
-    }
-
-    const data = await res.json();
-    return data.route_runs.map((r: any) => ({
-        id: r.id,
-        route_pool_id: r.route_pool_id,
-        base_id: r.base_id,
-        status: r.status,
-        run_date: r.run_date,
-        created_at: r.created_at,
-        stopCount: Number(r.stop_count || 0),
-    }));
-}
-
 /** ── Admin API ────────────────────────────────────────────────────────── */
 
 async function apiFetch<T>(path: string, token: string, init?: RequestInit): Promise<T> {
