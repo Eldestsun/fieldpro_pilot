@@ -92,6 +92,7 @@ import "./canonical/cleanLogsIdentity.test";
 import "./canonical/cleanLogsCanonicalPivot.test";
 import "./canonical/infraIssuesWriteClip.test";
 import "./canonical/spotCheckNormStatus.test";
+import "./canonical/visitNotesGrain.test";
 import "./canonical/runtimeIdentityLeak.test";
 import "./canonical/orgFailClosed.test";
 import "./canonical/resourceRoutesOrgFailClosed.test";

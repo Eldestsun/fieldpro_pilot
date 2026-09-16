@@ -26,9 +26,10 @@ export type StopUiPayload = {
     // from this payload. Consumed by riskMapService hazard scoring.
     hazard_severity?: string | number;
 
-    // Optional free-text notes captured alongside the safety hazard. Threaded
-    // into core.observations.payload.notes additively (ISSUE-031 Step 5) so the
-    // observation record is not lossy relative to the hazards adapter table.
+    // Optional free-text note captured in the Report Safety modal (ONE box per
+    // submission). ISSUE-072: this now lands once in core.visit_notes at
+    // (visit, category='safety') grain — NOT replicated into every safety
+    // observation's payload. See emitVisitNotes below.
     hazard_notes?: string;
 
     skipForSafety?: boolean;
@@ -64,10 +65,14 @@ export type StopUiPayload = {
     )[];
 
     // Full per-issue infrastructure detail. When present, one observation is
-    // emitted per entry and its cause/component/notes are threaded into
-    // core.observations.payload additively (ISSUE-031 Step 5). Falls back to the
-    // flat infrastructureIssues type list when absent. notes is string | null to
-    // match InfraIssueInput at the call site.
+    // emitted per entry with its per-issue-type cause/component threaded into
+    // core.observations.payload (these ARE per-observation structured attributes:
+    // glass↔vandalism, lighting↔wear_and_tear, etc.). Falls back to the flat
+    // infrastructureIssues type list when absent.
+    // ISSUE-072: `notes` is the ONE free-text infra box, replicated across every
+    // entry by the capture UI. It no longer lands in payload; it lands once in
+    // core.visit_notes at (visit, category='infra') grain (see emitVisitNotes).
+    // Kept on the type because the capture layer still carries it per-entry.
     infraIssueDetails?: Array<{
         issue_type: string;
         cause?: string;
@@ -108,15 +113,67 @@ export async function emitObservationsForStop(params: {
     }
 
     const observations = submitObservations(uiPayload);
-    if (observations.length === 0) {
-        return;
-    }
+
+    // ISSUE-072: observations and their visit-level free-text notes are written
+    // on the SAME client so, when a transaction-bound client is passed (the
+    // complete/skip paths run inside one BEGIN/COMMIT — ISSUE-051), notes commit
+    // atomically with the observations they describe. Notes are written even if
+    // no observation rows were produced (defensive; in practice a note always
+    // accompanies a hazard/infra observation).
+    const runWrite = async (writeClient: PoolClient) => {
+        if (observations.length > 0) {
+            await insertObservations(writeClient, { orgId, visitId, locationId, assetId, actorOid }, observations);
+        }
+        await insertVisitNotes(writeClient, { orgId, visitId }, uiPayload);
+    };
 
     if (passedClient) {
-        await insertObservations(passedClient, { orgId, visitId, locationId, assetId, actorOid }, observations);
+        await runWrite(passedClient);
     } else {
-        await withOrgContext(orgId, (ownClient) =>
-            insertObservations(ownClient, { orgId, visitId, locationId, assetId, actorOid }, observations)
+        await withOrgContext(orgId, runWrite);
+    }
+}
+
+// ISSUE-072: extract the per-category visit notes from the UI payload. Safety
+// carries a single `hazard_notes`. Infra carries one free-text box that the
+// capture UI replicates across every infraIssueDetails entry — so the distinct
+// note is the first non-empty one. Each maps to one core.visit_notes row.
+function extractVisitNotes(ui: StopUiPayload): Array<{ category: string; note: string }> {
+    const rows: Array<{ category: string; note: string }> = [];
+
+    const safety = ui.hazard_notes?.trim();
+    if (safety) {
+        rows.push({ category: "safety", note: safety });
+    }
+
+    const infra = ui.infraIssueDetails
+        ?.map(i => i.notes?.trim())
+        .find((n): n is string => !!n);
+    if (infra) {
+        rows.push({ category: "infra", note: infra });
+    }
+
+    return rows;
+}
+
+async function insertVisitNotes(
+    client: PoolClient,
+    ctx: { orgId: number; visitId: number },
+    ui: StopUiPayload
+) {
+    const notes = extractVisitNotes(ui);
+    for (const { category, note } of notes) {
+        // ON CONFLICT keeps the write idempotent under offline replay / a stop
+        // completed twice: the note is updated in place at its (visit, category)
+        // grain rather than erroring or duplicating.
+        await client.query(
+            `
+      INSERT INTO core.visit_notes (visit_id, org_id, category, note)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (visit_id, category)
+        DO UPDATE SET note = EXCLUDED.note, recorded_at = now()
+      `,
+            [ctx.visitId, ctx.orgId, category, note]
         );
     }
 }
@@ -154,7 +211,10 @@ function submitObservations(ui: StopUiPayload): ObservationInsert[] {
             obs.push({
                 observation_type: mapSafetyHazard(h),
                 payload: {
-                    ...(ui.hazard_notes && { notes: ui.hazard_notes }),
+                    // ISSUE-072: free-text note no longer replicated here; it lands
+                    // once in core.visit_notes (category='safety'). Only the numeric
+                    // severity (a per-observation magnitude the §4.2 normalizer reads)
+                    // stays in payload.
                     ...(hazardSeverityNum != null && { severity: hazardSeverityNum }),
                 },
                 severity: hazardSeverity,
@@ -209,15 +269,18 @@ function submitObservations(ui: StopUiPayload): ObservationInsert[] {
     if (ui.infrastructurePresent) {
         if (ui.infraIssueDetails && ui.infraIssueDetails.length > 0) {
             // Preferred path: one observation per detailed issue, with
-            // cause/component/notes threaded into payload additively (ISSUE-031
-            // Step 5). Infra has no severity at the source — none is invented.
+            // per-issue-type cause/component threaded into payload (ISSUE-031
+            // Step 5). The free-text note lands in core.visit_notes, not here
+            // (ISSUE-072). Infra has no severity at the source — none is invented.
             ui.infraIssueDetails.forEach(issue => {
                 obs.push({
                     observation_type: mapInfraIssue(issue.issue_type),
                     payload: {
+                        // cause/component are per-issue-type structured attributes and
+                        // stay on the observation. ISSUE-072: the free-text note does
+                        // NOT — it lands once in core.visit_notes (category='infra').
                         ...(issue.cause && { cause: issue.cause }),
                         ...(issue.component && { component: issue.component }),
-                        ...(issue.notes && { notes: issue.notes }),
                     }
                 });
             });
