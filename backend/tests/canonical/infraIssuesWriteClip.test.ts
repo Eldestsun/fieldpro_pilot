@@ -99,18 +99,31 @@ test("infra write-clip: completeStop writes 0 infrastructure_issues rows; all 8 
       `all 8 infra *_present types must emit to core.observations (got: ${gotTypes.join(", ")})`,
     );
 
-    // ── Detail-carry: cause/component/notes reach the observation payload (additive).
+    // ── Detail-carry: per-issue-type cause/component reach the observation payload
+    // (additive). ISSUE-072: the free-text `notes` no longer rides in payload — it
+    // lands once in core.visit_notes (category='infra'); see visitNotesGrain.test.
     for (const row of obs.rows) {
       const p = row.payload || {};
       assert(
-        typeof p.cause === "string" && typeof p.component === "string" && typeof p.notes === "string",
-        `observation ${row.observation_type} must carry cause/component/notes in payload (got ${JSON.stringify(p)})`,
+        typeof p.cause === "string" && typeof p.component === "string",
+        `observation ${row.observation_type} must carry cause/component in payload (got ${JSON.stringify(p)})`,
       );
+      // ISSUE-072: notes moved to core.visit_notes — never replicated per-observation.
+      assert(!("notes" in p), `observation ${row.observation_type} payload must NOT carry a replicated notes key (ISSUE-072)`);
       // severity intentionally absent — KCM does not grade infra magnitude.
       assert(!("severity" in p), `observation ${row.observation_type} payload must NOT invent a severity`);
       // needs_facilities intentionally dropped — never carried to canonical.
       assert(!("needs_facilities" in p), `observation ${row.observation_type} must NOT carry needs_facilities`);
     }
+
+    // ── ISSUE-072: the single infra free-text note landed once in core.visit_notes,
+    // not replicated across the 8 observations.
+    const vn = await client.query(
+      `SELECT category, note FROM core.visit_notes WHERE visit_id = $1`,
+      [visitId],
+    );
+    assertEqual(vn.rows.length, 1, "exactly one infra visit_notes row (collapsed from 8 replicated entries)");
+    assertEqual(vn.rows[0].category, "infra", "the note is categorized infra");
   } finally {
     await releaseFixture(client, f);
   }

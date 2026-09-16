@@ -390,6 +390,45 @@ follow-up pass should ensure the payload shape written today (`{}`) is
 reconciled with the refined target shape (`{"scope": "stop", "result":
 "no_work_needed"}`) before payload validation lands (§9 Q4).
 
+### 3.6 Visit notes — operational free text (an adjunct, not a noun)
+
+Some capture surfaces carry a **single free-text box** (the transit vertical's
+Report Safety and Report Infrastructure modals each have one). This is
+worker-authored prose *about the situation at the visit* — not a gradable
+condition, not an intervention, not a presence. It is therefore **not an
+observation** and gets no registry type. It is an operational/audit adjunct to
+the **visit**.
+
+```sql
+CREATE TABLE core.visit_notes (
+    visit_id    bigint      NOT NULL REFERENCES core.visits(id) ON DELETE CASCADE,
+    org_id      bigint      NOT NULL REFERENCES organizations(id),
+    category    text        NOT NULL,        -- 'safety' | 'infra' | … (adapter vocabulary)
+    note        text        NOT NULL,
+    recorded_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (visit_id, category)          -- one note per category per visit
+);
+```
+
+**Grain (ratified ISSUE-072, 2026-09-15).** The note is authored **once per
+capture-surface submission**, describing the whole report — never per
+observation. Its canonical grain is therefore **one note per (visit,
+category)**, not per observation and not a single per-visit column (a visit can
+carry a safety note *and* an infra note independently; one column would
+collide). Writing it onto each observation's `payload` — the pre-ISSUE-072
+state — was denormalization: the same string replicated across N presence rows,
+describing none of them in particular. `payload` carries only per-observation
+structured attributes (e.g. infra `cause`/`component`, a numeric hazard
+`severity`); free text lives here.
+
+**Posture.** `category` is adapter vocabulary (the core stays industry-neutral —
+a housing adapter might use `'unit'`, `'common_area'`). Notes are
+**operational/audit only and are NEVER read by intelligence** — the same class
+as `payload` under invariant #8. The `intelligence_reader` role holds **no
+grant** on `core.visit_notes`; the app role reads/writes it. Free text is also
+the surface most likely to contain incidental identifying content, so keeping it
+out of the intelligence role is a labor-safety default, not just tidiness.
+
 ---
 
 ## 4. The registry — meaning as data
