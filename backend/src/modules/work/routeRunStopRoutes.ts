@@ -462,6 +462,60 @@ routeRunStopRoutes.post(
             // Check legacy photo_keys OR new stop_photos
             const hasLegacyPhotos = Array.isArray(photo_keys) && photo_keys.length > 0 && !!photo_keys[0];
 
+            // ISSUE-068: the legacy photo_keys branch was presence-only — ANY
+            // non-empty string array satisfied the completion gate, so a client
+            // (or corrupted replay) could complete a stop with fabricated or
+            // failed-upload keys. Verify every claimed key against the upload
+            // bucket before accepting. Replay-safe by construction: the offline
+            // queue replays UPLOAD_STOP_PHOTOS (order 2) before COMPLETE_STOP
+            // (order 4), and that upload is SERVER-side (multipart → uploadStopPhotos),
+            // so a legitimate completion's objects exist before this check runs.
+            if (hasLegacyPhotos) {
+                if (photo_keys.length > 20) {
+                    return res.status(400).json({ error: "photo_keys: too many keys (max 20)" });
+                }
+                if (!photo_keys.every((k: unknown) => typeof k === "string" && k.length > 0)) {
+                    return res.status(400).json({ error: "photo_keys entries must be non-empty strings" });
+                }
+                const { findMissingObjects, StorageUnreachableError } = await import("../../s3Client");
+                try {
+                    const missing = await findMissingObjects(photo_keys);
+                    if (missing.length > 0) {
+                        return res.status(400).json({
+                            error: "photo_keys reference objects that were never uploaded",
+                            missing_keys: missing,
+                        });
+                    }
+                } catch (err) {
+                    if (err instanceof StorageUnreachableError) {
+                        // Storage blip must not strand legitimate field completions:
+                        // fall back to the DB evidence trail. core.evidence rows for
+                        // this stop only exist via the server's OWN uploads (the
+                        // multipart photos route generates keys and PUTs the bytes
+                        // itself), so their presence proves real photos without
+                        // consulting storage. Only when BOTH storage is unreachable
+                        // AND no evidence exists do we refuse — 503 (retryable),
+                        // never a silent pass (fail-visible discipline).
+                        const { countStopPhotosByRouteRunStop } = await import("../../domains/routeRunStop/stopPhotosService");
+                        const orgIdForFallback = await resolveNumericOrgId(req);
+                        const fallbackCount = await withOrgContext(orgIdForFallback, (c) =>
+                            countStopPhotosByRouteRunStop(c, Number(route_run_stop_id))
+                        );
+                        if (fallbackCount === 0) {
+                            return res.status(503).json({
+                                error: "Photo storage is unreachable and no uploaded photos are on record — retry when storage is available",
+                            });
+                        }
+                        console.warn("[ISSUE-068] storage unreachable at complete; accepted via core.evidence fallback", {
+                            route_run_stop_id,
+                            evidence_count: fallbackCount,
+                        });
+                    } else {
+                        throw err;
+                    }
+                }
+            }
+
             let hasNewPhotos = false;
             if (!hasLegacyPhotos) {
                 const { countStopPhotosByRouteRunStop } = await import("../../domains/routeRunStop/stopPhotosService");
