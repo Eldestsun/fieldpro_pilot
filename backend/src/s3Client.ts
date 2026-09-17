@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import "multer"; // Import to ensure Express.Multer namespace is available
 import { generateStorageKey, validateMimeBytes } from "./middleware/uploadValidation";
@@ -44,6 +44,42 @@ export async function getPresignedReadUrl(
         Key: objectKey,
     });
     return getSignedUrl(s3Client, command, { expiresIn: expiresInSeconds });
+}
+
+// ISSUE-068: thrown when object storage cannot be reached at all (network,
+// auth, endpoint misconfig) — distinct from a key that is definitively absent.
+// Callers must NOT treat this as "key missing": absence is a client error
+// (400), unreachability is a service condition (retryable / fallback).
+export class StorageUnreachableError extends Error {
+    constructor(cause: unknown) {
+        super(`photo storage unreachable: ${cause instanceof Error ? cause.message : String(cause)}`);
+        this.name = "StorageUnreachableError";
+    }
+}
+
+// ISSUE-068: verify claimed object keys actually exist in the upload bucket.
+// Returns the subset of keys with NO object behind them. Sequential HeadObject
+// per key — acceptable at pilot scale (completions carry 1–3 keys; the caller
+// caps the array), and HeadObject is a metadata-only call.
+export async function findMissingObjects(keys: string[]): Promise<string[]> {
+    const missing: string[] = [];
+    for (const key of keys) {
+        try {
+            await s3Client.send(new HeadObjectCommand({
+                Bucket: process.env.MINIO_BUCKET,
+                Key: key,
+            }));
+        } catch (err: any) {
+            const status = err?.$metadata?.httpStatusCode;
+            const name = err?.name || err?.Code || "";
+            if (status === 404 || name === "NotFound" || name === "NoSuchKey") {
+                missing.push(key);
+            } else {
+                throw new StorageUnreachableError(err);
+            }
+        }
+    }
+    return missing;
 }
 
 export async function uploadFileToS3(
