@@ -1332,7 +1332,7 @@ export function StopDetail({
                         isUploadingPhoto ? "opacity-55 cursor-not-allowed" : "cursor-pointer hover:bg-(--color-brand-800)"
                     )}
                 >
-                    Document Conditions (Optional)
+                    Add Condition Photo (Optional)
                 </button>
 
                 {/* After photo is the final accountability gate before completion. */}

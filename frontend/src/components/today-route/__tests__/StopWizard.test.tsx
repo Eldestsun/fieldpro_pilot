@@ -190,7 +190,7 @@ describe('StopWizard (StopDetail)', () => {
 
   it('disables submit button while upload is in progress', async () => {
     render(<StopDetail {...buildProps({ isUploadingPhoto: true })} />)
-    const photoBtn = await screen.findByRole('button', { name: /Document Conditions/i })
+    const photoBtn = await screen.findByRole('button', { name: /Add Condition Photo/i })
     expect(photoBtn).toBeDisabled()
   })
 
