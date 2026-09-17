@@ -251,7 +251,14 @@ routeRunStopRoutes.post(
             await closeVisitForRouteRunStop(client, {
                 routeRunStopId: Number(id),
                 outcome: 'skipped',
-                reasonCode: hazard_types?.[0],
+                // ISSUE-065: the non-service reason is the CATEGORY 'safety', per the
+                // canonical design (§8b: reason_code='safety' is the only non-service
+                // outcome). The SPECIFIC hazards are NOT lost — they are emitted below
+                // as *_present presence observations on the same visit (higher
+                // resolution than a single reason_code slot; §2.1 corollary). Consumers
+                // filter skips on outcome='skipped' AND reason_code='safety'; the
+                // per-hazard breakdown is a presence-observation read, not this column.
+                reasonCode: 'safety',
             });
 
             // ISSUE-051 (§5.7): the hazard observations MUST be emitted inside the

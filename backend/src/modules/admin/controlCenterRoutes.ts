@@ -338,10 +338,13 @@ ccRouter.get("/exceptions", async (req: Request, res: Response) => {
       // public.hazards via rrs.hazard_id — a dead adapter pointer since the
       // hazards Stage-2 clip (hazard_id always NULL for post-clip skips), so the
       // reason collapsed to 'unspecified' for every real skip (founder-confirmed
-      // 2026-09-07). The canonical skip reason lives on the visit: the skip path
-      // writes core.visits.reason_code = the hazard type. A skip IS a visit with
-      // outcome='skipped'; group those by reason_code. RLS-scoped by the org
-      // context set on this client above.
+      // 2026-09-07). A skip IS a visit with outcome='skipped'; group those by
+      // reason_code. RLS-scoped by the org context set on this client above.
+      // ISSUE-065: reason_code is now always 'safety' (the design §8b category),
+      // NOT the specific hazard type — so this grouping yields a single 'safety'
+      // bucket per design. Restoring a per-hazard skip breakdown is a presence-
+      // observation read (the specific *_present rows on each skipped visit),
+      // tracked separately as CC-EXCEPTIONS-DRILLDOWN — deliberately not bundled here.
       skips: `
                 SELECT COALESCE(reason_code, 'unspecified') AS reason,
                        COUNT(*)::int AS count

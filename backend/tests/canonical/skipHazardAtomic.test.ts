@@ -86,18 +86,23 @@ test("ISSUE-051: skip-with-hazard writes the skipped visit AND its hazard observ
         [visitId],
       );
       assertEqual(visit.rows[0].outcome, "skipped", "visit outcome = skipped");
-      assertEqual(visit.rows[0].reason_code, "encampment", "visit reason_code carries the hazard");
+      // ISSUE-065: reason_code is the canonical non-service CATEGORY 'safety'
+      // (§8b), NOT the specific hazard type. Consumers filter skips on
+      // outcome='skipped' AND reason_code='safety'.
+      assertEqual(visit.rows[0].reason_code, "safety", "visit reason_code = 'safety' (canonical §8b category)");
       assert(visit.rows[0].ended === true, "visit is closed");
 
       // The atomic payoff: the hazard presence observation landed in the SAME
       // unit as the visit close. Pre-fix, a post-commit emit failure left this
-      // absent while the visit still showed skipped.
+      // absent while the visit still showed skipped. ISSUE-065: this presence row
+      // is ALSO where the SPECIFIC hazard survives — the reason_code slot holds
+      // only the category, the *_present row holds which hazard.
       const obs = await check.query(
         `SELECT COUNT(*)::int AS n FROM core.observations
          WHERE visit_id = $1 AND observation_type = 'encampment_present'`,
         [visitId],
       );
-      assertEqual(obs.rows[0].n, 1, "hazard presence observation emitted with the skip (atomic)");
+      assertEqual(obs.rows[0].n, 1, "specific hazard preserved as a presence observation (encampment_present)");
     } finally {
       await check.query(`SELECT set_config('app.current_org_id', '', false)`).catch(() => {});
       check.release();
