@@ -14,6 +14,22 @@ jobs:
     # Bound it so any future hang fails fast with a legible "timed out" signal.
     timeout-minutes: 12
     services:
+      # ISSUE-068 CI parity: the photo-verification tests (photoKeysVerified)
+      # exercise the REAL storage chain — server-side upload + HeadObject
+      # against MINIO_ENDPOINT — so CI needs a real MinIO, not a mock. Without
+      # it those 3 tests fail (upload throws; the gate's storage-unreachable
+      # fallback answers 503 where the test pins 400) — the exact red that hid
+      # on main from PR #132 until a docs PR surfaced it. bitnami/minio is used
+      # because GitHub service containers cannot override the image command,
+      # and the official minio/minio image needs `server /data` passed;
+      # bitnami's runs the server by default, configured purely by env.
+      minio:
+        image: bitnami/minio:latest
+        env:
+          MINIO_ROOT_USER: ci_minio_user
+          MINIO_ROOT_PASSWORD: ci_minio_pass
+        ports:
+          - 9000:9000
       postgres:
         image: postgres:14
         env:
@@ -136,6 +152,27 @@ jobs:
       - name: Generate throwaway DEV_OID_KEY (S1-13 dev cipher adapter)
         run: echo "DEV_OID_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
 
+      # ISSUE-068: wait for the MinIO service, then create the upload bucket
+      # with the SAME boot-chain script deploys use (bootstrapStorage — fail-
+      # visible: exits non-zero if storage is unreachable or the bucket can't
+      # be created, so a broken storage service fails HERE with a legible
+      # message instead of as three cryptic test failures).
+      - name: Wait for MinIO + bootstrap upload bucket (ISSUE-068)
+        run: |
+          for i in $(seq 1 20); do
+            curl -sf http://localhost:9000/minio/health/live && break
+            sleep 2
+          done
+          curl -sf http://localhost:9000/minio/health/live
+          pnpm run bootstrap:storage
+        working-directory: backend
+        env:
+          MINIO_ENDPOINT: http://localhost:9000
+          MINIO_ACCESS_KEY_ID: ci_minio_user
+          MINIO_SECRET_ACCESS_KEY: ci_minio_pass
+          MINIO_BUCKET: fieldpro-ci-uploads
+          MINIO_REGION: us-east-1
+
       - name: Run tests
         run: pnpm test
         working-directory: backend
@@ -149,6 +186,13 @@ jobs:
           INTELLIGENCE_READER_PASSWORD: ci_intel_reader_pass
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_API_AUDIENCE: ${{ secrets.AZURE_API_AUDIENCE }}
+          # Real object storage for the ISSUE-068 photo-verification tests
+          # (matches the bootstrap step above; throwaway per-run credentials).
+          MINIO_ENDPOINT: http://localhost:9000
+          MINIO_ACCESS_KEY_ID: ci_minio_user
+          MINIO_SECRET_ACCESS_KEY: ci_minio_pass
+          MINIO_BUCKET: fieldpro-ci-uploads
+          MINIO_REGION: us-east-1
 
   build-frontend:
     runs-on: ubuntu-latest
