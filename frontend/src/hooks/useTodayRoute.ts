@@ -256,6 +256,70 @@ export function useTodayRoute() {
         setIsCompletingStop(false);
     };
 
+    // ISSUE-073: non-safety non-service — the worker could not reach the stop.
+    // Durable offline action (UNABLE_TO_ACCESS, replay tier 3 alongside skip);
+    // the obstruction photo travels separately as a kind='access' upload
+    // (order 2), so it lands before this replays. Emits NO hazard data.
+    const handleUnableToAccess = async (
+        stopId: number,
+        details: { reason: string; notes?: string; photoKey?: string }
+    ) => {
+        setIsCompletingStop(true);
+
+        if (!details.reason) {
+            console.warn("[handleUnableToAccess] No reason selected for stop", stopId);
+            setIsCompletingStop(false);
+            return;
+        }
+
+        // Obstruction photo gate — mirror of the skip's safety-photo gate: an
+        // uploaded key OR a durably queued kind='access' upload.
+        const hasPhoto = !!details.photoKey ||
+            !!(routeRun && getHasQueuedUploadForStop(tenantId, oid, routeRun.id, stopId, "access"));
+        if (!hasPhoto) {
+            console.warn("[handleUnableToAccess] Obstruction photo required for stop", stopId);
+            setIsCompletingStop(false);
+            return;
+        }
+
+        if (!routeRun) {
+            setIsCompletingStop(false);
+            return;
+        }
+
+        const action: OfflineAction = {
+            id: crypto.randomUUID(),
+            type: "UNABLE_TO_ACCESS",
+            executionMode,
+            routeRunId: String(routeRun.id),
+            routeRunStopId: String(stopId),
+            createdAt: new Date().toISOString(),
+            status: "pending",
+            payload: { reason: details.reason, notes: details.notes },
+        } as any;
+
+        enqueueAction(tenantId, oid, action);
+
+        // Adapter-level optimistic state: the stop is terminal — reuse the
+        // 'skipped' workflow status (the canonical distinction lives on the
+        // visit outcome, written server-side).
+        setRouteRun(prev => {
+            if (!prev) return null;
+            return {
+                ...prev,
+                stops: prev.stops.map(s => {
+                    if (s.route_run_stop_id === stopId) {
+                        return { ...s, status: "skipped" };
+                    }
+                    return s;
+                })
+            };
+        });
+
+        cleanupStopState(stopId);
+        setIsCompletingStop(false);
+    };
+
     const cleanupStopState = (stopId: number) => {
         setSelectedStopId(null);
         setHasStartedThisStop(false);
@@ -660,6 +724,7 @@ export function useTodayRoute() {
         handleFinishRoute,
         handleStartStop,
         handleSkipStop,
+        handleUnableToAccess,
         handleCompleteStop,
         handleFileUpload,
         handleToggleHotspot,

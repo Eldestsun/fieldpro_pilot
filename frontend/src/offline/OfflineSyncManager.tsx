@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { runReplay, type OfflineAction, subscribe } from "./offlineQueue";
-import { completeStop, skipRouteRunStopWithHazard, uploadStopPhotos, startRouteRunStop } from "../api/routeRuns";
+import { completeStop, skipRouteRunStopWithHazard, unableToAccessStop, uploadStopPhotos, startRouteRunStop } from "../api/routeRuns";
 import { getPhoto, deletePhoto } from "./photoStore";
 import { OfflineSyncContext, DEFAULT_SYNC_STATE, type OfflineSyncState } from "./OfflineSyncContext";
 
@@ -88,6 +88,24 @@ export function OfflineSyncManager({ children }: Props) {
                         msg.includes("required to skip")
                     ) {
                         console.warn("[OfflineSync] SKIP blocked by missing photo. Retrying...");
+                        throw new Error("RETRY_NEEDED_PHOTO_MISSING");
+                    }
+                    throw err;
+                }
+            },
+            UNABLE_TO_ACCESS: async (action) => {
+                // ISSUE-073: mirror of SKIP — obstruction photo replays first
+                // (order 2, kind='access'); a missing-photo 400 means the photo
+                // action hasn't landed yet, so retry rather than dead-letter.
+                const token = await getAccessToken();
+                const stopId = Number(action.routeRunStopId);
+                const payload = action.payload as any;
+                try {
+                    await unableToAccessStop(token, stopId, payload);
+                } catch (err: any) {
+                    const msg = err?.response?.data?.message || err?.message || "";
+                    if (msg.includes("obstruction photo")) {
+                        console.warn("[OfflineSync] UNABLE_TO_ACCESS blocked by missing photo. Retrying...");
                         throw new Error("RETRY_NEEDED_PHOTO_MISSING");
                     }
                     throw err;

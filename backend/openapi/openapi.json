@@ -1655,6 +1655,135 @@
         }
       }
     },
+    "/route-run-stops/{route_run_stop_id}/unable-to-access": {
+      "post": {
+        "summary": "Record a stop as not serviced because the worker could not access it",
+        "description": "Non-safety non-service (ISSUE-073). Writes the canonical visit with outcome=unable_to_access and reason_code set to the specific access reason. Requires an obstruction photo (evidence kind=access). Emits NO observations — an access failure is a visit circumstance, not an asserted asset state; folding it into safety would contaminate the hazard signal.\n",
+        "tags": [
+          "RouteRunStops"
+        ],
+        "security": [
+          {
+            "AzureAD": []
+          }
+        ],
+        "x-required-roles": [
+          "Specialist",
+          "Dispatch",
+          "Admin"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "route_run_stop_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "construction",
+                      "vehicle_blocking",
+                      "road_closed",
+                      "other"
+                    ]
+                  },
+                  "notes": {
+                    "type": "string",
+                    "description": "Optional free text; lands once in core.visit_notes (category=access)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stop recorded as unable to access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "route_run_stop": {
+                      "type": "object"
+                    },
+                    "route_run": {
+                      "type": "object"
+                    }
+                  }
+                },
+                "example": {
+                  "ok": true,
+                  "route_run_stop": {
+                    "id": 7,
+                    "status": "skipped"
+                  },
+                  "route_run": {
+                    "id": 42,
+                    "status": "in_progress"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid reason, or no obstruction photo on record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "An obstruction photo is required to record unable-to-access"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Stop already skipped",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": "ALREADY_SKIPPED"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
     "/route-run-stops/{route_run_stop_id}/complete": {
       "post": {
         "summary": "Complete a route run stop",
