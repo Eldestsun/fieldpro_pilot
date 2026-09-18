@@ -2,15 +2,16 @@
 
 ## What changed
 - `.github/workflows/ci.yml` (`test-backend` job):
-  - New **`minio` service container** (`bitnami/minio` — chosen because GitHub
-    service containers cannot override the image command, and the official
-    `minio/minio` image requires `server /data`; bitnami's runs the server by
-    default, configured purely by env). Throwaway per-run credentials.
-  - New step **"Wait for MinIO + bootstrap upload bucket"**: health-polls
+  - New step **"Start MinIO + bootstrap upload bucket"**: starts the official
+    `minio/minio` image via plain `docker run` (a GitHub *service* container
+    cannot override the image command, and minio requires `server /data`;
+    `bitnami/minio`, which runs by env alone, no longer publishes a `latest`
+    tag — first attempt failed on exactly that). Health-polls
     `/minio/health/live`, then creates the bucket with the SAME boot-chain
     script deploys use (`pnpm run bootstrap:storage` — fail-visible, so a
-    broken storage service fails at this step with a legible message instead
-    of as three cryptic test failures).
+    broken storage setup fails at this step with a legible message instead
+    of as three cryptic test failures). Throwaway per-run credentials; the
+    container dies with the runner.
   - `MINIO_*` env added to the "Run tests" step.
 
 ## Why

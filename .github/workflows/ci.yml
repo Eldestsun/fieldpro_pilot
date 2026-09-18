@@ -14,22 +14,6 @@ jobs:
     # Bound it so any future hang fails fast with a legible "timed out" signal.
     timeout-minutes: 12
     services:
-      # ISSUE-068 CI parity: the photo-verification tests (photoKeysVerified)
-      # exercise the REAL storage chain — server-side upload + HeadObject
-      # against MINIO_ENDPOINT — so CI needs a real MinIO, not a mock. Without
-      # it those 3 tests fail (upload throws; the gate's storage-unreachable
-      # fallback answers 503 where the test pins 400) — the exact red that hid
-      # on main from PR #132 until a docs PR surfaced it. bitnami/minio is used
-      # because GitHub service containers cannot override the image command,
-      # and the official minio/minio image needs `server /data` passed;
-      # bitnami's runs the server by default, configured purely by env.
-      minio:
-        image: bitnami/minio:latest
-        env:
-          MINIO_ROOT_USER: ci_minio_user
-          MINIO_ROOT_PASSWORD: ci_minio_pass
-        ports:
-          - 9000:9000
       postgres:
         image: postgres:14
         env:
@@ -152,14 +136,26 @@ jobs:
       - name: Generate throwaway DEV_OID_KEY (S1-13 dev cipher adapter)
         run: echo "DEV_OID_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
 
-      # ISSUE-068: wait for the MinIO service, then create the upload bucket
-      # with the SAME boot-chain script deploys use (bootstrapStorage — fail-
-      # visible: exits non-zero if storage is unreachable or the bucket can't
-      # be created, so a broken storage service fails HERE with a legible
-      # message instead of as three cryptic test failures).
-      - name: Wait for MinIO + bootstrap upload bucket (ISSUE-068)
+      # ISSUE-068 CI parity: the photo-verification tests (photoKeysVerified)
+      # exercise the REAL storage chain — server-side upload + HeadObject
+      # against MINIO_ENDPOINT — so CI needs a real MinIO, not a mock. Without
+      # it those 3 tests fail (upload throws; the gate's storage-unreachable
+      # fallback answers 503 where the test pins 400) — the exact red that hid
+      # on main from PR #132 until a docs PR surfaced it. Started via plain
+      # `docker run` (not a service container) because GH services cannot
+      # override the image command and the official minio/minio image requires
+      # `server /data`. Throwaway per-run credentials; container dies with the
+      # runner. Then the bucket is created with the SAME boot-chain script
+      # deploys use (bootstrapStorage — fail-visible: exits non-zero if storage
+      # is unreachable or the bucket can't be created, so a broken storage
+      # setup fails HERE with a legible message, not as three cryptic test
+      # failures).
+      - name: Start MinIO + bootstrap upload bucket (ISSUE-068)
         run: |
-          for i in $(seq 1 20); do
+          docker run -d --name ci-minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=ci_minio_user -e MINIO_ROOT_PASSWORD=ci_minio_pass \
+            minio/minio:latest server /data
+          for i in $(seq 1 30); do
             curl -sf http://localhost:9000/minio/health/live && break
             sleep 2
           done
