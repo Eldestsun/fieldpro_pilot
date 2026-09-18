@@ -771,7 +771,12 @@ export function StopDetail({
         setIsReportInfraOpen(false);
     };
 
-    // Finish requires cleaning + trash volume + AFTER photo (accountability).
+    // Finish requires WORK RECORDED + AFTER photo (accountability). Work
+    // recorded is any of: cleaning (with trash volume), a spot check, or —
+    // ISSUE-070 — an infrastructure/safety REPORT. A worker who finds only
+    // damage (nothing to clean; a spot check would falsely assert "no work
+    // needed" per §3.5) must have a truthful completion path: the report IS
+    // the work, and it only reaches canonical when the stop completes.
     // Validation Logic (Hoisted)
     const anyCleaningTask =
         checklist.picked_up_litter ||
@@ -791,13 +796,19 @@ export function StopDetail({
     // Safety Validation: If concern is yes, MUST have hazards
     const isSafetyValid = !safety?.hasConcern || (safety.hazardTypes && safety.hazardTypes.length > 0);
 
+    // ISSUE-070: a saved infra or safety report counts as work recorded.
+    const hasInfraReport = !!(infra?.hasIssues && infra.issues.length > 0);
+    const hasSafetyReport = !!(safety?.hasConcern && safety.hazardTypes && safety.hazardTypes.length > 0);
+    const hasReport = hasInfraReport || hasSafetyReport;
+
     // Pending (selected-but-not-uploaded) files no longer block Finish —
     // handleFinish flushes them first (upload or durable queue) and stops if
     // the flush fails.
     const canComplete =
         (
             (hasCleaning && hasTrashVolume) ||
-            checklist.spotCheck
+            checklist.spotCheck ||
+            hasReport
         ) &&
         hasAfterPhoto &&
         !isCompletingStop &&
@@ -1337,8 +1348,9 @@ export function StopDetail({
 
                 {/* After photo is the final accountability gate before completion. */}
                 {(() => {
-                    // Not ready: cleaning or trash volume missing (AND not spot check)
-                    if (!((hasCleaning && hasTrashVolume) || checklist.spotCheck)) {
+                    // Not ready: no work recorded — no cleaning+volume, no spot
+                    // check, and (ISSUE-070) no infra/safety report either.
+                    if (!((hasCleaning && hasTrashVolume) || checklist.spotCheck || hasReport)) {
                         return (
                             <button
                                 disabled

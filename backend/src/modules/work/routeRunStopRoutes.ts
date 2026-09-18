@@ -534,7 +534,14 @@ routeRunStopRoutes.post(
                 return res.status(400).json({ error: "After photo is required to complete a stop" });
             }
 
-            // Validate cleaning tasks or Spot Check
+            // Validate work recorded: cleaning tasks, a spot check, or —
+            // ISSUE-070 — an infrastructure/safety REPORT. A worker who finds
+            // only damage has nothing to clean, and a spot check would falsely
+            // assert "no work needed" (§3.5) — the report is the truthful
+            // record of the visit, and it only reaches canonical through this
+            // completion (the modals stash client-side; emitObservationsForStop
+            // reads the completion payload). Blocking report-only completions
+            // forced either a fabricated action row or silent report loss.
             const anyCleaningTask =
                 !!picked_up_litter ||
                 !!emptied_trash ||
@@ -543,9 +550,11 @@ routeRunStopRoutes.post(
                 !!washed_can;
 
             const isSpotCheck = spotCheck === true;
+            const hasInfraReport = Array.isArray(infraIssues) && infraIssues.length > 0;
+            const hasSafetyReport = Array.isArray(safety?.hazard_types) && safety.hazard_types.length > 0;
 
-            if (!anyCleaningTask && !isSpotCheck) {
-                return res.status(400).json({ error: "Stop completion requires a cleaning action or a spot check" });
+            if (!anyCleaningTask && !isSpotCheck && !hasInfraReport && !hasSafetyReport) {
+                return res.status(400).json({ error: "Stop completion requires a cleaning action, a spot check, or a safety/infrastructure report" });
             }
 
             // Validate trashVolume (Required only if cleaning)
