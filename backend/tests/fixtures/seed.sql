@@ -80,11 +80,27 @@ ALTER TABLE public.transit_stops DISABLE TRIGGER trg_sync_transit_stop_primary_a
 -- DO UPDATE (not DO NOTHING) so DBs seeded by the older row shape heal the
 -- two eligibility columns on re-run; asset_id is not touched, so the
 -- (disabled) sync trigger stays irrelevant.
+-- ISSUE-069: pool_id here is the DEPRECATED cache column, kept ONLY because
+-- riskMapService still reads it (that reader repoint is tracked separately —
+-- pool-id-cache-drift). The AUTHORITATIVE stop→pool fact is the
+-- stop_pool_memberships row seeded immediately below. When the reader repoints
+-- and the cache column drops, delete pool_id from this INSERT; the membership
+-- row is what survives.
 INSERT INTO public.transit_stops (stop_id, org_id, asset_id, pool_id, has_trash)
 VALUES ('31150', 1, 2, 'TEST_POOL', true)
 ON CONFLICT (stop_id) DO UPDATE
   SET pool_id = EXCLUDED.pool_id, has_trash = EXCLUDED.has_trash;
 ALTER TABLE public.transit_stops ENABLE TRIGGER trg_sync_transit_stop_primary_asset;
+
+-- 6b. AUTHORITATIVE stop→pool membership (FORCE RLS) — ISSUE-069. The fixture
+--     previously wrote only the deprecated transit_stops.pool_id cache, so the
+--     CI/test DB carried ZERO stop_pool_memberships rows and every pool-based
+--     read worked purely by the dead column — exactly the silent-drift the
+--     column drop would expose. Mirrors dev's seedTestPoolMemberships.ts, which
+--     force-includes 31150 in TEST_POOL for the same coherence reason.
+INSERT INTO public.stop_pool_memberships (stop_id, pool_id, org_id, active)
+VALUES ('31150', 'TEST_POOL', 1, true)
+ON CONFLICT (stop_id, pool_id) DO NOTHING;
 
 INSERT INTO public.transit_stop_assets (org_id, stop_id, asset_id, role, active)
 VALUES (1, '31150', 2, 'primary', true)
