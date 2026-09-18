@@ -152,9 +152,11 @@ jobs:
       # failures).
       - name: Start MinIO + bootstrap upload bucket (ISSUE-068)
         run: |
+          # quay.io, not Docker Hub: minio removed its Hub repository (dev's
+          # docker-compose `minio/minio` works only via a locally cached image).
           docker run -d --name ci-minio -p 9000:9000 \
             -e MINIO_ROOT_USER=ci_minio_user -e MINIO_ROOT_PASSWORD=ci_minio_pass \
-            minio/minio:latest server /data
+            quay.io/minio/minio:latest server /data
           for i in $(seq 1 30); do
             curl -sf http://localhost:9000/minio/health/live && break
             sleep 2
