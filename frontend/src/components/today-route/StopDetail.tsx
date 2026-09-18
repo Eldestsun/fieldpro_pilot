@@ -68,6 +68,8 @@ interface StopDetailProps {
     onSetSafety?: (data: SafetyState) => void;
     onSetInfra?: (data: InfraState) => void;
     onSkipStop?: (hazardTypes: string[]) => void;
+    // ISSUE-073: non-safety non-service — worker could not reach the stop.
+    onUnableToAccess?: (details: { reason: string; notes?: string; photoKey?: string }) => void;
     currentStep?: WizardStep;
     onNextStep?: () => void;
     onSetStep?: (step: WizardStep) => void;
@@ -100,6 +102,7 @@ export function StopDetail({
     onSetSafety,
     onSetInfra,
     onSkipStop,
+    onUnableToAccess,
     currentStep = "safety",
     onNextStep: _onNextStep,
     onSetStep,
@@ -315,6 +318,19 @@ export function StopDetail({
     // S2-9-pre1: focus traps for the two report modals (Escape closes without saving).
     const safetyTrapRef = useFocusTrap<HTMLDivElement>(isReportSafetyOpen, () => setIsReportSafetyOpen(false));
     const infraTrapRef = useFocusTrap<HTMLDivElement>(isReportInfraOpen, () => setIsReportInfraOpen(false));
+
+    // ISSUE-073: unable-to-access modal state. The reason vocabulary is this
+    // vertical's capture language (the canonical outcome is core grammar).
+    const [isUnableToAccessOpen, setIsUnableToAccessOpen] = useState(false);
+    const [localAccess, setLocalAccess] = useState<{ reason?: string; notes?: string; photoKey?: string }>({});
+    const [showUnableConfirm, setShowUnableConfirm] = useState(false);
+    const accessTrapRef = useFocusTrap<HTMLDivElement>(isUnableToAccessOpen, () => setIsUnableToAccessOpen(false));
+    const ACCESS_REASON_OPTIONS: Array<{ val: string; label: string }> = [
+        { val: "construction", label: "Construction" },
+        { val: "vehicle_blocking", label: "Vehicle blocking" },
+        { val: "road_closed", label: "Road closed" },
+        { val: "other", label: "Other" },
+    ];
 
     // Local state for Infra Photo (one photo for the whole report context)
     const [localInfraPhotoKey, setLocalInfraPhotoKey] = useState<string | null>(null);
@@ -1201,6 +1217,15 @@ export function StopDetail({
                             Cleaning tasks are disabled. Photo required.
                         </div>
                     )}
+                    {/* ISSUE-073: the non-safety non-service path — deliberately
+                        OUTSIDE the Report Safety modal so an unreachable stop
+                        never routes through hazard capture. */}
+                    <button
+                        onClick={() => { setLocalAccess({}); setIsUnableToAccessOpen(true); }}
+                        className="w-full mt-2 py-3 px-4 border border-dashed border-(--border-strong) rounded-lg font-bold text-sm text-(--text-muted) bg-(--surface-card) cursor-pointer hover:bg-gray-50 min-h-[44px]"
+                    >
+                        CAN'T ACCESS STOP
+                    </button>
                 </div>
 
                 {/* Cleaning Tasks */}
@@ -1422,6 +1447,134 @@ export function StopDetail({
                     onSkipStop?.(localSafety.hazardTypes || []);
                 }}
                 onCancel={() => setShowSkipModal(false)}
+            />
+
+            {/* ISSUE-073: Unable-to-Access Modal */}
+            {isUnableToAccessOpen && (
+                <div className="fixed inset-0 bg-[rgba(17,24,39,0.6)] flex items-center justify-center z-[2000] p-4">
+                    <div
+                        ref={accessTrapRef}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="access-modal-title"
+                        className="bg-(--surface-card) w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden rounded-xl shadow-(--shadow-overlay)"
+                    >
+                        <div className="px-4 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                            <h3 id="access-modal-title" className="m-0 text-gray-800 font-bold text-lg">Unable to Access Stop</h3>
+                            <button
+                                onClick={() => setIsUnableToAccessOpen(false)}
+                                className="bg-transparent border-0 text-2xl text-gray-500 cursor-pointer px-2 min-h-[44px] flex items-center"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <div className="p-6 flex-1 overflow-y-auto">
+                            <div className="mb-4 bg-gray-50 p-4 rounded-lg border border-(--border-default)">
+                                <p className="mt-0 font-bold text-gray-800">Couldn't reach this stop?</p>
+                                <p className="m-0 text-sm text-gray-600">
+                                    For blockages that are not a safety hazard — construction, a parked
+                                    vehicle, a closed road. If there IS a safety issue, use Report Safety instead.
+                                </p>
+                            </div>
+
+                            <label className="block mb-2 font-bold text-gray-700">Reason (Required):</label>
+                            <div className="grid grid-cols-2 gap-2 mb-6">
+                                {ACCESS_REASON_OPTIONS.map((opt) => {
+                                    const isSelected = localAccess.reason === opt.val;
+                                    return (
+                                        <button
+                                            key={opt.val}
+                                            onClick={() => setLocalAccess(prev => ({ ...prev, reason: opt.val }))}
+                                            className={cn(
+                                                "py-3 px-3 rounded-lg border-2 font-bold text-sm min-h-[44px] cursor-pointer transition-colors",
+                                                isSelected
+                                                    ? "bg-(--color-brand-700) text-(--text-on-brand) border-(--color-brand-700)"
+                                                    : "bg-(--surface-card) text-gray-700 border-(--border-default)"
+                                            )}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            <label className="block mb-2 font-bold text-gray-700">Obstruction Photo (Required):</label>
+                            <div className="mb-6">
+                                <input
+                                    type="file" accept="image/*" id="access-photo-upload-modal" className="hidden"
+                                    onChange={async (e) => {
+                                        if (e.target.files && e.target.files[0]) {
+                                            try {
+                                                const { photos, queued } = await uploadPhotos(stop.route_run_stop_id, [e.target.files[0]], "access");
+                                                const key = queued ? `queued-access-${Date.now()}` : photos[0]?.storage_key;
+                                                if (key) setLocalAccess(prev => ({ ...prev, photoKey: key }));
+                                            } catch (e) { console.error(e); alert("Upload failed"); }
+                                        }
+                                    }}
+                                />
+                                <button
+                                    onClick={() => document.getElementById("access-photo-upload-modal")?.click()}
+                                    className={cn(
+                                        "w-full p-4 rounded-lg font-bold min-h-[44px] cursor-pointer",
+                                        localAccess.photoKey
+                                            ? "bg-(--color-success-tint) border border-(--color-success)/50 text-(--color-success)"
+                                            : "bg-(--surface-card) border border-dashed border-(--border-strong) text-(--text-muted)"
+                                    )}
+                                >
+                                    {localAccess.photoKey ? "✓ Photo Attached (Click to Replace)" : "Add Obstruction Photo"}
+                                </button>
+                            </div>
+
+                            <textarea
+                                value={localAccess.notes || ""}
+                                onChange={(e) => setLocalAccess(prev => ({ ...prev, notes: e.target.value }))}
+                                placeholder="Access notes..."
+                                className="w-full min-h-[80px] p-3 rounded-lg border border-(--border-default) text-sm mb-2"
+                            />
+                        </div>
+
+                        <div className="px-4 py-4 border-t border-gray-200 flex gap-3 bg-gray-50">
+                            <button
+                                onClick={() => setIsUnableToAccessOpen(false)}
+                                className="flex-1 py-3 rounded-lg border border-(--border-default) bg-(--surface-card) font-bold text-gray-700 cursor-pointer min-h-[44px]"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                disabled={!localAccess.reason || !localAccess.photoKey}
+                                onClick={() => setShowUnableConfirm(true)}
+                                className={cn(
+                                    "flex-1 py-3 rounded-lg border-0 font-bold min-h-[44px]",
+                                    localAccess.reason && localAccess.photoKey
+                                        ? "bg-(--color-brand-700) text-(--text-on-brand) cursor-pointer"
+                                        : "bg-gray-300 text-white cursor-not-allowed"
+                                )}
+                            >
+                                Record & Move On
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <ConfirmDialog
+                isOpen={showUnableConfirm}
+                title="Record as unable to access?"
+                message="This stop will be recorded as not serviced because it could not be accessed. This cannot be undone."
+                confirmLabel="Record"
+                cancelLabel="Cancel"
+                variant="danger"
+                onConfirm={() => {
+                    setShowUnableConfirm(false);
+                    setIsUnableToAccessOpen(false);
+                    onUnableToAccess?.({
+                        reason: localAccess.reason!,
+                        notes: localAccess.notes,
+                        photoKey: localAccess.photoKey,
+                    });
+                }}
+                onCancel={() => setShowUnableConfirm(false)}
             />
         </UlLayout>
     );

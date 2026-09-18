@@ -317,6 +317,196 @@ routeRunStopRoutes.post(
     }
 );
 
+// ============================================================================
+// ISSUE-073 (A1) — unable-to-access: the NON-safety non-service outcome.
+// Transit-adapter vocabulary for WHY the asset couldn't be reached. The outcome
+// 'unable_to_access' is core grammar (§3.2 — any vertical's worker can fail to
+// reach any asset); these reasons are this vertical's capture vocabulary, the
+// same split as the registry's observation types and §3.6's note categories.
+// ============================================================================
+const ACCESS_REASONS = ["construction", "vehicle_blocking", "road_closed", "other"];
+
+/**
+ * @openapi
+ * /route-run-stops/{route_run_stop_id}/unable-to-access:
+ *   post:
+ *     summary: Record a stop as not serviced because the worker could not access it
+ *     description: >
+ *       Non-safety non-service (ISSUE-073). Writes the canonical visit with
+ *       outcome=unable_to_access and reason_code set to the specific access
+ *       reason. Requires an obstruction photo (evidence kind=access). Emits NO
+ *       observations — an access failure is a visit circumstance, not an
+ *       asserted asset state; folding it into safety would contaminate the
+ *       hazard signal.
+ *     tags: [RouteRunStops]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Specialist, Dispatch, Admin]
+ *     parameters:
+ *       - in: path
+ *         name: route_run_stop_id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [reason]
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 enum: [construction, vehicle_blocking, road_closed, other]
+ *               notes:
+ *                 type: string
+ *                 description: Optional free text; lands once in core.visit_notes (category=access)
+ *     responses:
+ *       200:
+ *         description: Stop recorded as unable to access
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 route_run_stop: { type: object }
+ *                 route_run: { type: object }
+ *             example:
+ *               ok: true
+ *               route_run_stop: { id: 7, status: skipped }
+ *               route_run: { id: 42, status: in_progress }
+ *       400:
+ *         description: Missing/invalid reason, or no obstruction photo on record
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *             example: { error: "An obstruction photo is required to record unable-to-access" }
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       409:
+ *         description: Stop already skipped
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *             example: { error: "ALREADY_SKIPPED" }
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+routeRunStopRoutes.post(
+    "/route-run-stops/:route_run_stop_id/unable-to-access",
+    requireAuth,
+    requireAnyRole(["Specialist", "Dispatch", "Admin"]),
+    async (req: Request, res: Response) => {
+        const { route_run_stop_id: id } = req.params;
+        const { reason, notes } = req.body ?? {};
+
+        if (typeof reason !== "string" || !ACCESS_REASONS.includes(reason)) {
+            return res.status(400).json({
+                error: `reason is required and must be one of: ${ACCESS_REASONS.join(", ")}`,
+            });
+        }
+
+        const numericOrgId = await resolveNumericOrgId(req);
+        const client = await pool.connect();
+        try {
+            await client.query(`SELECT set_config('app.current_org_id', $1, false)`, [String(numericOrgId)]);
+
+            // Obstruction photo is mandatory — same accountability posture as the
+            // safety-skip's photo gate, DB-verified against core.evidence
+            // (kind='access'; the photos route is a server-side upload, so
+            // evidence rows are inherently backed by real objects — ISSUE-068).
+            const { countStopPhotosByRouteRunStop } = await import("../../domains/routeRunStop/stopPhotosService");
+            const photoCount = await countStopPhotosByRouteRunStop(client, Number(id), "access");
+            if (photoCount === 0) {
+                return res.status(400).json({ error: "An obstruction photo is required to record unable-to-access" });
+            }
+
+            const lookupRes = await client.query(
+                `SELECT status, route_run_id FROM route_run_stops WHERE id = $1`,
+                [id],
+            );
+            if (lookupRes.rows.length === 0) {
+                return res.status(404).json({ error: "ROUTE_NOT_FOUND", message: "Route run stop not found" });
+            }
+            const { status } = lookupRes.rows[0];
+            if (status === "skipped") {
+                return res.status(409).json({ error: "ALREADY_SKIPPED", message: "Stop is already skipped." });
+            }
+            if (status !== "pending" && status !== "in_progress") {
+                return res.status(400).json({ error: `Cannot record unable-to-access for stop in status '${status}'` });
+            }
+
+            // Single atomic transaction (ISSUE-051 discipline): stop status,
+            // visit close, and the access note commit together.
+            await client.query("BEGIN");
+
+            // Adapter scaffolding reuses the terminal 'skipped' status — the
+            // route_run_stops row is workflow state, not the system of record.
+            // The CANONICAL distinction lives on the visit: outcome =
+            // 'unable_to_access' (core grammar) + reason_code = the specific
+            // adapter-vocabulary reason. (For safety-skips the specifics have a
+            // better home — presence observations — so reason_code holds the
+            // category 'safety'; here the worker never assessed the asset, so
+            // there are no observations and reason_code IS the specific record.)
+            const updateRes = await client.query(
+                `UPDATE route_run_stops
+                    SET status = 'skipped', completed_at = NOW(), updated_at = NOW()
+                  WHERE id = $1
+                  RETURNING *`,
+                [id],
+            );
+
+            const visitId = await ensureVisitForRouteRunStop(client, {
+                routeRunStopId: Number(id),
+                actorOid: req.user?.oid || "unknown",
+                visitType: "service",
+            });
+            await closeVisitForRouteRunStop(client, {
+                routeRunStopId: Number(id),
+                outcome: "unable_to_access",
+                reasonCode: reason,
+            });
+
+            // CONTAMINATION GUARD (the point of ISSUE-073): NO observations are
+            // emitted here. An access failure asserts nothing about the asset's
+            // state — the worker never reached it. Emitting a safety presence
+            // would pollute the hazard signal the labor-safety story depends on.
+
+            // Optional free-text note → §3.6 grain: once per (visit, category).
+            const trimmedNote = typeof notes === "string" ? notes.trim() : "";
+            if (trimmedNote) {
+                await client.query(
+                    `INSERT INTO core.visit_notes (visit_id, org_id, category, note)
+                     VALUES ($1, $2, 'access', $3)
+                     ON CONFLICT (visit_id, category)
+                       DO UPDATE SET note = EXCLUDED.note, recorded_at = now()`,
+                    [visitId, numericOrgId, trimmedNote],
+                );
+            }
+
+            const { checkAndCompleteRouteRun } = await import("../../domains/routeRun/routeRunService");
+            await checkAndCompleteRouteRun(client, lookupRes.rows[0].route_run_id);
+
+            await client.query("COMMIT");
+
+            const routeRun = await loadRouteRunById(lookupRes.rows[0].route_run_id, numericOrgId);
+            return res.json({ ok: true, route_run_stop: updateRes.rows[0], route_run: routeRun });
+        } catch (err: any) {
+            await client.query("ROLLBACK").catch(() => { /* not in txn */ });
+            console.error("Error in /api/route-run-stops/:id/unable-to-access:", err);
+            return res.status(500).json({ error: err.message || "Internal server error" });
+        } finally {
+            try { await client.query(`SELECT set_config('app.current_org_id', '', false)`); } catch { /* best-effort reset */ }
+            client.release();
+        }
+    },
+);
+
 /**
  * @openapi
  * /route-run-stops/{route_run_stop_id}/complete:

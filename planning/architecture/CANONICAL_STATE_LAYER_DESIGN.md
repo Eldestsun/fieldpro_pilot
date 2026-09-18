@@ -364,8 +364,13 @@ to anchor the visit so that component-level silence (no `washed_pad`, no
 A spot check is a **completed servicing visit** with outcome "assessed, no work
 needed." It is **not** a non-service event and **not** an intervention; it is
 explicitly distinct from cleaning actions (`washed_can`, `picked_up_litter`,
-etc.). The only non-service visit outcome remains `skipped` with
-`reason_code = 'safety'`.
+etc.). The non-service visit outcomes are `skipped` with `reason_code =
+'safety'` and — activated by ISSUE-073 (2026-09-17) — `unable_to_access`, whose
+`reason_code` carries the specific adapter-vocabulary access reason (e.g.
+transit: `construction`, `vehicle_blocking`, `road_closed`). An
+`unable_to_access` visit emits **no observations**: the worker never assessed
+the asset, so nothing may be asserted — folding access failures into `safety`
+would contaminate the hazard signal.
 
 ```text
 kind        = condition
@@ -403,7 +408,7 @@ the **visit**.
 CREATE TABLE core.visit_notes (
     visit_id    bigint      NOT NULL REFERENCES core.visits(id) ON DELETE CASCADE,
     org_id      bigint      NOT NULL REFERENCES organizations(id),
-    category    text        NOT NULL,        -- 'safety' | 'infra' | … (adapter vocabulary)
+    category    text        NOT NULL,        -- 'safety' | 'infra' | 'access' | … (adapter vocabulary)
     note        text        NOT NULL,
     recorded_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (visit_id, category)          -- one note per category per visit
@@ -758,10 +763,11 @@ Two patterns are explicitly **excluded** from operational alerting and become
 - **Spot checks** (§3.5) — a spot check is a **completed servicing visit**
   with outcome "assessed, no work needed." It is not a non-service event.
 
-The only non-service visit outcome that appears on the operations report is
-**`skipped` with `reason_code='safety'`**. Every other completed-but-quiet
-visit is silence-as-signal feeding intelligence (§4.4), not an operational
-alert.
+The non-service visit outcomes that appear on the operations report are
+**`skipped` with `reason_code='safety'`** and **`unable_to_access`** (ISSUE-073
+— surfaced under its specific access reason; a non-serviced stop must never
+silently vanish from the ops view). Every other completed-but-quiet visit is
+silence-as-signal feeding intelligence (§4.4), not an operational alert.
 
 ---
 

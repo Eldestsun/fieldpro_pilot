@@ -205,6 +205,22 @@ export function enqueueAction(
         } else {
             actions.push(action);
         }
+    } else if (action.type === "UNABLE_TO_ACCESS" && action.status === "pending") {
+        // ISSUE-073 (offline freeze lifted by founder for this scoped change):
+        // Dedupe UNABLE_TO_ACCESS exactly like SKIP — replace the pending
+        // record for this stop with the latest payload. One terminal
+        // non-service record per stop.
+        const existingIndex = actions.findIndex(a =>
+            a.type === "UNABLE_TO_ACCESS" &&
+            a.status === "pending" &&
+            String(a.routeRunStopId) === String(action.routeRunStopId)
+        );
+
+        if (existingIndex !== -1) {
+            actions[existingIndex] = action;
+        } else {
+            actions.push(action);
+        }
     } else {
         actions.push(action);
     }
@@ -339,6 +355,9 @@ export async function runReplay(
         'START_STOP': 1,
         'UPLOAD_STOP_PHOTOS': 2,
         'SKIP_STOP_WITH_HAZARD': 3,
+        // ISSUE-073: same tier as SKIP — a terminal non-service that must replay
+        // AFTER its obstruction photo (order 2) and never after a COMPLETE.
+        'UNABLE_TO_ACCESS': 3,
         'COMPLETE_STOP': 4,
     };
 
@@ -398,7 +417,7 @@ export async function runReplay(
                 }
             } else if (apiCode === "ALREADY_SKIPPED") {
                 updateActionStatus(tenantId, oid, action.id, "done");
-                if (action.type === "SKIP_STOP_WITH_HAZARD") {
+                if (action.type === "SKIP_STOP_WITH_HAZARD" || action.type === "UNABLE_TO_ACCESS") {
                     anyCompleteStopSucceeded = true;
                 }
             } else if (apiCode === "ROUTE_NOT_FOUND" || apiCode === "ROUTE_REASSIGNED") {

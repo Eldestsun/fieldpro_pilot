@@ -193,6 +193,29 @@ export async function completeStop(
     return data.route_run;
 }
 
+// ISSUE-073: non-safety non-service — the worker could not reach the stop.
+// Emits NO observations server-side (contamination guard); the specific reason
+// lands on the canonical visit as outcome='unable_to_access' + reason_code.
+export async function unableToAccessStop(
+    token: string,
+    routeRunStopId: number,
+    payload: { reason: string; notes?: string }
+): Promise<void> {
+    const res = await fetch(`/api/route-run-stops/${routeRunStopId}/unable-to-access`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to record unable-to-access");
+    }
+}
+
 export async function skipRouteRunStopWithHazard(
     token: string,
     routeRunStopId: number,

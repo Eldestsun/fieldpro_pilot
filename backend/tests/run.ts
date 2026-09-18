@@ -95,6 +95,7 @@ import "./canonical/spotCheckNormStatus.test";
 import "./canonical/visitNotesGrain.test";
 import "./canonical/photoKeysVerified.test";
 import "./canonical/reportOnlyCompletion.test";
+import "./canonical/unableToAccess.test";
 import "./canonical/runtimeIdentityLeak.test";
 import "./canonical/orgFailClosed.test";
 import "./canonical/resourceRoutesOrgFailClosed.test";

@@ -37,6 +37,7 @@ export function TodayRouteView() {
         handleToggleHotspot,
         handleStartStop,
         handleSkipStop,
+        handleUnableToAccess,
         safetyState,
         infraState,
         setSafetyForStop,
@@ -206,6 +207,7 @@ export function TodayRouteView() {
                 onSetSafety={(data) => setSafetyForStop(stop.route_run_stop_id, data)}
                 onSetInfra={(data) => setInfraForStop(stop.route_run_stop_id, data)}
                 onSkipStop={(hazardTypes) => handleSkipStop(stop.route_run_stop_id, hazardTypes)}
+                onUnableToAccess={(details) => handleUnableToAccess(stop.route_run_stop_id, details)}
                 uploadPhotos={uploadPhotos}
                 fetchPhotos={fetchPhotos}
                 routeRunId={routeRun.id}

@@ -345,11 +345,16 @@ ccRouter.get("/exceptions", async (req: Request, res: Response) => {
       // bucket per design. Restoring a per-hazard skip breakdown is a presence-
       // observation read (the specific *_present rows on each skipped visit),
       // tracked separately as CC-EXCEPTIONS-DRILLDOWN — deliberately not bundled here.
+      // ISSUE-073: the tile also surfaces the NON-safety non-service outcome —
+      // unable_to_access visits appear here under their specific reason_code
+      // ('construction', 'vehicle_blocking', ...). Without this, non-serviced
+      // stops would silently vanish from the ops view ("surfaces, never
+      // silently concludes").
       skips: `
                 SELECT COALESCE(reason_code, 'unspecified') AS reason,
                        COUNT(*)::int AS count
                 FROM core.visits
-                WHERE outcome = 'skipped'
+                WHERE outcome IN ('skipped', 'unable_to_access')
                   AND ended_at::date = CURRENT_DATE
                 GROUP BY reason_code
                 ORDER BY count DESC;
