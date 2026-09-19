@@ -379,6 +379,32 @@ export async function reassignRouteRun(
     }
 }
 
+// T3-A3 — read-only user directory (Admin). A mirror of who has signed into
+// BASELINE; Entra is the only deactivation switch. Date-only last sign-in by
+// design (last_seen_at refreshes on every request — a precise timestamp would
+// be an activity monitor). No OIDs in the payload.
+export interface DirectoryUser {
+    display_name: string | null;
+    email: string | null;
+    role_at_last_sign_in: string | null;
+    last_sign_in: string; // YYYY-MM-DD
+}
+
+export async function fetchUserDirectory(token: string): Promise<DirectoryUser[]> {
+    const res = await fetch("/api/admin/users", {
+        headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+        let msg = "Failed to load user directory";
+        try {
+            const data = await res.json();
+            msg = data.error || msg;
+        } catch { /* non-JSON error body */ }
+        throw new Error(msg);
+    }
+    return (await res.json()).users;
+}
+
 // ISSUE-050 — append a stop to a live (planned/in_progress) route run.
 // Dispatch/Admin only; the server writes origin_type='emergency' and appends
 // to the pending tail (sequence MAX+1). 409 = terminal run or duplicate stop.

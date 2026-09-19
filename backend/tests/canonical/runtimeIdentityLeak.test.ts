@@ -270,6 +270,10 @@ function buildEndpoints(): Endpoint[] {
     { method: "GET", route: "/users", probe: "/users", kind: "sanctioned", authorized: "Dispatch", underPriv: "Specialist" },
     // The Admin audit log — identity (actor_oid) is the whole point of an audit trail.
     { method: "GET", route: "/admin/audit-log", probe: "/admin/audit-log", kind: "sanctioned", authorized: "Admin", underPriv: "Dispatch" },
+    // T3-A3 (founder-ruled 2026-09-19): read-only user directory — names/emails
+    // ARE the surface (admin account-hygiene need). Admin-gated; no OIDs; the
+    // date-only last_sign_in contract is enforced by userDirectory.test.ts.
+    { method: "GET", route: "/admin/users", probe: "/admin/users", kind: "sanctioned", authorized: "Admin", underPriv: "Dispatch" },
     // Worker's OWN route (self-view, scoped to assigned_user_oid = caller). Self
     // identity is not surveillance; the gate just keeps it authenticated.
     { method: "GET", route: "/ul/todays-run", probe: "/ul/todays-run", kind: "sanctioned", authorized: "Specialist", skipAuthorized: true },
