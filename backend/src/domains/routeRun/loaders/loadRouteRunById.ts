@@ -39,6 +39,7 @@ export async function loadRouteRunById(id: number | string, orgId: number | stri
       rrs.id                 AS route_run_stop_id,
       rrs.sequence,
       rrs.status             AS stop_status,
+      rrs.origin_type,
       -- D5 guardrail (ISSUE-031): rrs.completed_at is NOT selected. Per-stop
       -- service timing on a live, route-keyed, single-assignee surface
       -- re-identifies the worker by adjacency (name + per-stop timeline in one
@@ -219,6 +220,7 @@ export async function loadRouteRunById(id: number | string, orgId: number | stri
             stopNumber: r.stop_number,
             sequence: r.sequence,
             status: r.stop_status,
+            origin_type: r.origin_type,
             // D5: no completed_at / per-stop service time here — see SELECT comment.
             planned_distance_m: r.planned_distance_m,
             planned_duration_s: r.planned_duration_s,

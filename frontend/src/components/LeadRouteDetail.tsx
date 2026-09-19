@@ -4,6 +4,8 @@ import {
     getLeadRouteRunById,
     fetchUlUsers,
     reassignRouteRun,
+    addStopToRun,
+    getStopsScoped,
     type RouteRun,
     type UlUser,
 } from "../api/routeRuns";
@@ -34,6 +36,53 @@ export function LeadRouteDetail({ id, onBack }: LeadRouteDetailProps) {
 
     // D5b — read-only per-stop history drawer (worker-anonymous by construction).
     const [historyStop, setHistoryStop] = useState<{ stopId: string; label: string } | null>(null);
+
+    // ISSUE-050 — add-stop-to-live-run picker (append-only; server writes
+    // origin_type='emergency'). Search reuses the existing ops stops read.
+    const [addStopSearch, setAddStopSearch] = useState("");
+    const [addStopResults, setAddStopResults] = useState<{ stopId: string; label: string }[]>([]);
+    const [searchingAddStop, setSearchingAddStop] = useState(false);
+    const [addingStopId, setAddingStopId] = useState<string | null>(null);
+    const [addStopError, setAddStopError] = useState<string | null>(null);
+
+    const handleSearchAddStop = async () => {
+        if (!addStopSearch.trim()) return;
+        setSearchingAddStop(true);
+        setAddStopError(null);
+        try {
+            const token = await getAccessToken();
+            const data = await getStopsScoped(
+                token,
+                { page: 1, pageSize: 8, q: addStopSearch.trim() },
+                "ops",
+            );
+            setAddStopResults(
+                (data?.items ?? []).map((s: any) => ({
+                    stopId: String(s.stop_id),
+                    label: [s.stop_id, s.on_street_name].filter(Boolean).join(" — "),
+                })),
+            );
+        } catch (err: any) {
+            setAddStopError(err.message || "Failed to search stops");
+        } finally {
+            setSearchingAddStop(false);
+        }
+    };
+
+    const handleAddStop = async (stopId: string) => {
+        setAddingStopId(stopId);
+        setAddStopError(null);
+        try {
+            const token = await getAccessToken();
+            await addStopToRun(token, id, stopId);
+            setAddStopResults((prev) => prev.filter((s) => s.stopId !== stopId));
+            await fetchDetail();
+        } catch (err: any) {
+            setAddStopError(err.message || "Failed to add stop");
+        } finally {
+            setAddingStopId(null);
+        }
+    };
 
     const fetchDetail = useCallback(async () => {
         try {
@@ -201,6 +250,54 @@ export function LeadRouteDetail({ id, onBack }: LeadRouteDetailProps) {
                         )}
                     </div>
                 )}
+
+                {/* ISSUE-050 — Add stop (append-only). Only on planned/in_progress runs;
+                    the injected stop lands at the tail badged 'emergency' — visible to
+                    dispatch here and to the worker as a normal new stop, never silent. */}
+                {(routeRun.status === "planned" || routeRun.status === "in_progress") && (
+                    <div className="mt-6 pt-4 border-t border-gray-100">
+                        <div className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-2">
+                            Add stop (appends to end of route)
+                        </div>
+                        <div className="flex items-end gap-3 flex-wrap">
+                            <input
+                                aria-label="Search stops to add"
+                                value={addStopSearch}
+                                onChange={(e) => setAddStopSearch(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === "Enter") handleSearchAddStop(); }}
+                                placeholder="Stop # or street…"
+                                className="px-3 py-2 rounded-md border border-gray-300 text-sm bg-white min-h-[44px] min-w-[220px]"
+                            />
+                            <OpsButton
+                                variant="outline"
+                                onClick={handleSearchAddStop}
+                                disabled={!addStopSearch.trim() || searchingAddStop}
+                            >
+                                {searchingAddStop ? "Searching…" : "Search"}
+                            </OpsButton>
+                        </div>
+                        {addStopResults.length > 0 && (
+                            <ul className="mt-3 flex flex-col gap-2 list-none p-0 m-0">
+                                {addStopResults.map((s) => (
+                                    <li key={s.stopId} className="flex items-center justify-between gap-3 px-3 py-2 rounded-md border border-gray-200 bg-gray-50">
+                                        <span className="text-sm text-gray-800">{s.label}</span>
+                                        <OpsButton
+                                            size="sm"
+                                            variant="primary"
+                                            onClick={() => handleAddStop(s.stopId)}
+                                            disabled={addingStopId !== null}
+                                        >
+                                            {addingStopId === s.stopId ? "Adding…" : "Add"}
+                                        </OpsButton>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                        {addStopError && (
+                            <p className="mt-2 text-sm text-red-600" role="alert">{addStopError}</p>
+                        )}
+                    </div>
+                )}
             </OpsCard>
 
             <OpsCard className="p-0">
@@ -208,7 +305,12 @@ export function LeadRouteDetail({ id, onBack }: LeadRouteDetailProps) {
                     {routeRun.stops.map((stop) => (
                         <OpsTableRow key={stop.route_run_stop_id}>
                             <OpsTableCell className="text-gray-500">{stop.sequence}</OpsTableCell>
-                            <OpsTableCell className="font-semibold">{stop.stopNumber || stop.stop_id.slice(0, 8)}</OpsTableCell>
+                            <OpsTableCell className="font-semibold">
+                                {stop.stopNumber || stop.stop_id.slice(0, 8)}
+                                {stop.origin_type === "emergency" && (
+                                    <span className="ml-2"><OpsBadge variant="danger" value="emergency" /></span>
+                                )}
+                            </OpsTableCell>
                             <OpsTableCell>
                                 {stop.on_street_name} {stop.cross_street && `& ${stop.cross_street}`}
                             </OpsTableCell>

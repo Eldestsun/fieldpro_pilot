@@ -171,22 +171,27 @@ ON CONFLICT (oid) DO NOTHING;
 --     historically dense 1..15k asset id range on older dev DBs.
 --     If you are writing a stop/asset COUNT assertion: org 1 carries these two
 --     synthetic stops (plus 31150) by design.
+--     ISSUE-050 (2026-09-18): SEAMD_ADHOC_C added on the same pattern — the
+--     add-stop-to-live-run tests build a run from A+B and inject C.
 INSERT INTO public.assets (id, org_id, asset_type_id, seed_key, external_id, display_name, lon, lat)
 VALUES
   (987654321, 1, 1, 'SEAMD_ADHOC_A', 'SEAMD_ADHOC_A', 'SEAM-D Picker Fixture A', -122.300, 47.500),
-  (987654322, 1, 1, 'SEAMD_ADHOC_B', 'SEAMD_ADHOC_B', 'SEAM-D Picker Fixture B', -122.310, 47.510)
+  (987654322, 1, 1, 'SEAMD_ADHOC_B', 'SEAMD_ADHOC_B', 'SEAM-D Picker Fixture B', -122.310, 47.510),
+  (987654323, 1, 1, 'SEAMD_ADHOC_C', 'SEAMD_ADHOC_C', 'ISSUE-050 Inject Fixture C', -122.320, 47.520)
 ON CONFLICT (id) DO NOTHING;
 
 ALTER TABLE public.transit_stops DISABLE TRIGGER trg_sync_transit_stop_primary_asset;
 INSERT INTO public.transit_stops (stop_id, org_id, asset_id, lon, lat, on_street_name)
 VALUES
   ('SEAMD_ADHOC_A', 1, 987654321, -122.300, 47.500, 'SEAM-D Picker Fixture A'),
-  ('SEAMD_ADHOC_B', 1, 987654322, -122.310, 47.510, 'SEAM-D Picker Fixture B')
+  ('SEAMD_ADHOC_B', 1, 987654322, -122.310, 47.510, 'SEAM-D Picker Fixture B'),
+  ('SEAMD_ADHOC_C', 1, 987654323, -122.320, 47.520, 'ISSUE-050 Inject Fixture C')
 ON CONFLICT (stop_id) DO NOTHING;
 ALTER TABLE public.transit_stops ENABLE TRIGGER trg_sync_transit_stop_primary_asset;
 
 INSERT INTO public.transit_stop_assets (org_id, stop_id, asset_id, role, active)
 VALUES
   (1, 'SEAMD_ADHOC_A', 987654321, 'primary', true),
-  (1, 'SEAMD_ADHOC_B', 987654322, 'primary', true)
+  (1, 'SEAMD_ADHOC_B', 987654322, 'primary', true),
+  (1, 'SEAMD_ADHOC_C', 987654323, 'primary', true)
 ON CONFLICT (stop_id, asset_id, role) WHERE active = true DO NOTHING;

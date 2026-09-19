@@ -21,6 +21,8 @@ async function ensureFixtureSeed(): Promise<void> {
                      WHERE asset_id = 2 AND location_id = 1 AND role = 'primary' AND active)
          AND EXISTS (SELECT 1 FROM public.transit_stops
                      WHERE stop_id = 'SEAMD_ADHOC_A' AND asset_id IS NOT NULL)
+         AND EXISTS (SELECT 1 FROM public.transit_stops
+                     WHERE stop_id = 'SEAMD_ADHOC_C' AND asset_id IS NOT NULL)
          AS ok`);
     present = r.rows[0].ok === true;
   } finally {
@@ -108,6 +110,7 @@ import "./canonical/presenceTaxonomy.test";
 import "./canonical/controlCenterRelocation.test";
 import "./canonical/stopHistory.test";
 import "./canonical/adhocRouteRuns.test";
+import "./canonical/addStopToLiveRun.test";
 import "./canonical/ccOverviewAccessBlockedDrift.test";
 import "./canonical/previewPoolOrgContext.test";
 import "./canonical/qcAssignmentLinkage.test";

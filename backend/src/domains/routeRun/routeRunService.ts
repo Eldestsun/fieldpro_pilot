@@ -506,6 +506,193 @@ export async function createRouteRun(
 function normalize(s?: string) { return (s || "").trim().toUpperCase(); }
 
 /**
+ * ISSUE-050 — append a stop to a live (planned/in_progress) route run.
+ *
+ * Founder rulings 2026-09-18: append-only (Option A — sequence = MAX+1, one
+ * new leg, the pending tail is never re-ordered mid-shift), and origin_type
+ * 'emergency' only ('ul_ad_hoc' is reserved for a future worker-initiated
+ * flow; writing it from a dispatch surface would make the origin column lie).
+ *
+ * Everything commits in ONE transaction on the caller's org-scoped client:
+ * the stop row, the run-total bump, the Q-C core.assignments row for the new
+ * stop, and its encrypted actor-audit sidecar. Any failure (including the
+ * Q-C linkage validation) rolls the whole thing back — a run must never gain
+ * a stop whose assignment intent silently failed to land.
+ */
+export async function addStopToRouteRun(
+  client: any,
+  params: { routeRunId: number | string; stopId: string; actorOid: string }
+): Promise<{ routeRunStopId: number; sequence: number }> {
+  const { routeRunId, stopId, actorOid } = params;
+
+  await client.query("BEGIN");
+  try {
+    // FOR UPDATE serializes concurrent adds to the same run — sequence MAX+1
+    // and the totals bump both race without it.
+    const runRes = await client.query(
+      `SELECT id, status, base_id, run_date FROM route_runs WHERE id = $1 FOR UPDATE`,
+      [routeRunId]
+    );
+    if (runRes.rows.length === 0) {
+      const err: any = new Error("Route run not found");
+      err.status = 404;
+      throw err;
+    }
+    const run = runRes.rows[0];
+    if (run.status === "finished" || run.status === "completed") {
+      const err: any = new Error(`Cannot add a stop to a ${run.status} route run`);
+      err.status = 409;
+      throw err;
+    }
+
+    const dupRes = await client.query(
+      `SELECT 1 FROM route_run_stops WHERE route_run_id = $1 AND stop_id = $2`,
+      [routeRunId, stopId]
+    );
+    if (dupRes.rows.length > 0) {
+      const err: any = new Error("Stop is already on this route run");
+      err.status = 409;
+      throw err;
+    }
+
+    const stopRes = await client.query(
+      `SELECT stop_id, lon, lat, asset_id FROM public.stops WHERE stop_id = $1 AND active = true`,
+      [stopId]
+    );
+    if (stopRes.rows.length === 0) {
+      const err: any = new Error("Stop not found or inactive");
+      err.status = 400;
+      throw err;
+    }
+    const stop = stopRes.rows[0];
+    if (stop.lon == null || stop.lat == null) {
+      const err: any = new Error("Stop has no coordinates — cannot plan a leg to it");
+      err.status = 400;
+      throw err;
+    }
+    if (stop.asset_id == null) {
+      const err: any = new Error("Stop has no linked asset — cannot add it to a run");
+      err.status = 400;
+      throw err;
+    }
+
+    // Previous waypoint = current tail stop; an empty run falls back to base.
+    const prevRes = await client.query(
+      `SELECT s.stop_id, s.lon, s.lat
+         FROM route_run_stops rrs
+         JOIN public.stops s ON s.stop_id = rrs.stop_id
+        WHERE rrs.route_run_id = $1
+        ORDER BY rrs.sequence DESC
+        LIMIT 1`,
+      [routeRunId]
+    );
+    let prevWaypoint: OsrmStop;
+    if (prevRes.rows.length > 0) {
+      const p = prevRes.rows[0];
+      prevWaypoint = { stop_id: p.stop_id, lon: p.lon, lat: p.lat };
+    } else {
+      const baseRes = await client.query(
+        `SELECT lon, lat FROM bases WHERE id = $1`,
+        [run.base_id]
+      );
+      if (baseRes.rows.length === 0) {
+        const err: any = new Error("Route run has no stops and its base is missing — cannot plan a leg");
+        err.status = 400;
+        throw err;
+      }
+      prevWaypoint = { stop_id: "__BASE__", lon: baseRes.rows[0].lon, lat: baseRes.rows[0].lat };
+    }
+
+    // One new leg. An OSRM failure surfaces as a visible 502 with nothing
+    // written — never a stop row with guessed distances.
+    let leg: { distance_m: number; duration_s: number };
+    try {
+      leg = await makeLegCostCache().getCost(prevWaypoint, {
+        stop_id: stop.stop_id,
+        lon: stop.lon,
+        lat: stop.lat,
+      });
+    } catch (osrmErr: any) {
+      const err: any = new Error(
+        `Routing engine unavailable — stop not added (${osrmErr?.message || "OSRM error"})`
+      );
+      err.status = 502;
+      throw err;
+    }
+
+    const insertRes = await client.query(
+      `INSERT INTO route_run_stops (
+         route_run_id, stop_id, asset_id, sequence, status, origin_type,
+         planned_distance_m, planned_duration_s, org_id
+       )
+       SELECT $1, $2, $3,
+              COALESCE(MAX(rrs.sequence) + 1, 0),
+              'pending', 'emergency', $4, $5,
+              (SELECT org_id FROM route_runs WHERE id = $1)
+         FROM route_run_stops rrs WHERE rrs.route_run_id = $1
+       RETURNING id, sequence`,
+      [routeRunId, stop.stop_id, stop.asset_id, leg.distance_m, leg.duration_s]
+    );
+    const newStop = insertRes.rows[0];
+
+    await client.query(
+      `UPDATE route_runs
+          SET total_distance_m = COALESCE(total_distance_m, 0) + $2,
+              total_duration_s = COALESCE(total_duration_s, 0) + $3,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [routeRunId, leg.distance_m, leg.duration_s]
+    );
+
+    // Q-C linkage for the injected stop — same one-assignment-per-stop
+    // invariant createRouteRun enforces at creation time.
+    const assignRes = await client.query(
+      `INSERT INTO core.assignments (
+         org_id, assignment_type, status, location_id,
+         primary_asset_id, planned_for_date,
+         source_system, source_ref, meta
+       )
+       SELECT
+         a.org_id, 'transit_stop_clean', 'planned', loc.location_id,
+         s.asset_id, $1::date,
+         'route_runs', $2::text, '{}'::jsonb
+       FROM route_run_stops rrs
+       JOIN public.stops s ON s.stop_id = rrs.stop_id
+       JOIN public.assets a ON a.id = rrs.asset_id
+       LEFT JOIN core.v_locations_transit loc ON loc.stop_id = rrs.stop_id
+       WHERE rrs.id = $3
+       ON CONFLICT DO NOTHING
+       RETURNING id, org_id, location_id`,
+      [run.run_date, routeRunId, newStop.id]
+    );
+    if (assignRes.rows.length !== 1) {
+      throw new Error(
+        `[addStopToRouteRun] Q-C linkage validation failed for route_run ${routeRunId}, stop ${stopId}: ` +
+        `expected 1 assignment, inserted ${assignRes.rows.length}. The stop did not resolve through ` +
+        `public.stops/public.assets, or a duplicate (source_system, source_ref, location) conflicted. ` +
+        `Transaction rolled back.`
+      );
+    }
+
+    const { ciphertext: oidCiphertext, keyId: oidKeyId } =
+      await encryptOid(actorOid, "assignment_create");
+    await client.query(
+      `INSERT INTO core.assignment_actor_audit
+         (assignment_id, org_id, actor_ref, actor_ref_ciphertext, actor_ref_key_id)
+       VALUES ($1, $2, 'encrypted', $3, $4)
+       ON CONFLICT (assignment_id) DO NOTHING`,
+      [assignRes.rows[0].id, assignRes.rows[0].org_id, oidCiphertext, oidKeyId]
+    );
+
+    await client.query("COMMIT");
+    return { routeRunStopId: newStop.id, sequence: newStop.sequence };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  }
+}
+
+/**
  * Start a route run
  */
 export async function startRouteRun(id: number | string, orgId: number) {
