@@ -143,7 +143,10 @@ export interface InfraIssuePayload {
 
 export interface HazardPayload {
     hazard_types: string[];
+    /** @deprecated report-level severity — fallback for pre-CB-SEVERITY-CAPTURE replays. */
     severity?: string;
+    /** CB-SEVERITY-CAPTURE: per-hazard severity keyed by hazard type; sparse. */
+    hazard_severities?: Record<string, "low" | "medium" | "high">;
     notes?: string;
     safety_photo_key?: string;
     photo_keys: string[];
@@ -151,7 +154,10 @@ export interface HazardPayload {
 
 export interface SafetyPayload {
     hazard_types: string[];
+    /** @deprecated report-level severity — fallback for pre-CB-SEVERITY-CAPTURE replays. */
     severity?: string;
+    /** CB-SEVERITY-CAPTURE: per-hazard severity keyed by hazard type; sparse. */
+    hazard_severities?: Record<string, "low" | "medium" | "high">;
     notes?: string;
     safety_photo_key?: string;
 }

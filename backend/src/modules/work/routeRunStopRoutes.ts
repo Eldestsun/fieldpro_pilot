@@ -99,9 +99,22 @@ routeRunStopRoutes.post(
  *               severity:
  *                 type: integer
  *                 minimum: 1
- *                 maximum: 5
- *                 description: Hazard severity (1-5)
+ *                 maximum: 3
+ *                 description: >
+ *                   Legacy report-level severity applied to every hazard
+ *                   (1=low, 2=medium, 3=high). Superseded by hazard_severities;
+ *                   used as a fallback only for hazards with no per-hazard entry.
  *                 example: 3
+ *               hazard_severities:
+ *                 type: object
+ *                 additionalProperties:
+ *                   type: string
+ *                   enum: [low, medium, high]
+ *                 description: >
+ *                   Per-hazard severity keyed by hazard type
+ *                   (CB-SEVERITY-CAPTURE). Sparse — a hazard with no entry
+ *                   carries no magnitude (norm_severity NULL).
+ *                 example: { "debris": "high", "flooding": "low" }
  *               safety_photo_key:
  *                 type: string
  *                 description: S3 key of the safety photo
@@ -113,10 +126,10 @@ routeRunStopRoutes.post(
  *                 type: object
  *                 description: >
  *                   Nested form (alternative to flat fields):
- *                   { hazard_types, notes, severity, safety_photo_key }
+ *                   { hazard_types, notes, severity, hazard_severities, safety_photo_key }
  *           example:
  *             hazard_types: ["debris"]
- *             severity: 3
+ *             hazard_severities: { "debris": "high" }
  *             notes: "Large debris blocking shelter entrance"
  *     responses:
  *       200:
@@ -171,6 +184,7 @@ routeRunStopRoutes.post(
                 hazard_types: hazard_types_legacy,
                 notes: notes_legacy,
                 severity: severity_legacy,
+                hazard_severities: hazard_severities_legacy,
                 safety_photo_key: safety_photo_key_legacy,
                 photo_keys,
                 safety,
@@ -179,6 +193,7 @@ routeRunStopRoutes.post(
             const hazard_types = hazard_types_legacy ?? safety?.hazard_types;
             const notes = notes_legacy ?? safety?.notes;
             const severity = severity_legacy ?? safety?.severity;
+            const hazard_severities = hazard_severities_legacy ?? safety?.hazard_severities;
             const safety_photo_key = safety_photo_key_legacy ?? safety?.safety_photo_key;
 
             // LEGACY: user_id is a transit-adapter field with no FK and no canonical significance.
@@ -275,6 +290,7 @@ routeRunStopRoutes.post(
                 safetyConcern: true,
                 safetyHazards: hazard_types,
                 hazard_severity: severity,
+                hazard_severities,
                 hazard_notes: notes,
                 // No cleaning or infra actions on skip
             };
@@ -573,10 +589,16 @@ routeRunStopRoutes.post(
  *                 description: Infrastructure issues observed at the stop
  *               safety:
  *                 type: object
- *                 description: Optional safety observation (hazard types, severity, notes)
+ *                 description: Optional safety observation (hazard types, per-hazard severities, notes)
  *                 properties:
  *                   hazard_types: { type: array, items: { type: string } }
- *                   severity: { type: integer }
+ *                   severity:
+ *                     type: integer
+ *                     description: Legacy report-level severity (1-3); fallback for hazards with no hazard_severities entry
+ *                   hazard_severities:
+ *                     type: object
+ *                     additionalProperties: { type: string, enum: [low, medium, high] }
+ *                     description: Per-hazard severity keyed by hazard type (CB-SEVERITY-CAPTURE); sparse
  *                   notes: { type: string }
  *                   safety_photo_key: { type: string }
  *           example:

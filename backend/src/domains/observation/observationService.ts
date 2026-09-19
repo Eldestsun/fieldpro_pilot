@@ -24,7 +24,16 @@ export type StopUiPayload = {
     // Optional severity for hazards reported in this visit. Written into
     // core.observations.severity on every hazard-type observation emitted
     // from this payload. Consumed by riskMapService hazard scoring.
+    // CB-SEVERITY-CAPTURE: report-level grain — retained ONLY as the fallback
+    // for legacy clients / queued offline replays predating hazard_severities.
     hazard_severity?: string | number;
+
+    // CB-SEVERITY-CAPTURE (2026-09-18): per-hazard magnitude, keyed by the
+    // safetyHazards value ("fire" -> "high"). Sparse — a hazard with no entry
+    // gets no severity (norm_severity NULL, §4.4 no-manufactured-state); the
+    // report-level hazard_severity above applies to a hazard only when it has
+    // no per-hazard entry.
+    hazard_severities?: Record<string, string | number>;
 
     // Optional free-text note captured in the Report Safety modal (ONE box per
     // submission). ISSUE-072: this now lands once in core.visit_notes at
@@ -204,10 +213,16 @@ function submitObservations(ui: StopUiPayload): ObservationInsert[] {
     // invariant #5). It deliberately does not replicate the adapter's synthetic
     // default-of-1 (toNumericSeverity(undefined)=1) — that default is an adapter
     // artifact, not a worker-asserted fact.
-    const hazardSeverity = ui.hazard_severity != null ? String(ui.hazard_severity) : null;
-    const hazardSeverityNum = ui.hazard_severity != null ? toNumericSeverity(ui.hazard_severity) : null;
+    // CB-SEVERITY-CAPTURE (2026-09-18): severity is resolved PER HAZARD — the
+    // capture surface now asks a magnitude for each hazard, so a fire and a
+    // needle in one report carry their own numbers instead of sharing one.
+    // The report-level ui.hazard_severity survives purely as a fallback for
+    // legacy clients and queued offline replays created before this change.
     if (ui.safetyConcern) {
         ui.safetyHazards?.forEach(h => {
+            const rawSeverity = ui.hazard_severities?.[h] ?? ui.hazard_severity;
+            const severityText = rawSeverity != null ? String(rawSeverity) : null;
+            const severityNum = rawSeverity != null ? toNumericSeverity(rawSeverity) : null;
             obs.push({
                 observation_type: mapSafetyHazard(h),
                 payload: {
@@ -215,9 +230,9 @@ function submitObservations(ui: StopUiPayload): ObservationInsert[] {
                     // once in core.visit_notes (category='safety'). Only the numeric
                     // severity (a per-observation magnitude the §4.2 normalizer reads)
                     // stays in payload.
-                    ...(hazardSeverityNum != null && { severity: hazardSeverityNum }),
+                    ...(severityNum != null && { severity: severityNum }),
                 },
-                severity: hazardSeverity,
+                severity: severityText,
             });
         });
     }
