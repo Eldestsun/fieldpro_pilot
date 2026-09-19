@@ -31,6 +31,9 @@ export interface Stop {
         lat: number;
     };
     status: "pending" | "in_progress" | "done" | "skipped";
+    /** ISSUE-050: how the stop entered the run — 'planned' at creation,
+     *  'emergency' = dispatch-injected mid-run. 'ul_ad_hoc' reserved. */
+    origin_type?: "planned" | "emergency" | "ul_ad_hoc";
     is_hotspot: boolean;
     compactor: boolean;
     has_trash: boolean;
@@ -368,6 +371,32 @@ export async function reassignRouteRun(
     });
     if (!res.ok) {
         let msg = "Failed to reassign route";
+        try {
+            const data = await res.json();
+            msg = data.error || msg;
+        } catch { /* non-JSON error body */ }
+        throw new Error(msg);
+    }
+}
+
+// ISSUE-050 — append a stop to a live (planned/in_progress) route run.
+// Dispatch/Admin only; the server writes origin_type='emergency' and appends
+// to the pending tail (sequence MAX+1). 409 = terminal run or duplicate stop.
+export async function addStopToRun(
+    token: string,
+    routeRunId: number,
+    stopId: string,
+): Promise<void> {
+    const res = await fetch(`/api/route-runs/${routeRunId}/stops`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ stop_id: stopId, origin_type: "emergency" }),
+    });
+    if (!res.ok) {
+        let msg = "Failed to add stop to route";
         try {
             const data = await res.json();
             msg = data.error || msg;

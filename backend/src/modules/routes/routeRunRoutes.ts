@@ -11,6 +11,7 @@ import {
     finishRouteRun,
     getCandidateStopsForPoolWithRisk,
     assignRouteRun,
+    addStopToRouteRun,
 } from "../../domains/routeRun/routeRunService";
 import { loadRouteRunById } from "../../domains/routeRun/loaders/loadRouteRunById";
 import { ensureVisitForRouteRunStop } from "../../domains/visit/visitService";
@@ -864,6 +865,147 @@ routeRunRoutes.post(
             return res.json({ ok: true, route_run: routeRun });
         } catch (err: any) {
             console.error("Error in /api/route-runs/:id/finish:", err);
+            return res
+                .status(500)
+                .json({ error: err.message || "Internal server error" });
+        }
+    }
+);
+
+/**
+ * @openapi
+ * /route-runs/{id}/stops:
+ *   post:
+ *     summary: Add a stop to a live route run (ISSUE-050)
+ *     description: >
+ *       Appends a stop to the pending tail of a planned or in_progress route run
+ *       (sequence = MAX+1, one new OSRM leg, run totals bumped). Completed and
+ *       in-progress stops are never touched. Writes origin_type='emergency' —
+ *       'ul_ad_hoc' is reserved for a future worker-initiated flow and is
+ *       rejected. Writes a `route.stop.add` audit entry on success.
+ *     tags: [RouteRuns]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Dispatch, Admin]
+ *     x-audit-action: route.stop.add
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *         description: Route run ID
+ *         example: "42"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [stop_id]
+ *             properties:
+ *               stop_id:
+ *                 type: string
+ *                 description: The stop to append
+ *                 example: "12345"
+ *               origin_type:
+ *                 type: string
+ *                 enum: [emergency]
+ *                 description: >
+ *                   Optional; defaults to 'emergency' and must equal it.
+ *                   'ul_ad_hoc' is reserved for the worker-initiated flow.
+ *           example:
+ *             stop_id: "12345"
+ *     responses:
+ *       200:
+ *         description: Stop appended; reloaded route run returned
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok: { type: boolean }
+ *                 route_run: { type: object }
+ *             example:
+ *               ok: true
+ *               route_run: { id: 42, status: in_progress }
+ *       400:
+ *         description: Invalid stop (unknown/inactive/no coordinates/no asset) or reserved origin_type
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *             example: { error: "Stop not found or inactive" }
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       409:
+ *         description: Run is finished/completed, or the stop is already on the run
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *             example: { error: "Stop is already on this route run" }
+ *       502:
+ *         description: Routing engine unavailable — nothing written
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *             example: { error: "Routing engine unavailable — stop not added" }
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+routeRunRoutes.post(
+    "/route-runs/:id/stops",
+    requireAuth,
+    requireAnyRole(["Dispatch", "Admin"]),
+    async (req: Request, res: Response) => {
+        const { id } = req.params;
+        const { stop_id, origin_type } = req.body;
+
+        if (typeof stop_id !== "string" || stop_id.trim().length === 0) {
+            return res.status(400).json({ error: "stop_id is required" });
+        }
+        // ISSUE-050 founder ruling: v1 writes only 'emergency'. 'ul_ad_hoc' is
+        // reserved for the worker-initiated flow — accepting it from a dispatch
+        // surface would make the origin column lie.
+        if (origin_type !== undefined && origin_type !== "emergency") {
+            return res.status(400).json({
+                error: "origin_type must be 'emergency' ('ul_ad_hoc' is reserved for the field-worker flow)",
+            });
+        }
+
+        try {
+            const numericOrgId = await resolveNumericOrgId(req);
+            const actorOid: string = (req as any).user?.oid ?? "unknown";
+
+            await withOrgContext(numericOrgId, (client) =>
+                addStopToRouteRun(client, {
+                    routeRunId: id,
+                    stopId: stop_id.trim(),
+                    actorOid,
+                })
+            );
+
+            auditWrite({
+                actor_oid: actorOid,
+                org_id: reqOrgId(req),
+                action: "route.stop.add",
+                resource_type: "route",
+                resource_id: String(id),
+                // Labor safety: stop/origin only — no worker identity in detail
+                // (matches the assign handler's posture).
+                detail: { stop_id: stop_id.trim(), origin_type: "emergency" },
+                ip_address: req.ip,
+            });
+
+            const routeRun = await loadRouteRunById(id, numericOrgId);
+            return res.json({ ok: true, route_run: routeRun });
+        } catch (err: any) {
+            console.error("Error in POST /api/route-runs/:id/stops:", err);
+            if (err.status === 400 || err.status === 404 || err.status === 409 || err.status === 502) {
+                return res.status(err.status).json({ error: err.message });
+            }
             return res
                 .status(500)
                 .json({ error: err.message || "Internal server error" });
