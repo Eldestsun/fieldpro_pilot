@@ -177,7 +177,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     setMe(null);
-    await instance.logoutPopup();
+    // ISSUE-067 (freeze exception 2026-09-18, scoped to signOut): app-scoped
+    // sign-out only. logoutPopup() ends the org-wide Entra SSO session — on a
+    // field device whose browser is signed in as the worker's org user, that
+    // signs them out of every Microsoft surface, not just BASELINE. clearCache
+    // removes the account + tokens from this app's local MSAL cache only; the
+    // Entra session survives and the next Sign in silently SSOs. Do not revert
+    // to logoutPopup/logoutRedirect; shared-profile devices are mitigated at
+    // the device layer (separate profiles / Conditional Access), not here.
+    const msalAccount = instance.getActiveAccount() ?? instance.getAllAccounts()[0];
+    await instance.clearCache(msalAccount ? { account: msalAccount } : undefined);
+    instance.setActiveAccount(null);
   }, [instance, account]);
 
   const refreshMe = useCallback(async () => {
