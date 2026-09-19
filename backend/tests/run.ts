@@ -119,6 +119,7 @@ import "./canonical/intelligenceReaderChannel.test";
 import "./canonical/stopPhotosEvidence.test";
 import "./canonical/adminStopRetire.test";
 import "./canonical/adminHealth.test";
+import "./canonical/userDirectory.test";
 import "./canonical/issue024SyncTrigger.test";
 import "./canonical/skipHazardAtomic.test";
 

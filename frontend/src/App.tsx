@@ -19,6 +19,7 @@ import * as AdminControlCenterMod from "./components/admin/AdminControlCenter";
 import * as AdminAuditLogPanelMod from "./components/admin/AdminAuditLogPanel";
 import * as AdminExportDeletePanelMod from "./components/admin/AdminExportDeletePanel";
 import * as AdminSystemHealthPanelMod from "./components/admin/AdminSystemHealthPanel";
+import * as AdminUserDirectoryPanelMod from "./components/admin/AdminUserDirectoryPanel";
 import * as LoginPageMod from "./auth/LoginPage";
 import { OfflineSyncManager } from "./offline/OfflineSyncManager";
 import { OfflineStatusBar } from "./components/ui/OfflineStatusBar";
@@ -37,6 +38,7 @@ const AdminControlCenter = resolveComponent(AdminControlCenterMod, "AdminControl
 const AdminAuditLogPanel = resolveComponent(AdminAuditLogPanelMod, "AdminAuditLogPanel");
 const AdminExportDeletePanel = resolveComponent(AdminExportDeletePanelMod, "AdminExportDeletePanel");
 const AdminSystemHealthPanel = resolveComponent(AdminSystemHealthPanelMod, "AdminSystemHealthPanel");
+const AdminUserDirectoryPanel = resolveComponent(AdminUserDirectoryPanelMod, "AdminUserDirectoryPanel");
 const LoginPage = resolveComponent(LoginPageMod, "LoginPage");
 
 function DefaultRedirect() {
@@ -138,6 +140,7 @@ export default function App() {
                   <NavLink to="/admin/pools" end className={navLinkClass}>Pools</NavLink>
                   <NavLink to="/admin/stops" end className={navLinkClass}>Stops</NavLink>
                   <NavLink to="/ops/control-center" end className={navLinkClass}>Control Center</NavLink>
+                  <NavLink to="/admin/users" end className={navLinkClass}>Users</NavLink>
                   <NavLink to="/admin/audit-log" end className={navLinkClass}>Audit Log</NavLink>
                   <NavLink to="/admin/export-delete" end className={navLinkClass}>Export &amp; Delete</NavLink>
                   <NavLink to="/admin/system-health" end className={navLinkClass}>System Health</NavLink>
@@ -281,6 +284,9 @@ export default function App() {
             } />
             <Route path="/ops/control-center" element={
               <RequireRole roles={["Dispatch", "Admin"]}><AdminControlCenter /></RequireRole>
+            } />
+            <Route path="/admin/users" element={
+              <RequireRole roles={["Admin"]}><AdminUserDirectoryPanel /></RequireRole>
             } />
             <Route path="/admin/audit-log" element={
               <RequireRole roles={["Admin"]}><AdminAuditLogPanel /></RequireRole>

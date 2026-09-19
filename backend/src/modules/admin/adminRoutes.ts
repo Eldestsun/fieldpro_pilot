@@ -18,6 +18,78 @@ const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
 // Apply to all /admin routes
 adminRoutes.use("/admin", requireAuth, requireAdmin);
 
+/** ── User directory (T3-A3) ───────────────────────────────────────────── */
+/**
+ * @openapi
+ * /admin/users:
+ *   get:
+ *     summary: Read-only user directory (T3-A3)
+ *     description: >
+ *       Lists identity_directory — everyone who has signed into BASELINE in
+ *       this org. Read-only mirror; Entra is the only deactivation switch
+ *       (founder ruling 2026-09-19 — BASELINE never manages identity).
+ *       last_sign_in is DATE-ONLY: last_seen_at refreshes on every
+ *       authenticated request (requireAuth → upsertIdentity), so a precise
+ *       timestamp would be a worker-activity monitor, not a login log.
+ *       No OIDs in the payload (SEAM-C posture — names/emails suffice here).
+ *     tags: [Admin]
+ *     security:
+ *       - AzureAD: []
+ *     x-required-roles: [Admin]
+ *     responses:
+ *       200:
+ *         description: Directory rows, name-sorted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 users:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       display_name: { type: string }
+ *                       email: { type: string, nullable: true }
+ *                       role_at_last_sign_in: { type: string, nullable: true }
+ *                       last_sign_in: { type: string, format: date }
+ *             example:
+ *               users:
+ *                 - display_name: "Field Worker"
+ *                   email: "worker@example.org"
+ *                   role_at_last_sign_in: "Specialist"
+ *                   last_sign_in: "2026-09-18"
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         $ref: '#/components/responses/Forbidden'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+adminRoutes.get("/admin/users", async (req: Request, res: Response) => {
+  try {
+    const numericOrgId = await resolveNumericOrgId(req);
+    const rows = await withOrgContext(numericOrgId, async (client) => {
+      const r = await client.query(
+        // to_char, not ::date — node-pg turns a bare date into a JS Date that
+        // serializes as a full ISO timestamp, breaking the date-only contract.
+        `SELECT display_name,
+                email,
+                last_seen_role                        AS role_at_last_sign_in,
+                to_char(last_seen_at, 'YYYY-MM-DD')   AS last_sign_in
+           FROM identity_directory
+          WHERE oid NOT LIKE 'seed-%'
+          ORDER BY display_name NULLS LAST, email NULLS LAST`,
+      );
+      return r.rows;
+    });
+    return res.json({ users: rows });
+  } catch (err: any) {
+    console.error("Error in GET /admin/users:", err);
+    return res.status(err.status === 403 ? 403 : 500).json({ error: err.message || "Internal server error" });
+  }
+});
+
 /** ── Dashboard ────────────────────────────────────────────────────────── */
 /**
  * @openapi
