@@ -340,7 +340,9 @@ export function LeadRouteDetail({ id, onBack }: LeadRouteDetailProps) {
                     {routeRun.stops.length === 0 && (
                         <OpsTableRow>
                             <OpsTableCell colSpan={5} className="text-center py-8 text-gray-500">
-                                No stops in this route.
+                                {routeRun.status === "planned" || routeRun.status === "in_progress"
+                                    ? "No stops on this route yet — use Add stop above to build it."
+                                    : "No stops on this route."}
                             </OpsTableCell>
                         </OpsTableRow>
                     )}

@@ -111,6 +111,7 @@ import "./canonical/controlCenterRelocation.test";
 import "./canonical/stopHistory.test";
 import "./canonical/adhocRouteRuns.test";
 import "./canonical/addStopToLiveRun.test";
+import "./canonical/stoplessRouteRun.test";
 import "./canonical/ccOverviewAccessBlockedDrift.test";
 import "./canonical/previewPoolOrgContext.test";
 import "./canonical/qcAssignmentLinkage.test";
