@@ -85,8 +85,12 @@ export async function loadRouteRunById(id: number | string, orgId: number | stri
     -- Any new JOIN to identity_directory requires explicit review. See R11 spec.
     LEFT JOIN identity_directory id_dir ON id_dir.oid = rra.assigned_user_oid
     LEFT JOIN identity_directory creator ON creator.oid = rra.created_by_oid
-    JOIN route_run_stops rrs ON rrs.route_run_id = rr.id
-    JOIN stops s ON s.stop_id = rrs.stop_id
+    -- ISSUE-015 (founder-ruled 2026-09-19): LEFT JOINs — a stopless run is a
+    -- LEGITIMATE state (renders as an empty run with the ISSUE-050 Add-stop
+    -- control), not a 404. The INNER JOIN here made real runs vanish: zero
+    -- stop rows → zero result rows → handler said "Route run not found".
+    LEFT JOIN route_run_stops rrs ON rrs.route_run_id = rr.id
+    LEFT JOIN stops s ON s.stop_id = rrs.stop_id
     -- SEAM-C: the 5 cleaning booleans derive from canonical action observations, not
     -- the clipped public.clean_logs adapter. Per stop, resolve its visit(s) via the
     -- canonical spine (visit → assignment.source_ref = route_run, visit.location →
@@ -152,6 +156,8 @@ export async function loadRouteRunById(id: number | string, orgId: number | stri
         const runRes = await client.query(query, [id]);
         const cvidToStopId = new Map<string, number>();
         for (const r of runRes.rows as any[]) {
+            // ISSUE-015: a stopless run yields one row with NULL stop columns.
+            if (r.route_run_stop_id == null) continue;
             cvidToStopId.set(deriveClientVisitId(r.route_run_stop_id), r.route_run_stop_id);
         }
         const cvids = Array.from(cvidToStopId.keys());
@@ -213,7 +219,9 @@ export async function loadRouteRunById(id: number | string, orgId: number | stri
         total_duration_s: first.total_duration_s,
         created_at: first.route_run_created_at,
         updated_at: first.route_run_updated_at,
-        stops: result.rows.map((r: any) => ({
+        // ISSUE-015: filter the NULL placeholder row a stopless run produces —
+        // the payload is then `stops: []`, the honest empty list.
+        stops: result.rows.filter((r: any) => r.route_run_stop_id != null).map((r: any) => ({
             route_run_stop_id: r.route_run_stop_id,
             stop_id: r.stop_id,
             asset_id: r.asset_id,
