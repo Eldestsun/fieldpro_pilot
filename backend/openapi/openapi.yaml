@@ -1028,9 +1028,25 @@ paths:
                 severity:
                   type: integer
                   minimum: 1
-                  maximum: 5
-                  description: Hazard severity (1-5)
+                  maximum: 3
+                  description: >
+                    Legacy report-level severity applied to every hazard (1=low, 2=medium, 3=high). Superseded by
+                    hazard_severities; used as a fallback only for hazards with no per-hazard entry.
                   example: 3
+                hazard_severities:
+                  type: object
+                  additionalProperties:
+                    type: string
+                    enum:
+                      - low
+                      - medium
+                      - high
+                  description: >
+                    Per-hazard severity keyed by hazard type (CB-SEVERITY-CAPTURE). Sparse — a hazard with no entry
+                    carries no magnitude (norm_severity NULL).
+                  example:
+                    debris: high
+                    flooding: low
                 safety_photo_key:
                   type: string
                   description: S3 key of the safety photo
@@ -1041,12 +1057,14 @@ paths:
                   description: Additional photo keys
                 safety:
                   type: object
-                  description: |
-                    Nested form (alternative to flat fields): { hazard_types, notes, severity, safety_photo_key }
+                  description: >
+                    Nested form (alternative to flat fields): { hazard_types, notes, severity, hazard_severities,
+                    safety_photo_key }
             example:
               hazard_types:
                 - debris
-              severity: 3
+              hazard_severities:
+                debris: high
               notes: Large debris blocking shelter entrance
       responses:
         '200':
@@ -1251,7 +1269,7 @@ paths:
                   description: Infrastructure issues observed at the stop
                 safety:
                   type: object
-                  description: Optional safety observation (hazard types, severity, notes)
+                  description: Optional safety observation (hazard types, per-hazard severities, notes)
                   properties:
                     hazard_types:
                       type: array
@@ -1259,6 +1277,16 @@ paths:
                         type: string
                     severity:
                       type: integer
+                      description: Legacy report-level severity (1-3); fallback for hazards with no hazard_severities entry
+                    hazard_severities:
+                      type: object
+                      additionalProperties:
+                        type: string
+                        enum:
+                          - low
+                          - medium
+                          - high
+                      description: Per-hazard severity keyed by hazard type (CB-SEVERITY-CAPTURE); sparse
                     notes:
                       type: string
                     safety_photo_key:

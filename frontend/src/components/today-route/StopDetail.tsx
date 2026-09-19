@@ -644,9 +644,14 @@ export function StopDetail({
                             <div className="text-sm text-gray-700 flex flex-col gap-1">
                                 <div>
                                     <span className="font-medium">Concerns:</span>{" "}
-                                    {safety.hazardTypes?.join(", ") ?? "Reported"}
+                                    {safety.hazardTypes
+                                        ?.map((h) => {
+                                            const sev = safety.hazardSeverities?.[h];
+                                            return sev ? `${h} (${sev})` : h;
+                                        })
+                                        .join(", ") ?? "Reported"}
                                 </div>
-                                {safety.severity && (
+                                {safety.severity && Object.keys(safety.hazardSeverities ?? {}).length === 0 && (
                                     <div>
                                         <span className="font-medium">Severity:</span>{" "}
                                         {safety.severity}
@@ -930,65 +935,72 @@ export function StopDetail({
                                     { val: "other", label: "Other" },
                                 ].map((opt) => {
                                     const isChecked = localSafety.hazardTypes?.includes(opt.val) || false;
+                                    const selectedSeverity = localSafety.hazardSeverities?.[opt.val];
                                     return (
-                                        <label
-                                            key={opt.val}
-                                            className={cn(
-                                                "flex items-center p-3 rounded-lg text-sm transition-colors min-h-[44px] cursor-pointer",
-                                                isChecked
-                                                    ? "bg-(--color-danger-tint) border border-(--color-danger)"
-                                                    : "bg-(--surface-card) border border-(--border-default)"
+                                        <div key={opt.val} className="flex flex-col">
+                                            <label
+                                                className={cn(
+                                                    "flex items-center p-3 rounded-lg text-sm transition-colors min-h-[44px] cursor-pointer",
+                                                    isChecked
+                                                        ? "bg-(--color-danger-tint) border border-(--color-danger)"
+                                                        : "bg-(--surface-card) border border-(--border-default)"
+                                                )}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isChecked}
+                                                    onChange={(e) => {
+                                                        const current = localSafety.hazardTypes || [];
+                                                        const next = e.target.checked ? [...current, opt.val] : current.filter((h) => h !== opt.val);
+                                                        setLocalSafety(prev => {
+                                                            // Unchecking a hazard drops its severity too — a
+                                                            // magnitude must never outlive the hazard it grades.
+                                                            const severities = { ...(prev.hazardSeverities || {}) };
+                                                            if (!e.target.checked) delete severities[opt.val];
+                                                            return { ...prev, hazardTypes: next, hazardSeverities: severities };
+                                                        });
+                                                    }}
+                                                    className="w-5 h-5 mr-3 shrink-0 accent-(--color-danger)"
+                                                />
+                                                {opt.label}
+                                            </label>
+                                            {isChecked && (
+                                                <div className="flex gap-1 mt-1" role="group" aria-label={`${opt.label} severity`}>
+                                                    {(["low", "medium", "high"] as const).map((level) => {
+                                                        const isSelected = selectedSeverity === level;
+                                                        const colorClass = isSelected
+                                                            ? level === "low"
+                                                                ? "bg-(--color-warning-tint) border-(--color-warning) text-(--color-warning)"
+                                                                : level === "medium"
+                                                                    ? "bg-(--color-amber-tint) border-(--color-amber) text-(--color-amber)"
+                                                                    : "bg-(--color-danger-tint) border-(--color-danger) text-(--color-danger)"
+                                                            : "bg-(--surface-card) border-(--border-strong) text-(--gray-600)";
+                                                        return (
+                                                            <button
+                                                                key={level}
+                                                                type="button"
+                                                                aria-pressed={isSelected}
+                                                                onClick={() => setLocalSafety(prev => {
+                                                                    const severities = { ...(prev.hazardSeverities || {}) };
+                                                                    if (isSelected) delete severities[opt.val];
+                                                                    else severities[opt.val] = level;
+                                                                    return { ...prev, hazardSeverities: severities };
+                                                                })}
+                                                                className={cn(
+                                                                    "flex-1 py-1.5 rounded-md border-2 font-bold text-xs capitalize min-h-[32px] cursor-pointer transition-colors",
+                                                                    colorClass
+                                                                )}
+                                                            >
+                                                                {level === "medium" ? "Med" : level.charAt(0).toUpperCase() + level.slice(1)}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
                                             )}
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                checked={isChecked}
-                                                onChange={(e) => {
-                                                    const current = localSafety.hazardTypes || [];
-                                                    const next = e.target.checked ? [...current, opt.val] : current.filter((h) => h !== opt.val);
-                                                    setLocalSafety(prev => ({ ...prev, hazardTypes: next }));
-                                                }}
-                                                className="w-5 h-5 mr-3 shrink-0 accent-(--color-danger)"
-                                            />
-                                            {opt.label}
-                                        </label>
+                                        </div>
                                     );
                                 })}
                             </div>
-
-                            {(localSafety.hazardTypes?.length ?? 0) > 0 && (
-                                <div className="mb-6">
-                                    <label className="block mb-2 font-bold text-gray-700">Severity:</label>
-                                    <div className="flex gap-2">
-                                        {(["low", "medium", "high"] as const).map((level) => {
-                                            const isSelected = localSafety.severity === level;
-                                            const colorClass = isSelected
-                                                ? level === "low"
-                                                    ? "bg-(--color-warning-tint) border-(--color-warning) text-(--color-warning)"
-                                                    : level === "medium"
-                                                        ? "bg-(--color-amber-tint) border-(--color-amber) text-(--color-amber)"
-                                                        : "bg-(--color-danger-tint) border-(--color-danger) text-(--color-danger)"
-                                                : "bg-(--surface-card) border-(--border-strong) text-(--gray-600)";
-                                            return (
-                                                <button
-                                                    key={level}
-                                                    type="button"
-                                                    onClick={() => setLocalSafety(prev => ({
-                                                        ...prev,
-                                                        severity: isSelected ? undefined : level,
-                                                    }))}
-                                                    className={cn(
-                                                        "flex-1 py-3 rounded-lg border-2 font-bold text-sm capitalize min-h-[44px] cursor-pointer transition-colors",
-                                                        colorClass
-                                                    )}
-                                                >
-                                                    {level.charAt(0).toUpperCase() + level.slice(1)}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
 
                             <label className="block mb-2 font-bold text-gray-700">Safety Photo (For Skipping):</label>
                             <div className="mb-6">

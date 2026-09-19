@@ -145,3 +145,85 @@ test("hazard severity carry: numeric severity passes through unchanged (3 -> 3)"
     await releaseFixture(client, f);
   }
 });
+
+// ============================================================================
+// CB-SEVERITY-CAPTURE (2026-09-18) — per-hazard severity grain.
+//
+// The capture surface now asks a magnitude PER HAZARD (hazard_severities map);
+// each hazard observation in one report carries its own number. The old
+// report-level hazard_severity survives only as a fallback for legacy clients
+// and queued offline replays created before the change.
+// ============================================================================
+
+test("per-hazard severity: each hazard in one report carries its own magnitude; unrated hazard stays NULL", async () => {
+  const { client, f } = await acquireRouteRunFixture();
+  try {
+    const visitId = await setupVisit(client, f.routeRunStopId);
+
+    const uiPayload: StopUiPayload = {
+      safetyConcern: true,
+      safetyHazards: ["fire", "biohazard", "encampment"],
+      hazard_severities: { fire: "high", biohazard: "low" },
+      // encampment deliberately unrated — worker skipped its picker
+    };
+
+    await emitObservationsForStop({
+      phase: "submit",
+      visitId,
+      orgId: FIXTURE_ORG_ID,
+      assetId: FIXTURE_ASSET_ID,
+      locationId: FIXTURE_LOCATION_ID,
+      actorOid: FIXTURE_ACTOR_OID,
+      uiPayload,
+      client,
+    });
+
+    const fire = await readPresence(client, visitId, "fire_present");
+    assertEqual(fire.norm_severity, 3, "fire carries its own magnitude (high -> 3)");
+    assertEqual(fire.severity, "high", "fire legacy text column = 'high'");
+
+    const bio = await readPresence(client, visitId, "biohazard_present");
+    assertEqual(bio.norm_severity, 1, "biohazard carries its own magnitude (low -> 1)");
+    assertEqual(bio.severity, "low", "biohazard legacy text column = 'low'");
+
+    const camp = await readPresence(client, visitId, "encampment_present");
+    assertEqual(camp.norm_severity, null, "unrated hazard stays NULL — no magnitude manufactured (§4.4)");
+    assert(camp.payload.severity === undefined, "no severity threaded into unrated hazard's payload");
+    assertEqual(camp.severity, null, "unrated hazard's legacy text column stays NULL");
+  } finally {
+    await releaseFixture(client, f);
+  }
+});
+
+test("per-hazard severity: report-level hazard_severity is the fallback ONLY for hazards without a per-hazard entry", async () => {
+  const { client, f } = await acquireRouteRunFixture();
+  try {
+    const visitId = await setupVisit(client, f.routeRunStopId);
+
+    const uiPayload: StopUiPayload = {
+      safetyConcern: true,
+      safetyHazards: ["fire", "biohazard"],
+      hazard_severities: { fire: "low" },
+      hazard_severity: "high", // legacy report-level — must NOT override fire's own entry
+    };
+
+    await emitObservationsForStop({
+      phase: "submit",
+      visitId,
+      orgId: FIXTURE_ORG_ID,
+      assetId: FIXTURE_ASSET_ID,
+      locationId: FIXTURE_LOCATION_ID,
+      actorOid: FIXTURE_ACTOR_OID,
+      uiPayload,
+      client,
+    });
+
+    const fire = await readPresence(client, visitId, "fire_present");
+    assertEqual(fire.norm_severity, 1, "per-hazard entry wins over the report-level fallback (low -> 1)");
+
+    const bio = await readPresence(client, visitId, "biohazard_present");
+    assertEqual(bio.norm_severity, 3, "hazard without a per-hazard entry falls back to report-level (high -> 3)");
+  } finally {
+    await releaseFixture(client, f);
+  }
+});

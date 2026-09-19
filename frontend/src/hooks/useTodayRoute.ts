@@ -27,6 +27,11 @@ import { saveTodayRouteCache, loadTodayRouteCache } from "../offline/todayRouteC
 export interface SafetyState {
     hasConcern: boolean | null;
     hazardTypes?: string[]; // Multi-select
+    /** CB-SEVERITY-CAPTURE: per-hazard magnitude, keyed by hazard type value.
+     *  Sparse — a hazard with no entry carries no magnitude (worker skipped it). */
+    hazardSeverities?: Record<string, "low" | "medium" | "high">;
+    /** @deprecated report-level severity — superseded by hazardSeverities. Kept
+     *  so queued offline actions created before CB-SEVERITY-CAPTURE still replay. */
     severity?: string;
     notes?: string;
     wantsToSkip?: boolean;
@@ -221,6 +226,7 @@ export function useTodayRoute() {
         const payload = {
             hazard_types: hazardTypes,
             severity: safety.severity,
+            hazard_severities: safety.hazardSeverities,
             notes: safety.notes,
             safety_photo_key: safety.safetyPhotoKey,
             photo_keys: photoKeysForStop,
@@ -374,6 +380,7 @@ export function useTodayRoute() {
             safety: safetyState[stopId]?.hasConcern ? {
                 hazard_types: safetyState[stopId]?.hazardTypes || [],
                 severity: safetyState[stopId]?.severity,
+                hazard_severities: safetyState[stopId]?.hazardSeverities,
                 notes: safetyState[stopId]?.notes || "",
                 safety_photo_key: safetyState[stopId]?.safetyPhotoKey,
             } : undefined,
